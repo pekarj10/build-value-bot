@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import * as XLSX from "npm:xlsx@0.18.5";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -51,9 +52,6 @@ serve(async (req) => {
       throw new Error("Failed to download file");
     }
 
-    // Dynamic import for xlsx to avoid type issues
-    const XLSX = await import("https://cdn.sheetjs.com/xlsx-0.20.0/package/xlsx.mjs");
-    
     // Parse Excel file
     const arrayBuffer = await fileData.arrayBuffer();
     const workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: "array" });
