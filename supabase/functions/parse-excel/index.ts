@@ -29,6 +29,7 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const { projectId, storagePath } = await req.json() as ParseRequest;
@@ -42,18 +43,6 @@ serve(async (req) => {
 
     console.log(`Parsing file: ${storagePath} for project: ${projectId}`);
 
-    // Check file extension
-    const fileExtension = storagePath.split('.').pop()?.toLowerCase();
-    if (fileExtension === 'pdf') {
-      return new Response(
-        JSON.stringify({ 
-          error: "PDF files are not supported yet",
-          details: "Please upload an Excel file (.xlsx or .xls)"
-        }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
     // Download file from storage
     const { data: fileData, error: downloadError } = await supabase.storage
       .from("project-files")
@@ -64,121 +53,17 @@ serve(async (req) => {
       throw new Error("Failed to download file");
     }
 
-    // Parse Excel file
-    const arrayBuffer = await fileData.arrayBuffer();
-    const workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: "array" });
+    // Check file extension
+    const fileExtension = storagePath.split('.').pop()?.toLowerCase();
+    let parsedItems: ParsedItem[] = [];
 
-    const parsedItems: ParsedItem[] = [];
-
-    console.log(`Workbook has ${workbook.SheetNames.length} sheets: ${workbook.SheetNames.join(", ")}`);
-
-    // Process each sheet
-    for (const sheetName of workbook.SheetNames) {
-      const sheet = workbook.Sheets[sheetName];
-      const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" }) as unknown[][];
-
-      console.log(`Sheet "${sheetName}" has ${jsonData.length} rows`);
-      
-      if (jsonData.length < 1) continue; // Skip empty sheets
-
-      // Log first few rows to debug
-      for (let i = 0; i < Math.min(3, jsonData.length); i++) {
-        const row = jsonData[i] as unknown[];
-        console.log(`Row ${i}: ${JSON.stringify(row?.slice(0, 8))}`);
-      }
-
-      // Find the header row - it might not be the first row
-      // Look for a row with multiple non-empty cells that look like headers
-      let headerRowIndex = -1;
-      let headerRow: string[] = [];
-      
-      for (let i = 0; i < Math.min(15, jsonData.length); i++) {
-        const row = jsonData[i] as unknown[];
-        if (!row) continue;
-        
-        // Count non-empty cells
-        let nonEmptyCount = 0;
-        for (const cell of row) {
-          if (cell !== null && cell !== undefined && cell !== "") {
-            nonEmptyCount++;
-          }
-        }
-        
-        if (nonEmptyCount >= 2) {
-          headerRow = row.map(cell => cell?.toString() || "");
-          headerRowIndex = i;
-          console.log(`Found potential header at row ${i} with ${nonEmptyCount} cells: ${headerRow.slice(0, 5).join(" | ")}`);
-          break;
-        }
-      }
-
-      if (headerRowIndex === -1 || headerRow.length === 0) {
-        // Fallback: use first row as header if it has any content
-        if (jsonData.length > 0 && jsonData[0]) {
-          headerRow = (jsonData[0] as unknown[]).map(cell => cell?.toString() || "");
-          headerRowIndex = 0;
-          console.log(`Using first row as header fallback: ${headerRow.slice(0, 5).join(" | ")}`);
-        } else {
-          console.log(`Skipping sheet ${sheetName}: no usable header row found`);
-          continue;
-        }
-      }
-
-      // Try to detect column indices
-      const columnMap = detectColumns(headerRow);
-      console.log(`Column detection for "${sheetName}": desc=${columnMap.description}, qty=${columnMap.quantity}, unit=${columnMap.unit}, price=${columnMap.unitPrice}`);
-
-      // If no description column found, use heuristics - first long text column
-      if (columnMap.description === undefined) {
-        // Try to find a column with text content
-        for (let colIdx = 0; colIdx < headerRow.length; colIdx++) {
-          const header = headerRow[colIdx];
-          if (header && header.length >= 1) {
-            columnMap.description = colIdx;
-            console.log(`Using column ${colIdx} ("${header}") as description fallback`);
-            break;
-          }
-        }
-      }
-
-      if (columnMap.description === undefined) {
-        console.log(`Skipping sheet ${sheetName}: could not determine description column`);
-        continue;
-      }
-
-      // Determine trade from sheet name
-      const trade = inferTradeFromSheetName(sheetName);
-
-      // Process data rows (starting after header)
-      for (let i = headerRowIndex + 1; i < jsonData.length; i++) {
-        const row = jsonData[i] as unknown[];
-        if (!row || row.length === 0) continue;
-
-        const descValue = row[columnMap.description];
-        const description = descValue?.toString()?.trim() || "";
-        
-        // Skip empty or very short descriptions, but be lenient
-        if (description.length < 2) continue;
-        
-        // Skip rows that look like headers or totals
-        const lowerDesc = description.toLowerCase();
-        if (lowerDesc.includes("total") || lowerDesc.includes("celkem") || lowerDesc.includes("suma")) continue;
-
-        const quantity = columnMap.quantity !== undefined ? parseNumber(row[columnMap.quantity]) : 1;
-        const unit = columnMap.unit !== undefined ? (row[columnMap.unit]?.toString() || "pcs") : "pcs";
-        const unitPrice = columnMap.unitPrice !== undefined ? parseNumber(row[columnMap.unitPrice]) : undefined;
-
-        parsedItems.push({
-          description,
-          quantity: quantity || 1,
-          unit: unit || "pcs",
-          unitPrice: unitPrice || undefined,
-          sheetName,
-          trade,
-        });
-      }
-      
-      console.log(`Extracted ${parsedItems.length} items so far from sheet "${sheetName}"`);
+    if (fileExtension === 'pdf') {
+      // Parse PDF using AI
+      console.log("Parsing PDF file using AI...");
+      parsedItems = await parsePdfWithAI(fileData, lovableApiKey);
+    } else {
+      // Parse Excel file
+      parsedItems = await parseExcelFile(fileData);
     }
 
     console.log(`Parsed ${parsedItems.length} items from file`);
@@ -187,7 +72,7 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           error: "No cost items found in file",
-          details: "Could not detect cost item columns (description, quantity, unit, price)"
+          details: "Could not detect or extract cost items from the file"
         }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -196,7 +81,7 @@ serve(async (req) => {
     // Insert parsed items into database
     const itemsToInsert = parsedItems.map((item) => ({
       project_id: projectId,
-      sheet_name: item.sheetName,
+      sheet_name: item.sheetName || "PDF",
       trade: item.trade,
       original_description: item.description,
       quantity: item.quantity,
@@ -241,6 +126,226 @@ serve(async (req) => {
   }
 });
 
+// Parse PDF using AI to extract structured cost items
+async function parsePdfWithAI(fileData: Blob, apiKey?: string): Promise<ParsedItem[]> {
+  if (!apiKey) {
+    throw new Error("AI API key not configured for PDF parsing");
+  }
+
+  // Convert PDF to base64
+  const arrayBuffer = await fileData.arrayBuffer();
+  const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+
+  console.log(`PDF size: ${arrayBuffer.byteLength} bytes`);
+
+  // Use AI to extract cost items from PDF
+  const response = await fetch("https://api.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "google/gemini-2.5-flash",
+      messages: [
+        {
+          role: "system",
+          content: `You are an expert at extracting construction cost items from bill of quantities (BOQ) PDFs.
+          
+Your task is to extract cost line items from the provided PDF document.
+
+For each item, extract:
+- description: The item description/specification
+- quantity: The numeric quantity (default to 1 if not found)
+- unit: The unit of measurement (m, m2, m3, pcs, kg, etc.)
+- unitPrice: The unit price if available (null if not found)
+- trade: The trade category (Structural, Architectural, Mechanical, Electrical, Plumbing, Finishes, etc.)
+
+IMPORTANT:
+- Extract ALL cost items you can find
+- Skip headers, totals, subtotals, and summary rows
+- Handle multiple languages (Czech, Swedish, English, etc.)
+- Return a valid JSON array only, no other text
+- If you cannot find any items, return an empty array []
+
+Example output:
+[
+  {"description": "Concrete foundation C30/37", "quantity": 45.5, "unit": "m3", "unitPrice": 150, "trade": "Structural"},
+  {"description": "Steel reinforcement B500B", "quantity": 2500, "unit": "kg", "unitPrice": 1.2, "trade": "Structural"}
+]`
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "Extract all cost items from this bill of quantities PDF. Return only a JSON array."
+            },
+            {
+              type: "image_url",
+              image_url: {
+                url: `data:application/pdf;base64,${base64}`
+              }
+            }
+          ]
+        }
+      ],
+      max_tokens: 16000,
+      temperature: 0.1
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("AI API error:", errorText);
+    throw new Error(`AI parsing failed: ${response.status}`);
+  }
+
+  const result = await response.json();
+  const content = result.choices?.[0]?.message?.content || "[]";
+  
+  console.log("AI response received, parsing items...");
+
+  // Parse the JSON response
+  try {
+    // Extract JSON from the response (it might be wrapped in markdown code blocks)
+    let jsonStr = content;
+    const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (jsonMatch) {
+      jsonStr = jsonMatch[1];
+    }
+    
+    const items = JSON.parse(jsonStr);
+    
+    if (!Array.isArray(items)) {
+      console.error("AI response is not an array:", items);
+      return [];
+    }
+
+    return items.map((item: Record<string, unknown>) => ({
+      description: String(item.description || ""),
+      quantity: Number(item.quantity) || 1,
+      unit: String(item.unit || "pcs"),
+      unitPrice: item.unitPrice ? Number(item.unitPrice) : undefined,
+      trade: String(item.trade || "General"),
+      sheetName: "PDF Extract",
+    })).filter((item: ParsedItem) => item.description.length > 2);
+  } catch (e) {
+    console.error("Failed to parse AI response:", e, content);
+    return [];
+  }
+}
+
+// Parse Excel file
+async function parseExcelFile(fileData: Blob): Promise<ParsedItem[]> {
+  const arrayBuffer = await fileData.arrayBuffer();
+  const workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: "array" });
+
+  const parsedItems: ParsedItem[] = [];
+
+  console.log(`Workbook has ${workbook.SheetNames.length} sheets: ${workbook.SheetNames.join(", ")}`);
+
+  for (const sheetName of workbook.SheetNames) {
+    const sheet = workbook.Sheets[sheetName];
+    const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" }) as unknown[][];
+
+    console.log(`Sheet "${sheetName}" has ${jsonData.length} rows`);
+    
+    if (jsonData.length < 1) continue;
+
+    // Log first few rows to debug
+    for (let i = 0; i < Math.min(3, jsonData.length); i++) {
+      const row = jsonData[i] as unknown[];
+      console.log(`Row ${i}: ${JSON.stringify(row?.slice(0, 8))}`);
+    }
+
+    // Find the header row
+    let headerRowIndex = -1;
+    let headerRow: string[] = [];
+    
+    for (let i = 0; i < Math.min(15, jsonData.length); i++) {
+      const row = jsonData[i] as unknown[];
+      if (!row) continue;
+      
+      let nonEmptyCount = 0;
+      for (const cell of row) {
+        if (cell !== null && cell !== undefined && cell !== "") {
+          nonEmptyCount++;
+        }
+      }
+      
+      if (nonEmptyCount >= 2) {
+        headerRow = row.map(cell => cell?.toString() || "");
+        headerRowIndex = i;
+        console.log(`Found potential header at row ${i} with ${nonEmptyCount} cells: ${headerRow.slice(0, 5).join(" | ")}`);
+        break;
+      }
+    }
+
+    if (headerRowIndex === -1 || headerRow.length === 0) {
+      if (jsonData.length > 0 && jsonData[0]) {
+        headerRow = (jsonData[0] as unknown[]).map(cell => cell?.toString() || "");
+        headerRowIndex = 0;
+        console.log(`Using first row as header fallback: ${headerRow.slice(0, 5).join(" | ")}`);
+      } else {
+        console.log(`Skipping sheet ${sheetName}: no usable header row found`);
+        continue;
+      }
+    }
+
+    const columnMap = detectColumns(headerRow);
+    console.log(`Column detection for "${sheetName}": desc=${columnMap.description}, qty=${columnMap.quantity}, unit=${columnMap.unit}, price=${columnMap.unitPrice}`);
+
+    if (columnMap.description === undefined) {
+      for (let colIdx = 0; colIdx < headerRow.length; colIdx++) {
+        const header = headerRow[colIdx];
+        if (header && header.length >= 1) {
+          columnMap.description = colIdx;
+          console.log(`Using column ${colIdx} ("${header}") as description fallback`);
+          break;
+        }
+      }
+    }
+
+    if (columnMap.description === undefined) {
+      console.log(`Skipping sheet ${sheetName}: could not determine description column`);
+      continue;
+    }
+
+    const trade = inferTradeFromSheetName(sheetName);
+
+    for (let i = headerRowIndex + 1; i < jsonData.length; i++) {
+      const row = jsonData[i] as unknown[];
+      if (!row || row.length === 0) continue;
+
+      const descValue = row[columnMap.description];
+      const description = descValue?.toString()?.trim() || "";
+      
+      if (description.length < 2) continue;
+      
+      const lowerDesc = description.toLowerCase();
+      if (lowerDesc.includes("total") || lowerDesc.includes("celkem") || lowerDesc.includes("suma")) continue;
+
+      const quantity = columnMap.quantity !== undefined ? parseNumber(row[columnMap.quantity]) : 1;
+      const unit = columnMap.unit !== undefined ? (row[columnMap.unit]?.toString() || "pcs") : "pcs";
+      const unitPrice = columnMap.unitPrice !== undefined ? parseNumber(row[columnMap.unitPrice]) : undefined;
+
+      parsedItems.push({
+        description,
+        quantity: quantity || 1,
+        unit: unit || "pcs",
+        unitPrice: unitPrice || undefined,
+        sheetName,
+        trade,
+      });
+    }
+    
+    console.log(`Extracted ${parsedItems.length} items so far from sheet "${sheetName}"`);
+  }
+
+  return parsedItems;
+}
+
 function detectColumns(headerRow: string[]): {
   description?: number;
   quantity?: number;
@@ -281,7 +386,6 @@ function detectColumns(headerRow: string[]): {
     }
   });
 
-  // Fallback: if no description found, use first text column
   if (!result.description) {
     for (let i = 0; i < headerRow.length; i++) {
       const h = headerRow[i]?.toString() || "";
