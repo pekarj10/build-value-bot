@@ -58,43 +58,85 @@ serve(async (req) => {
 
     const parsedItems: ParsedItem[] = [];
 
+    console.log(`Workbook has ${workbook.SheetNames.length} sheets: ${workbook.SheetNames.join(", ")}`);
+
     // Process each sheet
     for (const sheetName of workbook.SheetNames) {
       const sheet = workbook.Sheets[sheetName];
       const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as unknown[][];
 
-      if (jsonData.length < 2) continue; // Skip empty or header-only sheets
+      console.log(`Sheet "${sheetName}" has ${jsonData.length} rows`);
+      
+      if (jsonData.length < 1) continue; // Skip empty sheets
+
+      // Find the header row - it might not be the first row
+      let headerRowIndex = 0;
+      let headerRow: string[] = [];
+      
+      for (let i = 0; i < Math.min(10, jsonData.length); i++) {
+        const row = jsonData[i] as unknown[];
+        if (!row || row.length < 2) continue;
+        
+        const nonEmptyCells = row.filter(cell => cell !== null && cell !== undefined && cell !== "").length;
+        if (nonEmptyCells >= 2) {
+          headerRow = row.map(cell => cell?.toString() || "");
+          headerRowIndex = i;
+          console.log(`Found potential header at row ${i}: ${headerRow.slice(0, 5).join(" | ")}`);
+          break;
+        }
+      }
+
+      if (headerRow.length === 0) {
+        console.log(`Skipping sheet ${sheetName}: no header row found`);
+        continue;
+      }
 
       // Try to detect column indices
-      const headerRow = jsonData[0] as string[];
       const columnMap = detectColumns(headerRow);
+      console.log(`Column detection for "${sheetName}": desc=${columnMap.description}, qty=${columnMap.quantity}, unit=${columnMap.unit}, price=${columnMap.unitPrice}`);
 
-      if (!columnMap.description) {
-        console.log(`Skipping sheet ${sheetName}: no description column found`);
+      // If no description column found, use heuristics - first long text column
+      if (columnMap.description === undefined) {
+        // Try to find a column with text content
+        for (let colIdx = 0; colIdx < headerRow.length; colIdx++) {
+          const header = headerRow[colIdx];
+          if (header && header.length >= 1) {
+            columnMap.description = colIdx;
+            console.log(`Using column ${colIdx} ("${header}") as description fallback`);
+            break;
+          }
+        }
+      }
+
+      if (columnMap.description === undefined) {
+        console.log(`Skipping sheet ${sheetName}: could not determine description column`);
         continue;
       }
 
       // Determine trade from sheet name
       const trade = inferTradeFromSheetName(sheetName);
 
-      // Process data rows
-      for (let i = 1; i < jsonData.length; i++) {
+      // Process data rows (starting after header)
+      for (let i = headerRowIndex + 1; i < jsonData.length; i++) {
         const row = jsonData[i] as unknown[];
         if (!row || row.length === 0) continue;
 
-        const description = row[columnMap.description];
-        if (!description || typeof description !== "string" || description.trim().length < 3) {
-          continue;
-        }
+        const descValue = row[columnMap.description];
+        const description = descValue?.toString()?.trim() || "";
+        
+        // Skip empty or very short descriptions, but be lenient
+        if (description.length < 2) continue;
+        
+        // Skip rows that look like headers or totals
+        const lowerDesc = description.toLowerCase();
+        if (lowerDesc.includes("total") || lowerDesc.includes("celkem") || lowerDesc.includes("suma")) continue;
 
-        const quantity = parseNumber(row[columnMap.quantity ?? -1]);
-        const unit = row[columnMap.unit ?? -1]?.toString() || "pcs";
-        const unitPrice = parseNumber(row[columnMap.unitPrice ?? -1]);
-
-        if (quantity === 0 && !unitPrice) continue; // Skip rows without meaningful data
+        const quantity = columnMap.quantity !== undefined ? parseNumber(row[columnMap.quantity]) : 1;
+        const unit = columnMap.unit !== undefined ? (row[columnMap.unit]?.toString() || "pcs") : "pcs";
+        const unitPrice = columnMap.unitPrice !== undefined ? parseNumber(row[columnMap.unitPrice]) : undefined;
 
         parsedItems.push({
-          description: description.trim(),
+          description,
           quantity: quantity || 1,
           unit: unit || "pcs",
           unitPrice: unitPrice || undefined,
@@ -102,6 +144,8 @@ serve(async (req) => {
           trade,
         });
       }
+      
+      console.log(`Extracted ${parsedItems.length} items so far from sheet "${sheetName}"`);
     }
 
     console.log(`Parsed ${parsedItems.length} items from file`);
