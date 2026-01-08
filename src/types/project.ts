@@ -44,6 +44,7 @@ export interface CostItem {
   totalPrice: number;
   status: CostItemStatus;
   aiComment: string;
+  clarificationQuestion?: string;
   userClarification?: string;
   userOverridePrice?: number;
 }
@@ -79,8 +80,9 @@ export const SUPPORTED_COUNTRIES = [
   { code: 'DE', name: 'Germany', currency: 'EUR' },
   { code: 'AT', name: 'Austria', currency: 'EUR' },
   { code: 'PL', name: 'Poland', currency: 'PLN' },
+  { code: 'SE', name: 'Sweden', currency: 'SEK' },
   { code: 'GB', name: 'United Kingdom', currency: 'GBP' },
   { code: 'US', name: 'United States', currency: 'USD' },
 ];
 
-export const CURRENCIES = ['CZK', 'EUR', 'USD', 'GBP', 'PLN'];
+export const CURRENCIES = ['CZK', 'EUR', 'USD', 'GBP', 'PLN', 'SEK'];

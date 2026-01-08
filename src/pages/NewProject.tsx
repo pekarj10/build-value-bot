@@ -20,13 +20,17 @@ import {
   CURRENCIES,
   ProjectType 
 } from '@/types/project';
-import { ArrowRight, Building2, MapPin, FileUp } from 'lucide-react';
+import { useProject } from '@/hooks/useProject';
+import { ArrowRight, Building2, FileUp, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 type Step = 'details' | 'upload';
 
 export default function NewProject() {
   const navigate = useNavigate();
+  const { isLoading, createProject, uploadFile, parseExcelFile } = useProject();
   const [step, setStep] = useState<Step>('details');
+  const [isProcessing, setIsProcessing] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     country: '',
@@ -47,9 +51,47 @@ export default function NewProject() {
 
   const isDetailsValid = formData.name && formData.country && formData.currency && formData.projectType;
 
-  const handleStartProcessing = () => {
-    // In a real app, this would create the project and start processing
-    navigate('/project/1/processing');
+  const handleStartProcessing = async () => {
+    if (files.length === 0 || !formData.projectType) return;
+
+    setIsProcessing(true);
+    try {
+      // Create project
+      const projectId = await createProject({
+        name: formData.name,
+        country: formData.country,
+        currency: formData.currency,
+        projectType: formData.projectType as ProjectType,
+        notes: formData.notes || undefined,
+      });
+
+      if (!projectId) {
+        throw new Error('Failed to create project');
+      }
+
+      // Upload files and parse
+      let totalParsed = 0;
+      for (const file of files) {
+        const storagePath = await uploadFile(projectId, file);
+        if (storagePath) {
+          const success = await parseExcelFile(projectId, storagePath);
+          if (success) totalParsed++;
+        }
+      }
+
+      if (totalParsed === 0) {
+        toast.error('No files could be parsed');
+        return;
+      }
+
+      // Navigate to processing page
+      navigate(`/project/${projectId}/processing`);
+    } catch (error) {
+      console.error('Processing error:', error);
+      toast.error('Failed to start processing');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   return (
@@ -205,12 +247,21 @@ export default function NewProject() {
             <FileUploader onFilesUploaded={setFiles} />
 
             <div className="flex justify-between pt-4 border-t">
-              <Button variant="outline" onClick={() => setStep('details')}>
+              <Button variant="outline" onClick={() => setStep('details')} disabled={isProcessing}>
                 Back
               </Button>
-              <Button onClick={handleStartProcessing} disabled={files.length === 0}>
-                Start Analysis
-                <ArrowRight className="h-4 w-4 ml-2" />
+              <Button onClick={handleStartProcessing} disabled={files.length === 0 || isProcessing}>
+                {isProcessing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    Start Analysis
+                    <ArrowRight className="h-4 w-4 ml-2" />
+                  </>
+                )}
               </Button>
             </div>
           </Card>

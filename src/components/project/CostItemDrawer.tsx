@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { CostItem } from '@/types/project';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
@@ -12,7 +12,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
-import { Check, X, MessageSquare, TrendingUp, TrendingDown, Minus, Loader2 } from 'lucide-react';
+import { Check, MessageSquare, TrendingUp, Loader2, HelpCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface CostItemDrawerProps {
@@ -41,6 +41,16 @@ export function CostItemDrawer({
   const [showOverride, setShowOverride] = useState(false);
   const [showClarify, setShowClarify] = useState(false);
 
+  // Reset state when item changes
+  useEffect(() => {
+    if (item) {
+      setOverridePrice('');
+      setClarification('');
+      setShowOverride(false);
+      setShowClarify(false);
+    }
+  }, [item?.id]);
+
   if (!item) return null;
 
   const formatPrice = (value: number) => {
@@ -68,18 +78,20 @@ export function CostItemDrawer({
   const handleClarify = () => {
     if (clarification.trim()) {
       onClarify(item.id, clarification);
-      setClarification('');
-      setShowClarify(false);
-      onClose();
+      // Don't close - let the parent handle closing after processing
     }
   };
 
   const getBenchmarkPosition = () => {
+    if (item.benchmarkMax === item.benchmarkMin) return 50;
     const price = item.originalUnitPrice || item.recommendedUnitPrice;
     const range = item.benchmarkMax - item.benchmarkMin;
     const position = ((price - item.benchmarkMin) / range) * 100;
     return Math.max(0, Math.min(100, position));
   };
+
+  const needsClarification = item.status === 'clarification';
+  const hasClarificationQuestion = item.clarificationQuestion && item.clarificationQuestion.trim().length > 0;
 
   return (
     <Sheet open={open} onOpenChange={onClose}>
@@ -94,6 +106,46 @@ export function CostItemDrawer({
         </SheetHeader>
 
         <div className="mt-6 space-y-6">
+          {/* Clarification Question - shown prominently if present */}
+          {needsClarification && hasClarificationQuestion && !item.userClarification && (
+            <div className="p-4 bg-warning/10 border border-warning/30 rounded-lg space-y-3">
+              <div className="flex items-start gap-3">
+                <HelpCircle className="h-5 w-5 text-warning shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-warning-foreground">Clarification Needed</p>
+                  <p className="text-sm mt-1">{item.clarificationQuestion}</p>
+                </div>
+              </div>
+              
+              <div className="pt-2">
+                <Textarea
+                  value={clarification}
+                  onChange={(e) => setClarification(e.target.value)}
+                  placeholder="Provide additional details..."
+                  rows={3}
+                  disabled={isProcessingClarification}
+                />
+                <Button 
+                  onClick={handleClarify} 
+                  className="w-full mt-2"
+                  disabled={!clarification.trim() || isProcessingClarification}
+                >
+                  {isProcessingClarification ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Re-analyzing...
+                    </>
+                  ) : (
+                    <>
+                      <MessageSquare className="h-4 w-4 mr-2" />
+                      Submit Clarification
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* AI Interpretation */}
           <div className="space-y-2">
             <Label className="text-muted-foreground">AI Interpretation</Label>
@@ -127,32 +179,44 @@ export function CostItemDrawer({
                   {item.originalUnitPrice ? `${formatPrice(item.originalUnitPrice)} ${currency}` : '—'}
                 </p>
               </div>
-              <div className="p-4 border rounded-lg border-primary/30 bg-primary/5">
-                <p className="text-xs text-muted-foreground mb-1">Recommended</p>
-                <p className="font-mono text-xl font-semibold text-primary">
-                  {formatPrice(item.recommendedUnitPrice)} {currency}
+              <div className={cn(
+                "p-4 border rounded-lg",
+                item.userOverridePrice 
+                  ? "border-warning/30 bg-warning/5" 
+                  : "border-primary/30 bg-primary/5"
+              )}>
+                <p className="text-xs text-muted-foreground mb-1">
+                  {item.userOverridePrice ? 'Your Price' : 'Recommended'}
+                </p>
+                <p className={cn(
+                  "font-mono text-xl font-semibold",
+                  item.userOverridePrice ? "text-warning" : "text-primary"
+                )}>
+                  {formatPrice(item.userOverridePrice || item.recommendedUnitPrice)} {currency}
                 </p>
               </div>
             </div>
 
             {/* Benchmark Range */}
-            <div className="space-y-2">
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>Min: {formatPrice(item.benchmarkMin)}</span>
-                <span>Typical: {formatPrice(item.benchmarkTypical)}</span>
-                <span>Max: {formatPrice(item.benchmarkMax)}</span>
+            {item.benchmarkMax > 0 && (
+              <div className="space-y-2">
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Min: {formatPrice(item.benchmarkMin)}</span>
+                  <span>Typical: {formatPrice(item.benchmarkTypical)}</span>
+                  <span>Max: {formatPrice(item.benchmarkMax)}</span>
+                </div>
+                <div className="relative h-2 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className="absolute inset-y-0 bg-gradient-to-r from-success via-warning to-destructive opacity-30"
+                    style={{ left: '0%', right: '0%' }}
+                  />
+                  <div
+                    className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-primary rounded-full border-2 border-card shadow-sm"
+                    style={{ left: `${getBenchmarkPosition()}%`, marginLeft: '-6px' }}
+                  />
+                </div>
               </div>
-              <div className="relative h-2 bg-muted rounded-full overflow-hidden">
-                <div
-                  className="absolute inset-y-0 bg-gradient-to-r from-success via-warning to-destructive opacity-30"
-                  style={{ left: '0%', right: '0%' }}
-                />
-                <div
-                  className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-primary rounded-full border-2 border-card shadow-sm"
-                  style={{ left: `${getBenchmarkPosition()}%`, marginLeft: '-6px' }}
-                />
-              </div>
-            </div>
+            )}
 
             {/* Total */}
             <div className="p-4 bg-muted/30 rounded-lg flex justify-between items-center">
@@ -170,7 +234,7 @@ export function CostItemDrawer({
             <Label className="text-muted-foreground">Analysis Note</Label>
             <div className="p-4 bg-muted/50 rounded-lg text-sm flex items-start gap-3">
               <MessageSquare className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
-              <p>{item.aiComment}</p>
+              <p>{item.aiComment || 'No analysis notes available.'}</p>
             </div>
           </div>
 
@@ -204,7 +268,7 @@ export function CostItemDrawer({
                   <TrendingUp className="h-4 w-4 mr-2" />
                   Override Price
                 </Button>
-                {item.status === 'clarification' && (
+                {needsClarification && !hasClarificationQuestion && (
                   <Button
                     variant="outline"
                     onClick={() => setShowClarify(true)}
@@ -259,7 +323,7 @@ export function CostItemDrawer({
                   <Button 
                     onClick={handleClarify} 
                     className="flex-1"
-                    disabled={isProcessingClarification}
+                    disabled={isProcessingClarification || !clarification.trim()}
                   >
                     {isProcessingClarification && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                     {isProcessingClarification ? 'Processing...' : 'Submit'}
