@@ -12,7 +12,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
-import { Check, X, MessageSquare, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { Check, X, MessageSquare, TrendingUp, TrendingDown, Minus, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface CostItemDrawerProps {
@@ -23,6 +23,7 @@ interface CostItemDrawerProps {
   onAccept: (itemId: string) => void;
   onOverride: (itemId: string, price: number) => void;
   onClarify: (itemId: string, text: string) => void;
+  isProcessingClarification?: boolean;
 }
 
 export function CostItemDrawer({
@@ -33,6 +34,7 @@ export function CostItemDrawer({
   onAccept,
   onOverride,
   onClarify,
+  isProcessingClarification = false,
 }: CostItemDrawerProps) {
   const [overridePrice, setOverridePrice] = useState('');
   const [clarification, setClarification] = useState('');
@@ -250,13 +252,23 @@ export function CostItemDrawer({
                     placeholder="Provide additional context about this item..."
                     rows={4}
                     className="mt-1"
+                    disabled={isProcessingClarification}
                   />
                 </div>
                 <div className="flex gap-2">
-                  <Button onClick={handleClarify} className="flex-1">
-                    Submit
+                  <Button 
+                    onClick={handleClarify} 
+                    className="flex-1"
+                    disabled={isProcessingClarification}
+                  >
+                    {isProcessingClarification && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                    {isProcessingClarification ? 'Processing...' : 'Submit'}
                   </Button>
-                  <Button variant="outline" onClick={() => setShowClarify(false)}>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setShowClarify(false)}
+                    disabled={isProcessingClarification}
+                  >
                     Cancel
                   </Button>
                 </div>

@@ -10,6 +10,7 @@ import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { mockProjects, mockCostItems, mockInsights } from '@/data/mockData';
 import { CostItem, PROJECT_TYPE_LABELS, SUPPORTED_COUNTRIES } from '@/types/project';
+import { useCostAnalysis } from '@/hooks/useCostAnalysis';
 import { 
   Download, 
   FileSpreadsheet, 
@@ -27,6 +28,8 @@ export default function ProjectDetail() {
   const { id } = useParams();
   const [selectedItem, setSelectedItem] = useState<CostItem | null>(null);
   const [items, setItems] = useState(mockCostItems);
+  const [isProcessingClarification, setIsProcessingClarification] = useState(false);
+  const { processClarification } = useCostAnalysis();
 
   const project = mockProjects.find(p => p.id === id);
   const country = SUPPORTED_COUNTRIES.find(c => c.code === project?.country);
@@ -69,12 +72,30 @@ export default function ProjectDetail() {
     ));
   };
 
-  const handleClarify = (itemId: string, text: string) => {
-    setItems(prev => prev.map(item => 
-      item.id === itemId 
-        ? { ...item, userClarification: text, status: 'review' as const } 
-        : item
-    ));
+  const handleClarify = async (itemId: string, text: string) => {
+    const item = items.find(i => i.id === itemId);
+    if (!item) return;
+
+    setIsProcessingClarification(true);
+    try {
+      const updatedFields = await processClarification(item, text, {
+        country: project.country,
+        currency: project.currency,
+        projectType: project.projectType,
+      });
+
+      setItems(prev => prev.map(i => 
+        i.id === itemId 
+          ? { ...i, ...updatedFields } 
+          : i
+      ));
+      setSelectedItem(null);
+    } catch (error) {
+      // Error is already handled by the hook with toast
+      console.error('Clarification failed:', error);
+    } finally {
+      setIsProcessingClarification(false);
+    }
   };
 
   const statusCounts = {
@@ -189,10 +210,11 @@ export default function ProjectDetail() {
         item={selectedItem}
         currency={project.currency}
         open={!!selectedItem}
-        onClose={() => setSelectedItem(null)}
+        onClose={() => !isProcessingClarification && setSelectedItem(null)}
         onAccept={handleAccept}
         onOverride={handleOverride}
         onClarify={handleClarify}
+        isProcessingClarification={isProcessingClarification}
       />
     </AppLayout>
   );
