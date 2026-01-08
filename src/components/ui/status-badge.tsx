@@ -1,0 +1,72 @@
+import { cn } from '@/lib/utils';
+import { CostItemStatus, ProjectStatus } from '@/types/project';
+import { CheckCircle, AlertCircle, HelpCircle, Clock, FileText, Package } from 'lucide-react';
+
+interface StatusBadgeProps {
+  status: CostItemStatus | ProjectStatus;
+  size?: 'sm' | 'md';
+  showIcon?: boolean;
+}
+
+const costItemConfig: Record<CostItemStatus, { label: string; className: string; icon: typeof CheckCircle }> = {
+  ok: {
+    label: 'OK',
+    className: 'status-ok',
+    icon: CheckCircle,
+  },
+  review: {
+    label: 'Review',
+    className: 'status-review',
+    icon: AlertCircle,
+  },
+  clarification: {
+    label: 'Clarification',
+    className: 'status-clarification',
+    icon: HelpCircle,
+  },
+};
+
+const projectStatusConfig: Record<ProjectStatus, { label: string; className: string; icon: typeof CheckCircle }> = {
+  draft: {
+    label: 'Draft',
+    className: 'bg-muted text-muted-foreground border border-border',
+    icon: FileText,
+  },
+  processing: {
+    label: 'Processing',
+    className: 'bg-primary/10 text-primary border border-primary/20',
+    icon: Clock,
+  },
+  ready: {
+    label: 'Ready',
+    className: 'status-ok',
+    icon: CheckCircle,
+  },
+  exported: {
+    label: 'Exported',
+    className: 'bg-muted text-foreground border border-border',
+    icon: Package,
+  },
+};
+
+export function StatusBadge({ status, size = 'sm', showIcon = true }: StatusBadgeProps) {
+  const isCostItemStatus = ['ok', 'review', 'clarification'].includes(status);
+  const config = isCostItemStatus 
+    ? costItemConfig[status as CostItemStatus]
+    : projectStatusConfig[status as ProjectStatus];
+  
+  const Icon = config.icon;
+  
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-full font-medium',
+        size === 'sm' ? 'px-2 py-0.5 text-xs' : 'px-3 py-1 text-sm',
+        config.className
+      )}
+    >
+      {showIcon && <Icon className={size === 'sm' ? 'h-3 w-3' : 'h-4 w-4'} />}
+      {config.label}
+    </span>
+  );
+}
