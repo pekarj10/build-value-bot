@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { AppLayout, PageHeader } from '@/components/layout/AppLayout';
-import { MetricCard } from '@/components/dashboard/MetricCard';
+import { ExecutiveSummary } from '@/components/project/ExecutiveSummary';
+import { InsightsPanel } from '@/components/project/InsightsPanel';
 import { CostItemsTable } from '@/components/project/CostItemsTable';
 import { CostItemDrawer } from '@/components/project/CostItemDrawer';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CostItem, PROJECT_TYPE_LABELS, SUPPORTED_COUNTRIES, Project } from '@/types/project';
 import { useProject } from '@/hooks/useProject';
 import { useCostAnalysis } from '@/hooks/useCostAnalysis';
@@ -16,9 +18,9 @@ import {
   FileText,
   MapPin,
   Calendar,
-  AlertTriangle,
-  CheckCircle,
-  HelpCircle
+  LayoutDashboard,
+  BarChart3,
+  Table
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -33,6 +35,7 @@ export default function ProjectDetail() {
   const [selectedItem, setSelectedItem] = useState<CostItem | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessingClarification, setIsProcessingClarification] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<string>('all');
 
   useEffect(() => {
     if (!id) return;
@@ -58,9 +61,9 @@ export default function ProjectDetail() {
       <AppLayout>
         <div className="p-8 space-y-8">
           <Skeleton className="h-12 w-64" />
-          <Skeleton className="h-24 w-full" />
-          <div className="grid grid-cols-4 gap-4">
-            {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-32" />)}
+          <Skeleton className="h-32 w-full" />
+          <div className="grid grid-cols-3 gap-4">
+            {[1, 2, 3].map(i => <Skeleton key={i} className="h-48" />)}
           </div>
         </div>
       </AppLayout>
@@ -80,20 +83,12 @@ export default function ProjectDetail() {
     );
   }
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: project.currency,
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value);
-  };
-
   const handleAccept = async (itemId: string) => {
     await updateCostItem(itemId, { status: 'ok' });
     setItems(prev => prev.map(item => 
       item.id === itemId ? { ...item, status: 'ok' as const } : item
     ));
+    toast.success('Item accepted');
   };
 
   const handleOverride = async (itemId: string, price: number) => {
@@ -111,11 +106,31 @@ export default function ProjectDetail() {
         ? { ...i, userOverridePrice: price, status: 'ok' as const, totalPrice } 
         : i
     ));
+    toast.success('Price updated');
   };
 
   const handlePriceUpdate = async (itemId: string, price: number) => {
     await handleOverride(itemId, price);
-    toast.success('Price updated');
+  };
+
+  const handleBulkAccept = async (itemIds: string[]) => {
+    for (const itemId of itemIds) {
+      await updateCostItem(itemId, { status: 'ok' });
+    }
+    setItems(prev => prev.map(item => 
+      itemIds.includes(item.id) ? { ...item, status: 'ok' as const } : item
+    ));
+    toast.success(`${itemIds.length} items accepted`);
+  };
+
+  const handleBulkMarkReviewed = async (itemIds: string[]) => {
+    for (const itemId of itemIds) {
+      await updateCostItem(itemId, { status: 'review' });
+    }
+    setItems(prev => prev.map(item => 
+      itemIds.includes(item.id) ? { ...item, status: 'review' as const } : item
+    ));
+    toast.success(`${itemIds.length} items marked for review`);
   };
 
   const handleClarify = async (itemId: string, text: string) => {
@@ -143,23 +158,21 @@ export default function ProjectDetail() {
       });
 
       setItems(prev => prev.map(i => 
-        i.id === itemId ? { ...i, ...updatedFields } : i
+        i.id === itemId ? { ...i, ...updatedFields, userClarification: text } : i
       ));
       setSelectedItem(null);
+      toast.success('Item re-analyzed with clarification');
     } catch (error) {
       console.error('Clarification failed:', error);
+      toast.error('Failed to process clarification');
     } finally {
       setIsProcessingClarification(false);
     }
   };
 
-  const statusCounts = {
-    ok: items.filter(i => i.status === 'ok').length,
-    review: items.filter(i => i.status === 'review').length,
-    clarification: items.filter(i => i.status === 'clarification').length,
+  const handleFilterByStatus = (status: string) => {
+    setStatusFilter(status);
   };
-
-  const totalValue = items.reduce((sum, i) => sum + i.totalPrice, 0);
 
   return (
     <AppLayout>
@@ -184,8 +197,9 @@ export default function ProjectDetail() {
         }
       />
 
-      <div className="p-8 space-y-8">
-        <Card className="p-5">
+      <div className="p-8 space-y-6">
+        {/* Project Info Bar */}
+        <Card className="p-4">
           <div className="flex flex-wrap items-center gap-6 text-sm">
             <div className="flex items-center gap-2 text-muted-foreground">
               <MapPin className="h-4 w-4" />
@@ -206,52 +220,84 @@ export default function ProjectDetail() {
           </div>
         </Card>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <MetricCard title="Total Items" value={items.length.toString()} />
-          <MetricCard title="Total Value" value={formatCurrency(totalValue)} />
-          <MetricCard title="Items OK" value={statusCounts.ok.toString()} trend="up" />
-          <MetricCard title="Need Attention" value={(statusCounts.review + statusCounts.clarification).toString()} trend={statusCounts.review + statusCounts.clarification > 0 ? 'down' : 'neutral'} />
-        </div>
+        {/* Executive Summary */}
+        <ExecutiveSummary items={items} currency={project.currency} />
 
-        <div className="grid grid-cols-3 gap-4">
-          <Card className="p-5 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-success/10 flex items-center justify-center">
-              <CheckCircle className="h-6 w-6 text-success" />
-            </div>
-            <div>
-              <p className="text-2xl font-semibold">{statusCounts.ok}</p>
-              <p className="text-sm text-muted-foreground">Items OK</p>
-            </div>
-          </Card>
-          <Card className="p-5 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-warning/10 flex items-center justify-center">
-              <AlertTriangle className="h-6 w-6 text-warning" />
-            </div>
-            <div>
-              <p className="text-2xl font-semibold">{statusCounts.review}</p>
-              <p className="text-sm text-muted-foreground">Need Review</p>
-            </div>
-          </Card>
-          <Card className="p-5 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center">
-              <HelpCircle className="h-6 w-6 text-destructive" />
-            </div>
-            <div>
-              <p className="text-2xl font-semibold">{statusCounts.clarification}</p>
-              <p className="text-sm text-muted-foreground">Need Clarification</p>
-            </div>
-          </Card>
-        </div>
+        {/* Tabs for different views */}
+        <Tabs defaultValue="items" className="space-y-6">
+          <TabsList>
+            <TabsTrigger value="items" className="flex items-center gap-2">
+              <Table className="h-4 w-4" />
+              Cost Items
+            </TabsTrigger>
+            <TabsTrigger value="insights" className="flex items-center gap-2">
+              <BarChart3 className="h-4 w-4" />
+              Insights
+            </TabsTrigger>
+            <TabsTrigger value="overview" className="flex items-center gap-2">
+              <LayoutDashboard className="h-4 w-4" />
+              Overview
+            </TabsTrigger>
+          </TabsList>
 
-        <div className="space-y-4">
-          <h2 className="text-lg font-semibold">Cost Items</h2>
-          <CostItemsTable
-            items={items}
-            currency={project.currency}
-            onItemSelect={setSelectedItem}
-            onPriceUpdate={handlePriceUpdate}
-          />
-        </div>
+          <TabsContent value="items" className="space-y-4">
+            <CostItemsTable
+              items={items}
+              currency={project.currency}
+              onItemSelect={setSelectedItem}
+              onPriceUpdate={handlePriceUpdate}
+              onBulkAccept={handleBulkAccept}
+              onBulkMarkReviewed={handleBulkMarkReviewed}
+              statusFilter={statusFilter}
+            />
+          </TabsContent>
+
+          <TabsContent value="insights">
+            <InsightsPanel 
+              items={items} 
+              currency={project.currency}
+              onFilterByStatus={handleFilterByStatus}
+            />
+          </TabsContent>
+
+          <TabsContent value="overview">
+            <div className="grid grid-cols-2 gap-6">
+              <Card className="p-6">
+                <h3 className="font-semibold mb-4">Project Notes</h3>
+                <p className="text-muted-foreground">
+                  {project.notes || 'No notes added for this project.'}
+                </p>
+              </Card>
+              <Card className="p-6">
+                <h3 className="font-semibold mb-4">Analysis Summary</h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Total Items</span>
+                    <span className="font-medium">{items.length}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Items with Original Price</span>
+                    <span className="font-medium">
+                      {items.filter(i => i.originalUnitPrice).length}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Items Analyzed</span>
+                    <span className="font-medium">
+                      {items.filter(i => i.recommendedUnitPrice).length}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">User Overrides</span>
+                    <span className="font-medium">
+                      {items.filter(i => i.userOverridePrice).length}
+                    </span>
+                  </div>
+                </div>
+              </Card>
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
 
       <CostItemDrawer
