@@ -139,9 +139,10 @@ export function useProject() {
         .from('projects')
         .select('*')
         .eq('id', projectId)
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
+      if (!data) return null;
       
       const project = data as DbProject;
       return {
@@ -161,6 +162,35 @@ export function useProject() {
     } catch (error) {
       console.error('Get project error:', error);
       return null;
+    }
+  }, []);
+
+  const getAllProjects = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .order('updated_at', { ascending: false });
+
+      if (error) throw error;
+
+      return (data as DbProject[]).map((project) => ({
+        id: project.id,
+        name: project.name,
+        country: project.country,
+        currency: project.currency,
+        projectType: project.project_type as ProjectType,
+        notes: project.notes || undefined,
+        status: project.status as 'draft' | 'processing' | 'ready' | 'exported',
+        totalItems: project.total_items || 0,
+        totalValue: project.total_value || 0,
+        issuesCount: project.issues_count || 0,
+        createdAt: new Date(project.created_at),
+        updatedAt: new Date(project.updated_at),
+      }));
+    } catch (error) {
+      console.error('Get all projects error:', error);
+      return [];
     }
   }, []);
 
@@ -256,6 +286,7 @@ export function useProject() {
     uploadFile,
     parseExcelFile,
     getProject,
+    getAllProjects,
     getCostItems,
     updateCostItem,
     updateProjectStatus,
