@@ -42,6 +42,18 @@ serve(async (req) => {
 
     console.log(`Parsing file: ${storagePath} for project: ${projectId}`);
 
+    // Check file extension
+    const fileExtension = storagePath.split('.').pop()?.toLowerCase();
+    if (fileExtension === 'pdf') {
+      return new Response(
+        JSON.stringify({ 
+          error: "PDF files are not supported yet",
+          details: "Please upload an Excel file (.xlsx or .xls)"
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Download file from storage
     const { data: fileData, error: downloadError } = await supabase.storage
       .from("project-files")
@@ -63,32 +75,53 @@ serve(async (req) => {
     // Process each sheet
     for (const sheetName of workbook.SheetNames) {
       const sheet = workbook.Sheets[sheetName];
-      const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as unknown[][];
+      const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" }) as unknown[][];
 
       console.log(`Sheet "${sheetName}" has ${jsonData.length} rows`);
       
       if (jsonData.length < 1) continue; // Skip empty sheets
 
+      // Log first few rows to debug
+      for (let i = 0; i < Math.min(3, jsonData.length); i++) {
+        const row = jsonData[i] as unknown[];
+        console.log(`Row ${i}: ${JSON.stringify(row?.slice(0, 8))}`);
+      }
+
       // Find the header row - it might not be the first row
-      let headerRowIndex = 0;
+      // Look for a row with multiple non-empty cells that look like headers
+      let headerRowIndex = -1;
       let headerRow: string[] = [];
       
-      for (let i = 0; i < Math.min(10, jsonData.length); i++) {
+      for (let i = 0; i < Math.min(15, jsonData.length); i++) {
         const row = jsonData[i] as unknown[];
-        if (!row || row.length < 2) continue;
+        if (!row) continue;
         
-        const nonEmptyCells = row.filter(cell => cell !== null && cell !== undefined && cell !== "").length;
-        if (nonEmptyCells >= 2) {
+        // Count non-empty cells
+        let nonEmptyCount = 0;
+        for (const cell of row) {
+          if (cell !== null && cell !== undefined && cell !== "") {
+            nonEmptyCount++;
+          }
+        }
+        
+        if (nonEmptyCount >= 2) {
           headerRow = row.map(cell => cell?.toString() || "");
           headerRowIndex = i;
-          console.log(`Found potential header at row ${i}: ${headerRow.slice(0, 5).join(" | ")}`);
+          console.log(`Found potential header at row ${i} with ${nonEmptyCount} cells: ${headerRow.slice(0, 5).join(" | ")}`);
           break;
         }
       }
 
-      if (headerRow.length === 0) {
-        console.log(`Skipping sheet ${sheetName}: no header row found`);
-        continue;
+      if (headerRowIndex === -1 || headerRow.length === 0) {
+        // Fallback: use first row as header if it has any content
+        if (jsonData.length > 0 && jsonData[0]) {
+          headerRow = (jsonData[0] as unknown[]).map(cell => cell?.toString() || "");
+          headerRowIndex = 0;
+          console.log(`Using first row as header fallback: ${headerRow.slice(0, 5).join(" | ")}`);
+        } else {
+          console.log(`Skipping sheet ${sheetName}: no usable header row found`);
+          continue;
+        }
       }
 
       // Try to detect column indices
