@@ -1,0 +1,7 @@
+project_id = "qlkotadfcaqqmduehsko"
+
+[functions.analyze-cost-items]
+verify_jwt = false
+
+[functions.clarify-cost-item]
+verify_jwt = false
