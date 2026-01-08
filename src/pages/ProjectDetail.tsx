@@ -5,6 +5,8 @@ import { ExecutiveSummary } from '@/components/project/ExecutiveSummary';
 import { InsightsPanel } from '@/components/project/InsightsPanel';
 import { CostItemsTable } from '@/components/project/CostItemsTable';
 import { CostItemDrawer } from '@/components/project/CostItemDrawer';
+import { AIChatPanel } from '@/components/project/AIChatPanel';
+import { AIFloatingButton } from '@/components/project/AIFloatingButton';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -13,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CostItem, PROJECT_TYPE_LABELS, SUPPORTED_COUNTRIES, Project } from '@/types/project';
 import { useProject } from '@/hooks/useProject';
 import { useCostAnalysis } from '@/hooks/useCostAnalysis';
+import { supabase } from '@/integrations/supabase/client';
 import { 
   FileSpreadsheet, 
   FileText,
@@ -20,7 +23,8 @@ import {
   Calendar,
   LayoutDashboard,
   BarChart3,
-  Table
+  Table,
+  Bot
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -174,6 +178,34 @@ export default function ProjectDetail() {
     setStatusFilter(status);
   };
 
+  const handleAIItemsUpdate = async (updates: { id: string; updates: Partial<CostItem> }[]) => {
+    // Update local state
+    setItems(prev => prev.map(item => {
+      const update = updates.find(u => u.id === item.id);
+      if (update) {
+        return { ...item, ...update.updates };
+      }
+      return item;
+    }));
+
+    // Persist to database
+    for (const { id, updates: itemUpdates } of updates) {
+      await updateCostItem(id, {
+        interpreted_scope: itemUpdates.interpretedScope,
+        recommended_unit_price: itemUpdates.recommendedUnitPrice,
+        benchmark_min: itemUpdates.benchmarkMin,
+        benchmark_typical: itemUpdates.benchmarkTypical,
+        benchmark_max: itemUpdates.benchmarkMax,
+        status: itemUpdates.status,
+        ai_comment: itemUpdates.aiComment,
+        clarification_question: itemUpdates.clarificationQuestion,
+        total_price: itemUpdates.totalPrice,
+      });
+    }
+
+    toast.success(`${updates.length} items updated by AI`);
+  };
+
   return (
     <AppLayout>
       <PageHeader
@@ -230,6 +262,10 @@ export default function ProjectDetail() {
               <Table className="h-4 w-4" />
               Cost Items
             </TabsTrigger>
+            <TabsTrigger value="ai" className="flex items-center gap-2">
+              <Bot className="h-4 w-4" />
+              AI Assistant
+            </TabsTrigger>
             <TabsTrigger value="insights" className="flex items-center gap-2">
               <BarChart3 className="h-4 w-4" />
               Insights
@@ -250,6 +286,16 @@ export default function ProjectDetail() {
               onBulkMarkReviewed={handleBulkMarkReviewed}
               statusFilter={statusFilter}
             />
+          </TabsContent>
+
+          <TabsContent value="ai">
+            <div className="h-[600px]">
+              <AIChatPanel 
+                project={project}
+                items={items}
+                onItemsUpdate={handleAIItemsUpdate}
+              />
+            </div>
           </TabsContent>
 
           <TabsContent value="insights">
@@ -309,6 +355,13 @@ export default function ProjectDetail() {
         onOverride={handleOverride}
         onClarify={handleClarify}
         isProcessingClarification={isProcessingClarification}
+      />
+
+      {/* Floating AI Button */}
+      <AIFloatingButton 
+        project={project}
+        items={items}
+        onItemsUpdate={handleAIItemsUpdate}
       />
     </AppLayout>
   );
