@@ -14,7 +14,220 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      benchmark_prices: {
+        Row: {
+          avg_price: number
+          category: string
+          country: string
+          created_at: string
+          currency: string
+          description: string
+          id: string
+          max_price: number
+          min_price: number
+          source: string | null
+          unit: string
+          updated_at: string
+        }
+        Insert: {
+          avg_price: number
+          category: string
+          country: string
+          created_at?: string
+          currency: string
+          description: string
+          id?: string
+          max_price: number
+          min_price: number
+          source?: string | null
+          unit: string
+          updated_at?: string
+        }
+        Update: {
+          avg_price?: number
+          category?: string
+          country?: string
+          created_at?: string
+          currency?: string
+          description?: string
+          id?: string
+          max_price?: number
+          min_price?: number
+          source?: string | null
+          unit?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      cost_items: {
+        Row: {
+          ai_comment: string | null
+          benchmark_max: number | null
+          benchmark_min: number | null
+          benchmark_typical: number | null
+          clarification_question: string | null
+          created_at: string
+          id: string
+          interpreted_scope: string | null
+          original_description: string
+          original_unit_price: number | null
+          project_id: string
+          quantity: number
+          recommended_unit_price: number | null
+          sheet_name: string | null
+          status: string
+          total_price: number | null
+          trade: string | null
+          unit: string
+          updated_at: string
+          user_clarification: string | null
+          user_override_price: number | null
+        }
+        Insert: {
+          ai_comment?: string | null
+          benchmark_max?: number | null
+          benchmark_min?: number | null
+          benchmark_typical?: number | null
+          clarification_question?: string | null
+          created_at?: string
+          id?: string
+          interpreted_scope?: string | null
+          original_description: string
+          original_unit_price?: number | null
+          project_id: string
+          quantity?: number
+          recommended_unit_price?: number | null
+          sheet_name?: string | null
+          status?: string
+          total_price?: number | null
+          trade?: string | null
+          unit: string
+          updated_at?: string
+          user_clarification?: string | null
+          user_override_price?: number | null
+        }
+        Update: {
+          ai_comment?: string | null
+          benchmark_max?: number | null
+          benchmark_min?: number | null
+          benchmark_typical?: number | null
+          clarification_question?: string | null
+          created_at?: string
+          id?: string
+          interpreted_scope?: string | null
+          original_description?: string
+          original_unit_price?: number | null
+          project_id?: string
+          quantity?: number
+          recommended_unit_price?: number | null
+          sheet_name?: string | null
+          status?: string
+          total_price?: number | null
+          trade?: string | null
+          unit?: string
+          updated_at?: string
+          user_clarification?: string | null
+          user_override_price?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cost_items_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      projects: {
+        Row: {
+          country: string
+          created_at: string
+          currency: string
+          id: string
+          issues_count: number | null
+          name: string
+          notes: string | null
+          project_type: string
+          status: string
+          total_items: number | null
+          total_value: number | null
+          updated_at: string
+        }
+        Insert: {
+          country: string
+          created_at?: string
+          currency: string
+          id?: string
+          issues_count?: number | null
+          name: string
+          notes?: string | null
+          project_type: string
+          status?: string
+          total_items?: number | null
+          total_value?: number | null
+          updated_at?: string
+        }
+        Update: {
+          country?: string
+          created_at?: string
+          currency?: string
+          id?: string
+          issues_count?: number | null
+          name?: string
+          notes?: string | null
+          project_type?: string
+          status?: string
+          total_items?: number | null
+          total_value?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      uploaded_files: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          file_name: string
+          file_size: number
+          file_type: string
+          id: string
+          project_id: string
+          status: string
+          storage_path: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          file_name: string
+          file_size: number
+          file_type: string
+          id?: string
+          project_id: string
+          status?: string
+          storage_path: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          file_name?: string
+          file_size?: number
+          file_type?: string
+          id?: string
+          project_id?: string
+          status?: string
+          storage_path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "uploaded_files_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

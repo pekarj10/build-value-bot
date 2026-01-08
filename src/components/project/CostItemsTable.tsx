@@ -10,19 +10,22 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { ChevronRight, Search, Filter, MessageSquare } from 'lucide-react';
+import { ChevronRight, Search, Filter, MessageSquare, Pencil, Check, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface CostItemsTableProps {
   items: CostItem[];
   currency: string;
   onItemSelect: (item: CostItem) => void;
+  onPriceUpdate?: (itemId: string, price: number) => void;
 }
 
-export function CostItemsTable({ items, currency, onItemSelect }: CostItemsTableProps) {
+export function CostItemsTable({ items, currency, onItemSelect, onPriceUpdate }: CostItemsTableProps) {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [tradeFilter, setTradeFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
 
   const trades = [...new Set(items.map(item => item.trade).filter(Boolean))];
   
@@ -46,6 +49,42 @@ export function CostItemsTable({ items, currency, onItemSelect }: CostItemsTable
     if (!original || !recommended) return null;
     const variance = ((original - recommended) / recommended) * 100;
     return variance;
+  };
+
+  const handleEditStart = (item: CostItem, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingId(item.id);
+    setEditValue((item.userOverridePrice || item.recommendedUnitPrice).toString());
+  };
+
+  const handleEditSave = (itemId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const price = parseFloat(editValue);
+    if (!isNaN(price) && price > 0 && onPriceUpdate) {
+      onPriceUpdate(itemId, price);
+    }
+    setEditingId(null);
+    setEditValue('');
+  };
+
+  const handleEditCancel = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingId(null);
+    setEditValue('');
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent, itemId: string) => {
+    if (e.key === 'Enter') {
+      const price = parseFloat(editValue);
+      if (!isNaN(price) && price > 0 && onPriceUpdate) {
+        onPriceUpdate(itemId, price);
+      }
+      setEditingId(null);
+      setEditValue('');
+    } else if (e.key === 'Escape') {
+      setEditingId(null);
+      setEditValue('');
+    }
   };
 
   return (
@@ -104,7 +143,7 @@ export function CostItemsTable({ items, currency, onItemSelect }: CostItemsTable
               <th className="w-[100px]">Qty</th>
               <th className="w-[80px]">Unit</th>
               <th className="w-[120px] text-right">Original</th>
-              <th className="w-[120px] text-right">Recommended</th>
+              <th className="w-[140px] text-right">Recommended</th>
               <th className="w-[100px]">Status</th>
               <th className="w-[50px]"></th>
             </tr>
@@ -112,12 +151,15 @@ export function CostItemsTable({ items, currency, onItemSelect }: CostItemsTable
           <tbody>
             {filteredItems.map((item) => {
               const variance = getPriceVariance(item.originalUnitPrice, item.recommendedUnitPrice);
+              const isEditing = editingId === item.id;
+              const hasOverride = item.userOverridePrice !== undefined;
+              const displayPrice = item.userOverridePrice || item.recommendedUnitPrice;
               
               return (
                 <tr
                   key={item.id}
-                  onClick={() => onItemSelect(item)}
-                  className="cursor-pointer"
+                  onClick={() => !isEditing && onItemSelect(item)}
+                  className={cn("cursor-pointer", isEditing && "bg-muted/50")}
                 >
                   <td>
                     <div className="space-y-1">
@@ -148,8 +190,54 @@ export function CostItemsTable({ items, currency, onItemSelect }: CostItemsTable
                       )}
                     </div>
                   </td>
-                  <td className="text-right font-mono font-medium">
-                    {formatPrice(item.recommendedUnitPrice)}
+                  <td className="text-right" onClick={(e) => e.stopPropagation()}>
+                    {isEditing ? (
+                      <div className="flex items-center justify-end gap-1">
+                        <Input
+                          type="number"
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          onKeyDown={(e) => handleKeyDown(e, item.id)}
+                          className="w-24 h-8 text-right font-mono"
+                          autoFocus
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={(e) => handleEditSave(item.id, e)}
+                        >
+                          <Check className="h-4 w-4 text-success" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={handleEditCancel}
+                        >
+                          <X className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-end gap-2 group">
+                        <span className={cn(
+                          "font-mono font-medium",
+                          hasOverride && "text-warning"
+                        )}>
+                          {formatPrice(displayPrice)}
+                        </span>
+                        {onPriceUpdate && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={(e) => handleEditStart(item, e)}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </div>
+                    )}
                   </td>
                   <td>
                     <div className="flex items-center gap-2">
