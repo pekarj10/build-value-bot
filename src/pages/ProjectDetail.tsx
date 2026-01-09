@@ -7,6 +7,7 @@ import { CostItemsTable } from '@/components/project/CostItemsTable';
 import { CostItemDrawer } from '@/components/project/CostItemDrawer';
 import { AIChatPanel } from '@/components/project/AIChatPanel';
 import { AIFloatingButton } from '@/components/project/AIFloatingButton';
+import { ExportDialog } from '@/components/project/ExportDialog';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -15,7 +16,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CostItem, PROJECT_TYPE_LABELS, SUPPORTED_COUNTRIES, Project } from '@/types/project';
 import { useProject } from '@/hooks/useProject';
 import { useCostAnalysis } from '@/hooks/useCostAnalysis';
-import { supabase } from '@/integrations/supabase/client';
 import { 
   FileSpreadsheet, 
   FileText,
@@ -40,6 +40,9 @@ export default function ProjectDetail() {
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessingClarification, setIsProcessingClarification] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [tradeFilter, setTradeFilter] = useState<string>('');
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [activeTab, setActiveTab] = useState('items');
 
   useEffect(() => {
     if (!id) return;
@@ -176,6 +179,12 @@ export default function ProjectDetail() {
 
   const handleFilterByStatus = (status: string) => {
     setStatusFilter(status);
+    setActiveTab('items');
+  };
+
+  const handleFilterByTrade = (trade: string) => {
+    setTradeFilter(trade);
+    setActiveTab('items');
   };
 
   const handleAIItemsUpdate = async (updates: { id: string; updates: Partial<CostItem> }[]) => {
@@ -217,13 +226,9 @@ export default function ProjectDetail() {
         ]}
         actions={
           <div className="flex items-center gap-2">
-            <Button variant="outline">
+            <Button variant="outline" onClick={() => setShowExportDialog(true)}>
               <FileSpreadsheet className="h-4 w-4 mr-2" />
               Export Excel
-            </Button>
-            <Button variant="outline">
-              <FileText className="h-4 w-4 mr-2" />
-              Export PDF
             </Button>
           </div>
         }
@@ -256,7 +261,7 @@ export default function ProjectDetail() {
         <ExecutiveSummary items={items} currency={project.currency} />
 
         {/* Tabs for different views */}
-        <Tabs defaultValue="items" className="space-y-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList>
             <TabsTrigger value="items" className="flex items-center gap-2">
               <Table className="h-4 w-4" />
@@ -285,6 +290,7 @@ export default function ProjectDetail() {
               onBulkAccept={handleBulkAccept}
               onBulkMarkReviewed={handleBulkMarkReviewed}
               statusFilter={statusFilter}
+              tradeFilter={tradeFilter}
             />
           </TabsContent>
 
@@ -303,6 +309,7 @@ export default function ProjectDetail() {
               items={items} 
               currency={project.currency}
               onFilterByStatus={handleFilterByStatus}
+              onFilterByTrade={handleFilterByTrade}
             />
           </TabsContent>
 
@@ -362,6 +369,14 @@ export default function ProjectDetail() {
         project={project}
         items={items}
         onItemsUpdate={handleAIItemsUpdate}
+      />
+
+      {/* Export Dialog */}
+      <ExportDialog
+        open={showExportDialog}
+        onClose={() => setShowExportDialog(false)}
+        project={project}
+        items={items}
       />
     </AppLayout>
   );
