@@ -55,6 +55,7 @@ interface CostItemsTableProps {
   onBulkMarkReviewed?: (itemIds: string[]) => void;
   onBulkStatusChange?: (itemIds: string[], status: string) => void;
   statusFilter?: string;
+  tradeFilter?: string;
   isLoading?: boolean;
 }
 
@@ -84,13 +85,16 @@ export function CostItemsTable({
   onBulkMarkReviewed,
   onBulkStatusChange,
   statusFilter: externalStatusFilter,
+  tradeFilter: externalTradeFilter,
   isLoading = false,
 }: CostItemsTableProps) {
   // Filter states
   const [statusFilters, setStatusFilters] = useState<string[]>(
     externalStatusFilter && externalStatusFilter !== 'all' ? [externalStatusFilter] : []
   );
-  const [tradeFilters, setTradeFilters] = useState<string[]>([]);
+  const [tradeFilters, setTradeFilters] = useState<string[]>(
+    externalTradeFilter ? [externalTradeFilter] : []
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [priceMin, setPriceMin] = useState<string>('');
   const [priceMax, setPriceMax] = useState<string>('');
@@ -135,6 +139,14 @@ export function CostItemsTable({
       setCurrentPage(1);
     }
   }, [externalStatusFilter]);
+
+  // Sync external trade filter
+  useEffect(() => {
+    if (externalTradeFilter) {
+      setTradeFilters([externalTradeFilter]);
+      setCurrentPage(1);
+    }
+  }, [externalTradeFilter]);
 
   // Calculate variance for an item
   const getItemVariance = (item: CostItem) => {
@@ -873,29 +885,6 @@ export function CostItemsTable({
                 );
               })}
             </tbody>
-            {/* Totals Row */}
-            <tfoot className="bg-muted/30 border-t-2">
-              <tr className="font-medium">
-                <td colSpan={2} className="text-right">Page Totals</td>
-                <td className="font-mono">{formatPrice(totals.quantity)}</td>
-                <td></td>
-                <td className="text-right font-mono">{formatPrice(totals.originalTotal)}</td>
-                <td className="text-right font-mono">{formatPrice(totals.recommendedTotal)}</td>
-                <td colSpan={2}>
-                  <span className={cn(
-                    "text-sm font-mono",
-                    totalSavings > 0 ? "text-success" : totalSavings < 0 ? "text-destructive" : ""
-                  )}>
-                    {totalSavings !== 0 && (
-                      <>
-                        {totalSavings > 0 ? 'Save ' : 'Over '}
-                        {formatPrice(Math.abs(totalSavings))}
-                      </>
-                    )}
-                  </span>
-                </td>
-              </tr>
-            </tfoot>
           </table>
           
           {paginatedItems.length === 0 && (
