@@ -23,8 +23,8 @@ export type Database = {
           currency: string
           description: string
           id: string
-          max_price: number
-          min_price: number
+          max_price: number | null
+          min_price: number | null
           source: string | null
           unit: string
           updated_at: string
@@ -37,8 +37,8 @@ export type Database = {
           currency: string
           description: string
           id?: string
-          max_price: number
-          min_price: number
+          max_price?: number | null
+          min_price?: number | null
           source?: string | null
           unit: string
           updated_at?: string
@@ -51,8 +51,8 @@ export type Database = {
           currency?: string
           description?: string
           id?: string
-          max_price?: number
-          min_price?: number
+          max_price?: number | null
+          min_price?: number | null
           source?: string | null
           unit?: string
           updated_at?: string
