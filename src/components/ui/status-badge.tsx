@@ -51,9 +51,16 @@ const projectStatusConfig: Record<ProjectStatus, { label: string; className: str
 
 export function StatusBadge({ status, size = 'sm', showIcon = true }: StatusBadgeProps) {
   const isCostItemStatus = ['ok', 'review', 'clarification'].includes(status);
+  const isProjectStatus = ['draft', 'processing', 'ready', 'exported'].includes(status);
+  
+  // Fallback for unknown statuses
+  const defaultConfig = { label: status || 'Unknown', className: 'bg-muted text-muted-foreground border border-border', icon: HelpCircle };
+  
   const config = isCostItemStatus 
     ? costItemConfig[status as CostItemStatus]
-    : projectStatusConfig[status as ProjectStatus];
+    : isProjectStatus 
+      ? projectStatusConfig[status as ProjectStatus]
+      : defaultConfig;
   
   const Icon = config.icon;
   
