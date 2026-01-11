@@ -29,6 +29,10 @@ export default function Dashboard() {
   const readyProjects = projects.filter(p => p.status === 'ready').length;
   const totalItems = projects.reduce((sum, p) => sum + (p.totalItems || 0), 0);
   const totalIssues = projects.reduce((sum, p) => sum + (p.issuesCount || 0), 0);
+  const totalValue = projects.reduce((sum, p) => sum + (p.totalValue || 0), 0);
+  
+  // Get primary currency from most recent project, default to USD
+  const primaryCurrency = projects[0]?.currency || 'USD';
 
   if (isLoading) {
     return (
@@ -90,10 +94,14 @@ export default function Dashboard() {
             description="Requiring attention"
           />
           <MetricCard
-            title="Analysis Accuracy"
-            value="94%"
-            trend="up"
-            description="Based on user feedback"
+            title="Total Value Analyzed"
+            value={new Intl.NumberFormat('en-US', { 
+              style: 'currency', 
+              currency: primaryCurrency,
+              notation: totalValue > 1000000 ? 'compact' : 'standard',
+              maximumFractionDigits: 0 
+            }).format(totalValue)}
+            description="Across all projects"
           />
         </div>
 
