@@ -288,6 +288,49 @@ export function useProject() {
     }
   }, []);
 
+  const deleteProject = useCallback(async (projectId: string): Promise<boolean> => {
+    try {
+      // Delete cost items first (cascade)
+      await supabase
+        .from('cost_items')
+        .delete()
+        .eq('project_id', projectId);
+
+      // Delete uploaded files records
+      await supabase
+        .from('uploaded_files')
+        .delete()
+        .eq('project_id', projectId);
+
+      // Delete files from storage
+      const { data: files } = await supabase.storage
+        .from('project-files')
+        .list(projectId);
+
+      if (files && files.length > 0) {
+        const filePaths = files.map(f => `${projectId}/${f.name}`);
+        await supabase.storage
+          .from('project-files')
+          .remove(filePaths);
+      }
+
+      // Delete the project
+      const { error } = await supabase
+        .from('projects')
+        .delete()
+        .eq('id', projectId);
+
+      if (error) throw error;
+      
+      toast.success('Project deleted successfully');
+      return true;
+    } catch (error) {
+      console.error('Delete project error:', error);
+      toast.error('Failed to delete project');
+      return false;
+    }
+  }, []);
+
   return {
     isLoading,
     createProject,
@@ -298,5 +341,6 @@ export function useProject() {
     getCostItems,
     updateCostItem,
     updateProjectStatus,
+    deleteProject,
   };
 }
