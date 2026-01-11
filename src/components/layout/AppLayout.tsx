@@ -34,6 +34,10 @@ const navigation = [
   { name: 'Help', href: '/help', icon: HelpCircle },
 ];
 
+const adminNavigation = [
+  { name: 'Admin', href: '/admin', icon: Shield },
+];
+
 export function AppLayout({ children }: AppLayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -82,6 +86,32 @@ export function AppLayout({ children }: AppLayoutProps) {
               </Link>
             );
           })}
+          
+          {/* Admin navigation */}
+          {isAdmin && (
+            <>
+              <div className="my-2 border-t border-sidebar-border" />
+              {adminNavigation.map((item) => {
+                const isActive = location.pathname === item.href;
+                
+                return (
+                  <Link
+                    key={item.name}
+                    to={item.href}
+                    className={cn(
+                      'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-base',
+                      isActive
+                        ? 'bg-warning/20 text-warning'
+                        : 'text-warning/70 hover:text-warning hover:bg-warning/10'
+                    )}
+                  >
+                    <item.icon className="h-4 w-4" />
+                    {item.name}
+                  </Link>
+                );
+              })}
+            </>
+          )}
         </nav>
         
         {/* User section */}

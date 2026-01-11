@@ -11,6 +11,7 @@ import ProjectList from "./pages/ProjectList";
 import NewProject from "./pages/NewProject";
 import ProjectProcessing from "./pages/ProjectProcessing";
 import ProjectDetail from "./pages/ProjectDetail";
+import AdminDashboard from "./pages/AdminDashboard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -29,6 +30,7 @@ const App = () => (
             <Route path="/project/new" element={<ProtectedRoute><NewProject /></ProtectedRoute>} />
             <Route path="/project/:id/processing" element={<ProtectedRoute><ProjectProcessing /></ProtectedRoute>} />
             <Route path="/project/:id" element={<ProtectedRoute><ProjectDetail /></ProtectedRoute>} />
+            <Route path="/admin" element={<ProtectedRoute requireAdmin><AdminDashboard /></ProtectedRoute>} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
