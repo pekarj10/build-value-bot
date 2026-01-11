@@ -94,7 +94,7 @@ const Help = () => {
         ]}
       />
 
-      <div className="space-y-6">
+      <div className="p-8 space-y-6">
         {/* Search */}
         <Card>
           <CardContent className="pt-6">

@@ -854,8 +854,7 @@ export function CostItemsTable({
                     <SortIcon field="status" />
                   </div>
                 </th>
-                <th className="w-[100px]">Status</th>
-                <th className="w-[80px]"></th>
+                <th className="w-[60px]"></th>
               </tr>
             </thead>
             <tbody>

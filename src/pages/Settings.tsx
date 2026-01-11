@@ -35,7 +35,7 @@ const Settings = () => {
         ]}
       />
 
-      <div className="space-y-6">
+      <div className="p-8 space-y-6">
         {/* Profile Settings */}
         <Card>
           <CardHeader>
