@@ -1,13 +1,27 @@
 import { ReactNode } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/hooks/useAuth';
 import { 
   LayoutDashboard, 
   FolderOpen, 
   Settings,
   HelpCircle,
-  ChevronRight
+  ChevronRight,
+  LogOut,
+  User,
+  Shield
 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -22,6 +36,17 @@ const navigation = [
 
 export function AppLayout({ children }: AppLayoutProps) {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, isAdmin, signOut } = useAuth();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/auth');
+  };
+
+  const userInitials = user?.user_metadata?.full_name
+    ? user.user_metadata.full_name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
+    : user?.email?.substring(0, 2).toUpperCase() || 'U';
 
   return (
     <div className="min-h-screen bg-background">
@@ -59,8 +84,61 @@ export function AppLayout({ children }: AppLayoutProps) {
           })}
         </nav>
         
-        <div className="absolute bottom-4 left-4 right-4">
-          <div className="rounded-lg bg-sidebar-accent/50 p-4">
+        {/* User section */}
+        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-sidebar-border">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button 
+                variant="ghost" 
+                className="w-full justify-start gap-3 h-auto py-2 px-3 text-sidebar-foreground hover:bg-sidebar-accent/50"
+              >
+                <Avatar className="h-8 w-8">
+                  <AvatarFallback className="bg-sidebar-accent text-sidebar-accent-foreground text-xs">
+                    {userInitials}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex flex-col items-start flex-1 min-w-0">
+                  <span className="text-sm font-medium truncate w-full text-left">
+                    {user?.user_metadata?.full_name || 'User'}
+                  </span>
+                  <span className="text-xs text-sidebar-foreground/60 truncate w-full text-left">
+                    {user?.email}
+                  </span>
+                </div>
+                {isAdmin && (
+                  <Shield className="h-4 w-4 text-warning flex-shrink-0" />
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>
+                <div className="flex items-center gap-2">
+                  <span>My Account</span>
+                  {isAdmin && (
+                    <span className="text-xs bg-warning/10 text-warning px-1.5 py-0.5 rounded">
+                      Admin
+                    </span>
+                  )}
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem>
+                <User className="mr-2 h-4 w-4" />
+                Profile
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <Settings className="mr-2 h-4 w-4" />
+                Settings
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleSignOut} className="text-destructive">
+                <LogOut className="mr-2 h-4 w-4" />
+                Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          
+          <div className="mt-3 rounded-lg bg-sidebar-accent/50 p-3">
             <p className="text-xs text-sidebar-foreground/70">Version 0.1.0 ALFA</p>
           </div>
         </div>

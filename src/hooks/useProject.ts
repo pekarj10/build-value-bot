@@ -54,6 +54,13 @@ export function useProject() {
   const createProject = useCallback(async (data: CreateProjectData): Promise<string | null> => {
     setIsLoading(true);
     try {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error('You must be logged in to create a project');
+        return null;
+      }
+
       const { data: project, error } = await supabase
         .from('projects')
         .insert({
@@ -63,6 +70,7 @@ export function useProject() {
           project_type: data.projectType,
           notes: data.notes || null,
           status: 'draft',
+          user_id: user.id,
         })
         .select()
         .single();
