@@ -42,6 +42,7 @@ export default function ProjectDetail() {
   const [items, setItems] = useState<CostItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<CostItem | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isReanalyzing, setIsReanalyzing] = useState(false);
   const [isProcessingClarification, setIsProcessingClarification] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [tradeFilter, setTradeFilter] = useState<string>('');
@@ -243,6 +244,75 @@ export default function ProjectDetail() {
     return success;
   };
 
+  const handleReanalyzeItems = async (itemIds: string[]) => {
+    if (!project) return;
+    
+    setIsReanalyzing(true);
+    
+    try {
+      const itemsToAnalyze = items
+        .filter(item => itemIds.includes(item.id))
+        .map(item => ({
+          id: item.id,
+          originalDescription: item.originalDescription,
+          quantity: item.quantity,
+          unit: item.unit,
+          originalUnitPrice: item.originalUnitPrice,
+          trade: item.trade,
+          sheetName: item.sheetName,
+        }));
+      
+      if (itemsToAnalyze.length === 0) return;
+      
+      toast.info(`Re-analyzing ${itemsToAnalyze.length} item(s)...`);
+      
+      const analyzedItems = await analyzeItems(itemsToAnalyze, {
+        country: project.country,
+        currency: project.currency,
+        projectType: project.projectType,
+        name: project.name,
+      });
+      
+      // Update local state with analysis results
+      setItems(prev => prev.map(item => {
+        const analyzed = analyzedItems.find(a => a.id === item.id);
+        if (analyzed) {
+          return { ...item, ...analyzed, projectId: item.projectId };
+        }
+        return item;
+      }));
+      
+      // Persist analysis results to database
+      for (const analyzed of analyzedItems) {
+        await updateCostItem(analyzed.id, {
+          interpreted_scope: analyzed.interpretedScope,
+          recommended_unit_price: analyzed.recommendedUnitPrice,
+          benchmark_min: analyzed.benchmarkMin,
+          benchmark_typical: analyzed.benchmarkTypical,
+          benchmark_max: analyzed.benchmarkMax,
+          total_price: analyzed.totalPrice,
+          status: analyzed.status,
+          ai_comment: analyzed.aiComment,
+        });
+      }
+      
+      const underpricedCount = analyzedItems.filter(i => i.status === 'underpriced').length;
+      const reviewCount = analyzedItems.filter(i => i.status === 'review').length;
+      const okCount = analyzedItems.filter(i => i.status === 'ok').length;
+      
+      if (underpricedCount > 0 || reviewCount > 0) {
+        toast.warning(`Analysis complete: ${okCount} OK, ${underpricedCount} underpriced, ${reviewCount} need review`);
+      } else {
+        toast.success(`${analyzedItems.length} item(s) re-analyzed successfully`);
+      }
+    } catch (error) {
+      console.error('Re-analysis failed:', error);
+      toast.error('Re-analysis failed. Please try again.');
+    } finally {
+      setIsReanalyzing(false);
+    }
+  };
+
   const handleAddItems = async (newItems: { 
     description: string; 
     quantity: number; 
@@ -431,6 +501,8 @@ export default function ProjectDetail() {
               onBulkMarkReviewed={handleBulkMarkReviewed}
               onDeleteItem={handleDeleteItem}
               onAddItem={() => setShowAddItemDialog(true)}
+              onReanalyzeItems={handleReanalyzeItems}
+              isReanalyzing={isReanalyzing || isAnalyzing}
               statusFilter={statusFilter}
               tradeFilter={tradeFilter}
             />
