@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
 import { CostItemStatus, ProjectStatus } from '@/types/project';
-import { CheckCircle, AlertCircle, HelpCircle, Clock, FileText, Package } from 'lucide-react';
+import { CheckCircle, AlertCircle, HelpCircle, Clock, FileText, Package, TrendingDown } from 'lucide-react';
 
 interface StatusBadgeProps {
   status: CostItemStatus | ProjectStatus;
@@ -23,6 +23,11 @@ const costItemConfig: Record<CostItemStatus, { label: string; className: string;
     label: 'Clarification',
     className: 'status-clarification',
     icon: HelpCircle,
+  },
+  underpriced: {
+    label: 'Under-Priced',
+    className: 'bg-blue-100 text-blue-700 border border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800',
+    icon: TrendingDown,
   },
 };
 
@@ -50,7 +55,7 @@ const projectStatusConfig: Record<ProjectStatus, { label: string; className: str
 };
 
 export function StatusBadge({ status, size = 'sm', showIcon = true }: StatusBadgeProps) {
-  const isCostItemStatus = ['ok', 'review', 'clarification'].includes(status);
+  const isCostItemStatus = ['ok', 'review', 'clarification', 'underpriced'].includes(status);
   const isProjectStatus = ['draft', 'processing', 'ready', 'exported'].includes(status);
   
   // Fallback for unknown statuses

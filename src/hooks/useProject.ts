@@ -269,6 +269,59 @@ export function useProject() {
     }
   }, []);
 
+  const deleteCostItem = useCallback(async (itemId: string): Promise<boolean> => {
+    try {
+      const { error } = await supabase
+        .from('cost_items')
+        .delete()
+        .eq('id', itemId);
+
+      if (error) throw error;
+      return true;
+    } catch (error) {
+      console.error('Delete cost item error:', error);
+      toast.error('Failed to delete cost item');
+      return false;
+    }
+  }, []);
+
+  const addCostItem = useCallback(async (
+    projectId: string,
+    item: {
+      originalDescription: string;
+      quantity: number;
+      unit: string;
+      originalUnitPrice?: number;
+      trade?: string;
+      sheetName?: string;
+    }
+  ): Promise<string | null> => {
+    try {
+      const { data, error } = await supabase
+        .from('cost_items')
+        .insert({
+          project_id: projectId,
+          original_description: item.originalDescription,
+          quantity: item.quantity,
+          unit: item.unit,
+          original_unit_price: item.originalUnitPrice || null,
+          trade: item.trade || 'Manual Entry',
+          sheet_name: item.sheetName || 'Manual',
+          status: 'clarification',
+          interpreted_scope: item.originalDescription,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data.id;
+    } catch (error) {
+      console.error('Add cost item error:', error);
+      toast.error('Failed to add cost item');
+      return null;
+    }
+  }, []);
+
   const updateProjectStatus = useCallback(async (
     projectId: string,
     status: string,
@@ -340,6 +393,8 @@ export function useProject() {
     getAllProjects,
     getCostItems,
     updateCostItem,
+    deleteCostItem,
+    addCostItem,
     updateProjectStatus,
     deleteProject,
   };
