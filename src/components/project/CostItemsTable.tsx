@@ -34,7 +34,8 @@ import {
   Trash2,
   Download,
   Flag,
-  RotateCcw
+  RotateCcw,
+  Plus
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -54,6 +55,8 @@ interface CostItemsTableProps {
   onBulkAccept?: (itemIds: string[]) => void;
   onBulkMarkReviewed?: (itemIds: string[]) => void;
   onBulkStatusChange?: (itemIds: string[], status: string) => void;
+  onDeleteItem?: (itemId: string) => Promise<boolean>;
+  onAddItem?: () => void;
   statusFilter?: string;
   tradeFilter?: string;
   isLoading?: boolean;
@@ -74,6 +77,7 @@ const STATUS_OPTIONS = [
   { value: 'ok', label: 'OK' },
   { value: 'review', label: 'Review' },
   { value: 'clarification', label: 'Clarification' },
+  { value: 'underpriced', label: 'Under-Priced' },
 ];
 
 export function CostItemsTable({ 
@@ -84,6 +88,8 @@ export function CostItemsTable({
   onBulkAccept,
   onBulkMarkReviewed,
   onBulkStatusChange,
+  onDeleteItem,
+  onAddItem,
   statusFilter: externalStatusFilter,
   tradeFilter: externalTradeFilter,
   isLoading = false,
@@ -209,11 +215,16 @@ export function CostItemsTable({
         if (v === null || Math.abs(v) < 15) return false;
       }
       if (quickFilters.includes('needs-review')) {
-        if (item.status !== 'review') return false;
+        if (item.status !== 'review' && item.status !== 'clarification') return false;
       }
       if (quickFilters.includes('over-budget')) {
         const v = getItemVariance(item);
         if (v === null || v <= 0) return false;
+      }
+      if (quickFilters.includes('under-priced')) {
+        const v = getItemVariance(item);
+        // Item is significantly under-priced (more than 15% below benchmark)
+        if (v === null || v >= -15) return false;
       }
       
       return true;
@@ -636,6 +647,13 @@ export function CostItemsTable({
             <div className="text-sm text-muted-foreground">
               {sortedItems.length} of {items.length} items
             </div>
+
+            {onAddItem && (
+              <Button onClick={onAddItem} size="sm">
+                <Plus className="h-4 w-4 mr-1" />
+                Add Item
+              </Button>
+            )}
           </div>
         </div>
 
@@ -747,7 +765,8 @@ export function CostItemsTable({
                     <SortIcon field="status" />
                   </div>
                 </th>
-                <th className="w-[40px]"></th>
+                <th className="w-[100px]">Status</th>
+                <th className="w-[80px]"></th>
               </tr>
             </thead>
             <tbody>
@@ -879,7 +898,30 @@ export function CostItemsTable({
                       </div>
                     </td>
                     <td>
-                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      <div className="flex items-center gap-1">
+                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                        {onDeleteItem && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  const success = await onDeleteItem(item.id);
+                                  if (success) {
+                                    toast.success('Item deleted');
+                                  }
+                                }}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Delete item</TooltipContent>
+                          </Tooltip>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );

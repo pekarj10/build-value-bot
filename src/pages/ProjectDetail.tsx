@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { AppLayout, PageHeader } from '@/components/layout/AppLayout';
 import { ExecutiveSummary } from '@/components/project/ExecutiveSummary';
@@ -9,6 +9,7 @@ import { AIChatPanel } from '@/components/project/AIChatPanel';
 import { AIFloatingButton } from '@/components/project/AIFloatingButton';
 import { ExportDialog } from '@/components/project/ExportDialog';
 import { DeleteProjectDialog } from '@/components/project/DeleteProjectDialog';
+import { AddCostItemDialog } from '@/components/project/AddCostItemDialog';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -34,7 +35,7 @@ import { toast } from 'sonner';
 export default function ProjectDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { getProject, getCostItems, updateCostItem, deleteProject } = useProject();
+  const { getProject, getCostItems, updateCostItem, deleteCostItem, addCostItem, deleteProject } = useProject();
   const { processClarification } = useCostAnalysis();
 
   const [project, setProject] = useState<Project | null>(null);
@@ -46,7 +47,14 @@ export default function ProjectDetail() {
   const [tradeFilter, setTradeFilter] = useState<string>('');
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showAddItemDialog, setShowAddItemDialog] = useState(false);
   const [activeTab, setActiveTab] = useState('items');
+
+  // Get unique trades for the add item dialog
+  const trades = useMemo(() => 
+    [...new Set(items.map(item => item.trade).filter(Boolean))] as string[],
+    [items]
+  );
 
   useEffect(() => {
     if (!id) return;
@@ -227,6 +235,59 @@ export default function ProjectDetail() {
     }
   };
 
+  const handleDeleteItem = async (itemId: string): Promise<boolean> => {
+    const success = await deleteCostItem(itemId);
+    if (success) {
+      setItems(prev => prev.filter(item => item.id !== itemId));
+    }
+    return success;
+  };
+
+  const handleAddItems = async (newItems: { 
+    description: string; 
+    quantity: number; 
+    unit: string; 
+    originalPrice?: number;
+    trade?: string;
+  }[]) => {
+    if (!id) return;
+    
+    for (const item of newItems) {
+      const itemId = await addCostItem(id, {
+        originalDescription: item.description,
+        quantity: item.quantity,
+        unit: item.unit,
+        originalUnitPrice: item.originalPrice,
+        trade: item.trade,
+      });
+      
+      if (itemId) {
+        // Add to local state with placeholder values
+        const newItem: CostItem = {
+          id: itemId,
+          projectId: id,
+          originalDescription: item.description,
+          interpretedScope: item.description,
+          quantity: item.quantity,
+          unit: item.unit,
+          originalUnitPrice: item.originalPrice,
+          recommendedUnitPrice: 0,
+          benchmarkMin: 0,
+          benchmarkTypical: 0,
+          benchmarkMax: 0,
+          totalPrice: (item.originalPrice || 0) * item.quantity,
+          status: 'clarification',
+          aiComment: 'Pending AI analysis',
+          trade: item.trade || 'Manual Entry',
+          sheetName: 'Manual',
+        };
+        setItems(prev => [...prev, newItem]);
+      }
+    }
+    
+    toast.success(`${newItems.length} item(s) added. Use AI Assistant to analyze them.`);
+  };
+
   return (
     <AppLayout>
       <PageHeader
@@ -309,6 +370,8 @@ export default function ProjectDetail() {
               onPriceUpdate={handlePriceUpdate}
               onBulkAccept={handleBulkAccept}
               onBulkMarkReviewed={handleBulkMarkReviewed}
+              onDeleteItem={handleDeleteItem}
+              onAddItem={() => setShowAddItemDialog(true)}
               statusFilter={statusFilter}
               tradeFilter={tradeFilter}
             />
@@ -405,6 +468,14 @@ export default function ProjectDetail() {
         onOpenChange={setShowDeleteDialog}
         projectName={project.name}
         onConfirm={handleDeleteProject}
+      />
+
+      {/* Add Cost Item Dialog */}
+      <AddCostItemDialog
+        open={showAddItemDialog}
+        onOpenChange={setShowAddItemDialog}
+        onSubmit={handleAddItems}
+        trades={trades}
       />
     </AppLayout>
   );
