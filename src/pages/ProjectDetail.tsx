@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { AppLayout, PageHeader } from '@/components/layout/AppLayout';
 import { ExecutiveSummary } from '@/components/project/ExecutiveSummary';
 import { InsightsPanel } from '@/components/project/InsightsPanel';
@@ -8,6 +8,7 @@ import { CostItemDrawer } from '@/components/project/CostItemDrawer';
 import { AIChatPanel } from '@/components/project/AIChatPanel';
 import { AIFloatingButton } from '@/components/project/AIFloatingButton';
 import { ExportDialog } from '@/components/project/ExportDialog';
+import { DeleteProjectDialog } from '@/components/project/DeleteProjectDialog';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -24,14 +25,16 @@ import {
   LayoutDashboard,
   BarChart3,
   Table,
-  Bot
+  Bot,
+  Trash2
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
 export default function ProjectDetail() {
   const { id } = useParams();
-  const { getProject, getCostItems, updateCostItem } = useProject();
+  const navigate = useNavigate();
+  const { getProject, getCostItems, updateCostItem, deleteProject } = useProject();
   const { processClarification } = useCostAnalysis();
 
   const [project, setProject] = useState<Project | null>(null);
@@ -42,6 +45,7 @@ export default function ProjectDetail() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [tradeFilter, setTradeFilter] = useState<string>('');
   const [showExportDialog, setShowExportDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [activeTab, setActiveTab] = useState('items');
 
   useEffect(() => {
@@ -215,6 +219,14 @@ export default function ProjectDetail() {
     toast.success(`${updates.length} items updated by AI`);
   };
 
+  const handleDeleteProject = async () => {
+    if (!id) return;
+    const success = await deleteProject(id);
+    if (success) {
+      navigate('/projects', { replace: true });
+    }
+  };
+
   return (
     <AppLayout>
       <PageHeader
@@ -226,6 +238,14 @@ export default function ProjectDetail() {
         ]}
         actions={
           <div className="flex items-center gap-2">
+            <Button 
+              variant="outline" 
+              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+              onClick={() => setShowDeleteDialog(true)}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete
+            </Button>
             <Button variant="outline" onClick={() => setShowExportDialog(true)}>
               <FileSpreadsheet className="h-4 w-4 mr-2" />
               Export Excel
@@ -377,6 +397,14 @@ export default function ProjectDetail() {
         onClose={() => setShowExportDialog(false)}
         project={project}
         items={items}
+      />
+
+      {/* Delete Dialog */}
+      <DeleteProjectDialog
+        open={showDeleteDialog}
+        onOpenChange={setShowDeleteDialog}
+        projectName={project.name}
+        onConfirm={handleDeleteProject}
       />
     </AppLayout>
   );

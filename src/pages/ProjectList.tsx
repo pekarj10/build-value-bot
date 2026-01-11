@@ -24,13 +24,14 @@ export default function ProjectList() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
+  const loadProjects = async () => {
+    setIsLoading(true);
+    const data = await getAllProjects();
+    setProjects(data);
+    setIsLoading(false);
+  };
+
   useEffect(() => {
-    const loadProjects = async () => {
-      setIsLoading(true);
-      const data = await getAllProjects();
-      setProjects(data);
-      setIsLoading(false);
-    };
     loadProjects();
   }, [getAllProjects]);
 
@@ -143,7 +144,7 @@ export default function ProjectList() {
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredProjects.map((project) => (
-                <ProjectCard key={project.id} project={project} />
+                <ProjectCard key={project.id} project={project} onDeleted={loadProjects} />
               ))}
             </div>
 
