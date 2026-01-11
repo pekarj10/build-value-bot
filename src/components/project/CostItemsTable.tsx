@@ -35,7 +35,8 @@ import {
   Download,
   Flag,
   RotateCcw,
-  Plus
+  Plus,
+  RefreshCw
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -57,6 +58,8 @@ interface CostItemsTableProps {
   onBulkStatusChange?: (itemIds: string[], status: string) => void;
   onDeleteItem?: (itemId: string) => Promise<boolean>;
   onAddItem?: () => void;
+  onReanalyzeItems?: (itemIds: string[]) => Promise<void>;
+  isReanalyzing?: boolean;
   statusFilter?: string;
   tradeFilter?: string;
   isLoading?: boolean;
@@ -90,6 +93,8 @@ export function CostItemsTable({
   onBulkStatusChange,
   onDeleteItem,
   onAddItem,
+  onReanalyzeItems,
+  isReanalyzing = false,
   statusFilter: externalStatusFilter,
   tradeFilter: externalTradeFilter,
   isLoading = false,
@@ -219,12 +224,13 @@ export function CostItemsTable({
       }
       if (quickFilters.includes('over-budget')) {
         const v = getItemVariance(item);
-        if (v === null || v <= 0) return false;
+        // Item is over-budget (more than 10% above benchmark)
+        if (v === null || v <= 10) return false;
       }
       if (quickFilters.includes('under-priced')) {
         const v = getItemVariance(item);
-        // Item is significantly under-priced (more than 15% below benchmark)
-        if (v === null || v >= -15) return false;
+        // Item is significantly under-priced (more than 10% below benchmark)
+        if (v === null || v >= -10) return false;
       }
       
       return true;
@@ -403,6 +409,20 @@ export function CostItemsTable({
   const handleExportSelected = () => {
     // This would trigger the export dialog with selected items
     toast.success(`Preparing export for ${selectedIds.size} items...`);
+  };
+
+  const handleReanalyzeSelected = async () => {
+    if (onReanalyzeItems && selectedIds.size > 0) {
+      await onReanalyzeItems(Array.from(selectedIds));
+      setSelectedIds(new Set());
+    }
+  };
+
+  const handleReanalyzeAll = async () => {
+    if (onReanalyzeItems) {
+      const allIds = items.map(i => i.id);
+      await onReanalyzeItems(allIds);
+    }
   };
 
   const toggleQuickFilter = (filter: string) => {
@@ -648,8 +668,25 @@ export function CostItemsTable({
               {sortedItems.length} of {items.length} items
             </div>
 
+            {onReanalyzeItems && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    onClick={handleReanalyzeAll} 
+                    size="sm" 
+                    variant="outline"
+                    disabled={isReanalyzing || items.length === 0}
+                  >
+                    <RefreshCw className={cn("h-4 w-4 mr-1", isReanalyzing && "animate-spin")} />
+                    {isReanalyzing ? 'Analyzing...' : 'Re-analyze All'}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Re-run AI analysis on all items with current project context</TooltipContent>
+              </Tooltip>
+            )}
+
             {onAddItem && (
-              <Button onClick={onAddItem} size="sm">
+              <Button onClick={onAddItem} size="sm" disabled={isReanalyzing}>
                 <Plus className="h-4 w-4 mr-1" />
                 Add Item
               </Button>
@@ -701,6 +738,22 @@ export function CostItemsTable({
                 </TooltipTrigger>
                 <TooltipContent>Export selected items to Excel</TooltipContent>
               </Tooltip>
+              {onReanalyzeItems && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={handleReanalyzeSelected}
+                      disabled={isReanalyzing}
+                    >
+                      <RefreshCw className={cn("h-4 w-4 mr-1", isReanalyzing && "animate-spin")} />
+                      {isReanalyzing ? 'Analyzing...' : 'Re-analyze'}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Re-run AI analysis on selected items</TooltipContent>
+                </Tooltip>
+              )}
               <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
                 Clear Selection
               </Button>
