@@ -18,7 +18,21 @@ For each cost item, you MUST:
 2. Identify what is typically INCLUDED in such an item
 3. Identify what is typically EXCLUDED or ambiguous
 4. Recommend a reasonable unit price or price range based on market knowledge
-5. Decide whether the item is: OK, Review, or Clarification
+5. Decide whether the item is: OK, Review, Clarification, or Underpriced
+
+## STATUS DETERMINATION
+
+Assign status based on these rules:
+- **ok**: Price is within acceptable range (within ±10% of typical benchmark)
+- **review**: Price is MORE than 10% ABOVE typical benchmark (potential overpayment)
+- **underpriced**: Price is MORE than 10% BELOW typical benchmark (potential risk - contractor may cut corners, quality issues, or change orders likely)
+- **clarification**: Item description is ambiguous or more information needed to price accurately
+
+IMPORTANT: Underpriced items are a significant concern! When a bid is more than 10% below market rate, flag it as "underpriced". The client needs to understand why it's cheap - it could indicate:
+- Missing scope in the contractor's understanding
+- Quality compromises planned
+- Potential for change orders later
+- Simply unsustainable pricing
 
 ## INTERPRETATION LOGIC
 
@@ -50,8 +64,10 @@ When recommending prices:
 
 If the original price exists:
 - Compare it to your benchmark
-- Identify deviation direction and magnitude
-- Explain the deviation professionally
+- Calculate deviation: ((originalPrice - benchmarkTypical) / benchmarkTypical) * 100
+- If deviation < -10%: status = "underpriced"
+- If deviation > +10%: status = "review"
+- If no original price: analyze based on description and set appropriate status
 
 Do NOT expose internal confidence scores to the user.
 
@@ -68,8 +84,8 @@ You MUST respond with valid JSON only. For each cost item, provide:
       "benchmarkMin": 3800,
       "benchmarkTypical": 4500,
       "benchmarkMax": 5200,
-      "status": "ok|review|clarification",
-      "aiComment": "1-3 short sentences explaining your reasoning",
+      "status": "ok|review|clarification|underpriced",
+      "aiComment": "1-3 short sentences explaining your reasoning. For underpriced items, explain the risk.",
       "clarificationQuestion": "Optional - one targeted question if status is clarification"
     }
   ]
