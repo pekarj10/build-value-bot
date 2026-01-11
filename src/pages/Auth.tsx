@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, AlertCircle, Building2 } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Loader2, AlertCircle, Building2, ArrowLeft } from 'lucide-react';
 import { z } from 'zod';
 
 const emailSchema = z.string().email('Please enter a valid email address');
@@ -30,6 +32,12 @@ export default function Auth() {
   const [signupPassword, setSignupPassword] = useState('');
   const [signupConfirmPassword, setSignupConfirmPassword] = useState('');
   const [signupFullName, setSignupFullName] = useState('');
+  
+  // Forgot password state
+  const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState(false);
 
   useEffect(() => {
     if (user && !authLoading) {
@@ -111,6 +119,29 @@ export default function Auth() {
     }
   };
 
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    
+    const emailResult = emailSchema.safeParse(resetEmail);
+    if (!emailResult.success) {
+      setError(emailResult.error.errors[0].message);
+      return;
+    }
+
+    setResetLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    setResetLoading(false);
+
+    if (error) {
+      setError(error.message);
+    } else {
+      setResetSuccess(true);
+    }
+  };
+
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -168,7 +199,93 @@ export default function Auth() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="login-password">Password</Label>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="login-password">Password</Label>
+                      <Dialog open={forgotPasswordOpen} onOpenChange={(open) => {
+                        setForgotPasswordOpen(open);
+                        if (!open) {
+                          setResetEmail('');
+                          setResetSuccess(false);
+                          setError(null);
+                        }
+                      }}>
+                        <DialogTrigger asChild>
+                          <Button variant="link" className="px-0 h-auto text-xs text-muted-foreground">
+                            Forgot password?
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-md">
+                          {!resetSuccess ? (
+                            <form onSubmit={handleForgotPassword}>
+                              <DialogHeader>
+                                <DialogTitle>Reset your password</DialogTitle>
+                                <DialogDescription>
+                                  Enter your email address and we'll send you a link to reset your password.
+                                </DialogDescription>
+                              </DialogHeader>
+                              <div className="space-y-4 py-4">
+                                {error && (
+                                  <Alert variant="destructive">
+                                    <AlertCircle className="h-4 w-4" />
+                                    <AlertDescription>{error}</AlertDescription>
+                                  </Alert>
+                                )}
+                                <div className="space-y-2">
+                                  <Label htmlFor="reset-email">Email</Label>
+                                  <Input
+                                    id="reset-email"
+                                    type="email"
+                                    placeholder="your@email.com"
+                                    value={resetEmail}
+                                    onChange={(e) => setResetEmail(e.target.value)}
+                                    required
+                                    autoComplete="email"
+                                  />
+                                </div>
+                              </div>
+                              <DialogFooter>
+                                <Button type="submit" disabled={resetLoading}>
+                                  {resetLoading ? (
+                                    <>
+                                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                      Sending...
+                                    </>
+                                  ) : (
+                                    'Send Reset Link'
+                                  )}
+                                </Button>
+                              </DialogFooter>
+                            </form>
+                          ) : (
+                            <div className="text-center py-4">
+                              <div className="mb-4">
+                                <div className="mx-auto w-12 h-12 rounded-full bg-success/10 flex items-center justify-center">
+                                  <svg className="w-6 h-6 text-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                </div>
+                              </div>
+                              <DialogHeader>
+                                <DialogTitle>Check your email</DialogTitle>
+                                <DialogDescription className="mt-2">
+                                  We've sent a password reset link to <strong>{resetEmail}</strong>. 
+                                  Click the link in the email to reset your password.
+                                </DialogDescription>
+                              </DialogHeader>
+                              <DialogFooter className="mt-4">
+                                <Button 
+                                  variant="outline" 
+                                  onClick={() => setForgotPasswordOpen(false)}
+                                  className="w-full"
+                                >
+                                  Close
+                                </Button>
+                              </DialogFooter>
+                            </div>
+                          )}
+                        </DialogContent>
+                      </Dialog>
+                    </div>
                     <Input
                       id="login-password"
                       type="password"
