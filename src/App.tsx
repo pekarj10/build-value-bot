@@ -7,6 +7,7 @@ import { AuthProvider } from "@/hooks/useAuth";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
+import ResetPassword from "./pages/ResetPassword";
 import ProjectList from "./pages/ProjectList";
 import NewProject from "./pages/NewProject";
 import ProjectProcessing from "./pages/ProjectProcessing";
@@ -27,6 +28,7 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/auth" element={<Auth />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
             <Route path="/projects" element={<ProtectedRoute><ProjectList /></ProtectedRoute>} />
             <Route path="/project/new" element={<ProtectedRoute><NewProject /></ProtectedRoute>} />
