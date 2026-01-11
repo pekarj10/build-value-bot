@@ -36,7 +36,7 @@ export default function ProjectDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { getProject, getCostItems, updateCostItem, deleteCostItem, addCostItem, deleteProject } = useProject();
-  const { processClarification } = useCostAnalysis();
+  const { processClarification, analyzeItems, isAnalyzing } = useCostAnalysis();
 
   const [project, setProject] = useState<Project | null>(null);
   const [items, setItems] = useState<CostItem[]>([]);
@@ -250,7 +250,9 @@ export default function ProjectDetail() {
     originalPrice?: number;
     trade?: string;
   }[]) => {
-    if (!id) return;
+    if (!id || !project) return;
+    
+    const addedItems: CostItem[] = [];
     
     for (const item of newItems) {
       const itemId = await addCostItem(id, {
@@ -262,7 +264,6 @@ export default function ProjectDetail() {
       });
       
       if (itemId) {
-        // Add to local state with placeholder values
         const newItem: CostItem = {
           id: itemId,
           projectId: id,
@@ -277,15 +278,73 @@ export default function ProjectDetail() {
           benchmarkMax: 0,
           totalPrice: (item.originalPrice || 0) * item.quantity,
           status: 'clarification',
-          aiComment: 'Pending AI analysis',
+          aiComment: 'Analyzing...',
           trade: item.trade || 'Manual Entry',
           sheetName: 'Manual',
         };
+        addedItems.push(newItem);
         setItems(prev => [...prev, newItem]);
       }
     }
     
-    toast.success(`${newItems.length} item(s) added. Use AI Assistant to analyze them.`);
+    if (addedItems.length === 0) return;
+    
+    // Automatically run AI analysis on new items
+    toast.info(`Analyzing ${addedItems.length} new item(s)...`);
+    
+    try {
+      const itemsToAnalyze = addedItems.map(item => ({
+        id: item.id,
+        originalDescription: item.originalDescription,
+        quantity: item.quantity,
+        unit: item.unit,
+        originalUnitPrice: item.originalUnitPrice,
+        trade: item.trade,
+        sheetName: item.sheetName,
+      }));
+      
+      const analyzedItems = await analyzeItems(itemsToAnalyze, {
+        country: project.country,
+        currency: project.currency,
+        projectType: project.projectType,
+        name: project.name,
+      });
+      
+      // Update local state with analysis results
+      setItems(prev => prev.map(item => {
+        const analyzed = analyzedItems.find(a => a.id === item.id);
+        if (analyzed) {
+          return { ...item, ...analyzed, projectId: id };
+        }
+        return item;
+      }));
+      
+      // Persist analysis results to database
+      for (const analyzed of analyzedItems) {
+        await updateCostItem(analyzed.id, {
+          interpreted_scope: analyzed.interpretedScope,
+          recommended_unit_price: analyzed.recommendedUnitPrice,
+          benchmark_min: analyzed.benchmarkMin,
+          benchmark_typical: analyzed.benchmarkTypical,
+          benchmark_max: analyzed.benchmarkMax,
+          total_price: analyzed.totalPrice,
+          status: analyzed.status,
+          ai_comment: analyzed.aiComment,
+        });
+      }
+      
+      const underpricedCount = analyzedItems.filter(i => i.status === 'underpriced').length;
+      const reviewCount = analyzedItems.filter(i => i.status === 'review').length;
+      
+      if (underpricedCount > 0 || reviewCount > 0) {
+        toast.warning(`Analysis complete: ${underpricedCount} underpriced, ${reviewCount} need review`);
+      } else {
+        toast.success(`${addedItems.length} item(s) analyzed successfully`);
+      }
+    } catch (error) {
+      console.error('AI analysis failed:', error);
+      toast.error('AI analysis failed. Items added but not analyzed.');
+    }
   };
 
   return (
@@ -476,6 +535,7 @@ export default function ProjectDetail() {
         onOpenChange={setShowAddItemDialog}
         onSubmit={handleAddItems}
         trades={trades}
+        isAnalyzing={isAnalyzing}
       />
     </AppLayout>
   );

@@ -34,6 +34,7 @@ interface AddCostItemDialogProps {
   onOpenChange: (open: boolean) => void;
   onSubmit: (items: CostItemInput[]) => Promise<void>;
   trades?: string[];
+  isAnalyzing?: boolean;
 }
 
 const COMMON_UNITS = [
@@ -44,7 +45,8 @@ export function AddCostItemDialog({
   open, 
   onOpenChange, 
   onSubmit,
-  trades = []
+  trades = [],
+  isAnalyzing = false
 }: AddCostItemDialogProps) {
   const [items, setItems] = useState<CostItemInput[]>([
     { id: crypto.randomUUID(), description: '', quantity: 1, unit: 'pcs' }
@@ -102,8 +104,8 @@ export function AddCostItemDialog({
         <DialogHeader>
           <DialogTitle>Add Cost Items</DialogTitle>
           <DialogDescription>
-            Add new cost items to the project for AI analysis. Items with prices significantly 
-            below market benchmarks will be flagged for review.
+            Add new cost items to the project. AI will automatically analyze them and flag items 
+            priced more than 10% below or above market benchmarks.
           </DialogDescription>
         </DialogHeader>
 
@@ -227,16 +229,16 @@ export function AddCostItemDialog({
           <span className="text-sm text-muted-foreground self-center">
             {validItems.length} of {items.length} items ready
           </span>
-          <Button onClick={handleSubmit} disabled={!canSubmit}>
-            {isSubmitting ? (
+          <Button onClick={handleSubmit} disabled={!canSubmit || isAnalyzing}>
+            {isSubmitting || isAnalyzing ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Adding...
+                {isAnalyzing ? 'Analyzing...' : 'Adding...'}
               </>
             ) : (
               <>
                 <Plus className="h-4 w-4 mr-2" />
-                Add Items
+                Add & Analyze
               </>
             )}
           </Button>
