@@ -425,6 +425,26 @@ export function CostItemsTable({
     }
   };
 
+  const handleBulkDelete = async () => {
+    if (!onDeleteItem || selectedIds.size === 0) return;
+    
+    const idsToDelete = Array.from(selectedIds);
+    let deletedCount = 0;
+    
+    for (const id of idsToDelete) {
+      const success = await onDeleteItem(id);
+      if (success) deletedCount++;
+    }
+    
+    setSelectedIds(new Set());
+    
+    if (deletedCount === idsToDelete.length) {
+      toast.success(`${deletedCount} item(s) deleted`);
+    } else {
+      toast.warning(`${deletedCount} of ${idsToDelete.length} items deleted`);
+    }
+  };
+
   const toggleQuickFilter = (filter: string) => {
     setQuickFilters(prev => 
       prev.includes(filter) 
@@ -754,6 +774,22 @@ export function CostItemsTable({
                   <TooltipContent>Re-run AI analysis on selected items</TooltipContent>
                 </Tooltip>
               )}
+              {onDeleteItem && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={handleBulkDelete}
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      Delete
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Delete selected items</TooltipContent>
+                </Tooltip>
+              )}
               <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
                 Clear Selection
               </Button>
@@ -835,7 +871,7 @@ export function CostItemsTable({
                     key={item.id}
                     onClick={() => !isEditing && onItemSelect(item)}
                     className={cn(
-                      "cursor-pointer", 
+                      "cursor-pointer group", 
                       isEditing && "bg-muted/50",
                       isSelected && "bg-primary/5",
                       getRowHighlight(item)
