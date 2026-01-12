@@ -36,7 +36,8 @@ import {
   Flag,
   RotateCcw,
   Plus,
-  RefreshCw
+  RefreshCw,
+  Database
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -47,6 +48,7 @@ import { TablePagination } from './TablePagination';
 import { SaveFilterDialog } from './SaveFilterDialog';
 import { EmptyState } from './EmptyState';
 import { useSavedFilters, FilterState } from '@/hooks/useSavedFilters';
+import { useAuth } from '@/hooks/useAuth';
 
 interface CostItemsTableProps {
   items: CostItem[];
@@ -99,6 +101,7 @@ export function CostItemsTable({
   tradeFilter: externalTradeFilter,
   isLoading = false,
 }: CostItemsTableProps) {
+  const { isAdmin } = useAuth();
   // Filter states
   const [statusFilters, setStatusFilters] = useState<string[]>(
     externalStatusFilter && externalStatusFilter !== 'all' ? [externalStatusFilter] : []
@@ -948,12 +951,36 @@ export function CostItemsTable({
                         </div>
                       ) : (
                         <div className="flex items-center justify-end gap-2 group">
-                          <span className={cn(
-                            "font-mono font-medium",
-                            hasOverride && "text-warning"
-                          )}>
-                            {displayPrice ? formatPrice(displayPrice) : '—'}
-                          </span>
+                          {/* Admin tooltip showing price source */}
+                          {isAdmin && item.priceSource ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className={cn(
+                                  "font-mono font-medium cursor-help",
+                                  hasOverride && "text-warning"
+                                )}>
+                                  {displayPrice ? formatPrice(displayPrice) : '—'}
+                                  <Database className="inline-block h-3 w-3 ml-1 text-muted-foreground" />
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                <p className="text-xs font-medium">{item.priceSource}</p>
+                                {item.matchConfidence && (
+                                  <p className="text-xs text-muted-foreground">
+                                    Match confidence: {item.matchConfidence}%
+                                  </p>
+                                )}
+                              </TooltipContent>
+                            </Tooltip>
+                          ) : (
+                            <span className={cn(
+                              "font-mono font-medium",
+                              hasOverride && "text-warning",
+                              !displayPrice && "text-muted-foreground"
+                            )}>
+                              {displayPrice ? formatPrice(displayPrice) : '—'}
+                            </span>
+                          )}
                           {onPriceUpdate && displayPrice && (
                             <Tooltip>
                               <TooltipTrigger asChild>

@@ -46,6 +46,11 @@ interface DbCostItem {
   clarification_question: string | null;
   user_clarification: string | null;
   user_override_price: number | null;
+  // New benchmark matching fields
+  matched_benchmark_id: string | null;
+  match_confidence: number | null;
+  match_reasoning: string | null;
+  price_source: string | null;
 }
 
 export function useProject() {
@@ -222,16 +227,21 @@ export function useProject() {
         quantity: Number(item.quantity),
         unit: item.unit,
         originalUnitPrice: item.original_unit_price ? Number(item.original_unit_price) : undefined,
-        recommendedUnitPrice: Number(item.recommended_unit_price || 0),
-        benchmarkMin: Number(item.benchmark_min || 0),
-        benchmarkTypical: Number(item.benchmark_typical || 0),
-        benchmarkMax: Number(item.benchmark_max || 0),
+        recommendedUnitPrice: item.recommended_unit_price ? Number(item.recommended_unit_price) : null,
+        benchmarkMin: item.benchmark_min ? Number(item.benchmark_min) : null,
+        benchmarkTypical: item.benchmark_typical ? Number(item.benchmark_typical) : null,
+        benchmarkMax: item.benchmark_max ? Number(item.benchmark_max) : null,
         totalPrice: Number(item.total_price || 0),
         status: item.status as CostItemStatus,
         aiComment: item.ai_comment || '',
         clarificationQuestion: item.clarification_question || undefined,
         userClarification: item.user_clarification || undefined,
         userOverridePrice: item.user_override_price ? Number(item.user_override_price) : undefined,
+        // New benchmark matching fields
+        matchedBenchmarkId: item.matched_benchmark_id || null,
+        matchConfidence: item.match_confidence ? Number(item.match_confidence) : null,
+        matchReasoning: item.match_reasoning || null,
+        priceSource: item.price_source || null,
       }));
     } catch (error) {
       console.error('Get cost items error:', error);

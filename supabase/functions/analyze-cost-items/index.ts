@@ -1,103 +1,93 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const SYSTEM_PROMPT = `You are an AI Cost Intelligence Engine acting as a senior quantity surveyor and cost manager with international experience.
+const SYSTEM_PROMPT = `You are an AI Cost Intelligence Engine acting as a senior quantity surveyor with expertise in SEMANTIC MATCHING between construction cost items and benchmark price databases.
 
-Your task is to analyze construction cost items from project budgets, understand their real scope, and benchmark unit prices against available market data.
+## CRITICAL: DATABASE IS SOURCE OF TRUTH
 
-You do NOT act as a budgeting software. You act as a professional cost reviewer and verifier.
+You will be given:
+1. A cost item description from a project budget
+2. A list of benchmark prices from a professional price database (e.g., REPAB 2025)
 
-## CORE RESPONSIBILITY
+Your PRIMARY task is to find the BEST SEMANTIC MATCH between the cost item and the benchmark database.
 
-For each cost item, you MUST:
-1. Interpret what the item most likely represents in real construction scope
-2. Identify what is typically INCLUDED in such an item
-3. Identify what is typically EXCLUDED or ambiguous
-4. Recommend a reasonable unit price or price range based on market knowledge
-5. Decide whether the item is: OK, Review, Clarification, or Underpriced
+## SEMANTIC MATCHING RULES
 
-## STATUS DETERMINATION
+1. **Language Translation**: Understand that descriptions may be in different languages
+   - "carpets" = "textilgolv" = "matta" (Swedish)
+   - "demolition" = "rivning" (Swedish)
+   - "replacement" = "byte" (Swedish)
+   - "windows" = "fönster" (Swedish)
+   - "painting" = "målning" (Swedish)
+   - "flooring" = "golv" (Swedish)
 
-Assign status based on these rules:
-- **ok**: Price is within acceptable range (within ±10% of typical benchmark)
-- **review**: Price is MORE than 10% ABOVE typical benchmark (potential overpayment)
-- **underpriced**: Price is MORE than 10% BELOW typical benchmark (potential risk - contractor may cut corners, quality issues, or change orders likely)
-- **clarification**: Item description is ambiguous or more information needed to price accurately
+2. **Unit Compatibility**: ONLY match items with compatible units
+   - m² items must match m² benchmarks
+   - st (piece) items must match st benchmarks
+   - Never mix units (e.g., don't match m² item to "st" benchmark)
 
-IMPORTANT: Underpriced items are a significant concern! When a bid is more than 10% below market rate, flag it as "underpriced". The client needs to understand why it's cheap - it could indicate:
-- Missing scope in the contractor's understanding
-- Quality compromises planned
-- Potential for change orders later
-- Simply unsustainable pricing
+3. **Scope Understanding**: Match based on what the work actually entails
+   - "Demolition of old carpets and putting new ones" = carpet replacement work
+   - Match to benchmarks describing similar scope (byte = replacement)
 
-## INTERPRETATION LOGIC
+4. **Quantity Context**: Consider quantity ranges in benchmark descriptions
+   - "<5 m²", "5-20 m²", ">20 m²" indicate different price tiers
+   - Match to the appropriate quantity range
 
-When interpreting an item, always consider:
-- Project country and local construction practice
-- Project type (residential, office, industrial, etc.)
-- Trade / profession context (structural, HVAC, finishes, etc.)
-- Whether labor and material are typically combined or separated
-- Whether auxiliary costs (transport, scaffolding, temporary works) may be elsewhere
+## CONFIDENCE SCORING
 
-You must NOT assume maximum scope if the description is ambiguous.
-You must NOT assume minimum scope either.
+Rate your match confidence from 0-100:
+- **90-100**: Perfect semantic match, same scope, same unit
+- **70-89**: Good match, similar scope, compatible unit
+- **50-69**: Partial match, some aspects align
+- **Below 50**: Poor or no match - DO NOT USE THIS BENCHMARK
 
-## HANDLING AMBIGUITY
+## OUTPUT REQUIREMENTS
 
-If an item description is ambiguous, you MUST:
-- Clearly state what is unclear
-- Explain why this affects pricing
-- Ask a specific clarification question
-
-Clarification questions must be: Short, Technical, Actionable by a professional user.
-
-## PRICE BENCHMARKING RULES
-
-When recommending prices:
-- Consider price distribution, not a single value
-- Prefer typical market rates over extreme values
-- Adjust expectations based on: Quantity scale, Project complexity, Country-specific norms
-
-If the original price exists:
-- Compare it to your benchmark
-- Calculate deviation: ((originalPrice - benchmarkTypical) / benchmarkTypical) * 100
-- If deviation < -10%: status = "underpriced"
-- If deviation > +10%: status = "review"
-- If no original price: analyze based on description and set appropriate status
-
-Do NOT expose internal confidence scores to the user.
-
-## OUTPUT FORMAT
-
-You MUST respond with valid JSON only. For each cost item, provide:
+For each cost item, you MUST return:
 
 {
   "items": [
     {
-      "id": "item_id_from_input",
-      "interpretedScope": "Professional description of what the item represents",
-      "recommendedUnitPrice": 4500,
-      "benchmarkMin": 3800,
-      "benchmarkTypical": 4500,
-      "benchmarkMax": 5200,
+      "id": "item_id",
+      "matchedBenchmarkId": "uuid of best matching benchmark or null if no good match",
+      "matchConfidence": 85,
+      "matchReasoning": "Matched 'Demolition of old carpets' to 'Textilgolv byte 200-2000 m²' - both describe carpet replacement work, units compatible (m²)",
+      "interpretedScope": "Textile floor covering replacement including removal of existing and installation of new",
+      "recommendedUnitPrice": 900,
+      "benchmarkMin": 740,
+      "benchmarkTypical": 900,
+      "benchmarkMax": 1060,
+      "priceSource": "REPAB 2025 - Textilgolv byte 200-2000 m²",
       "status": "ok|review|clarification|underpriced",
-      "aiComment": "1-3 short sentences explaining your reasoning. For underpriced items, explain the risk.",
-      "clarificationQuestion": "Optional - one targeted question if status is clarification"
+      "aiComment": "Price based on REPAB 2025 benchmark for textile flooring replacement. Your original price of 280 SEK/m² is significantly below market rate."
     }
   ]
 }
 
-## PROFESSIONAL TONE
+## STATUS RULES (only if benchmark found)
 
-- Act like a senior cost consultant
-- Be precise and factual
-- Avoid generic AI language
-- Avoid unnecessary explanations
-- Avoid marketing language`;
+- **ok**: Original price within ±10% of benchmark typical
+- **review**: Original price >10% ABOVE benchmark (overpaying)
+- **underpriced**: Original price >10% BELOW benchmark (risk of quality issues)
+- **clarification**: No suitable benchmark found OR confidence < 70%
+
+## IF NO BENCHMARK MATCH (confidence < 70%)
+
+Set these values:
+- matchedBenchmarkId: null
+- recommendedUnitPrice: null
+- benchmarkMin/Typical/Max: null
+- status: "clarification"
+- priceSource: null
+- aiComment: "No suitable benchmark found. Manual review required."
+
+NEVER INVENT PRICES. If no benchmark matches, say so clearly.`;
 
 interface CostItemInput {
   id: string;
@@ -116,9 +106,37 @@ interface ProjectContext {
   name?: string;
 }
 
+interface BenchmarkPrice {
+  id: string;
+  description: string;
+  unit: string;
+  min_price: number | null;
+  avg_price: number;
+  max_price: number | null;
+  category: string;
+  source: string | null;
+  country: string;
+  currency: string;
+}
+
 interface AnalysisRequest {
   items: CostItemInput[];
   project: ProjectContext;
+}
+
+// Map country names to database country format
+function mapCountryToDb(country: string): string {
+  const mapping: Record<string, string> = {
+    'SE': 'SWEDEN',
+    'Sweden': 'SWEDEN',
+    'SWEDEN': 'SWEDEN',
+    'CZ': 'CZECH_REPUBLIC',
+    'Czech Republic': 'CZECH_REPUBLIC',
+    'DE': 'GERMANY',
+    'Germany': 'GERMANY',
+    // Add more mappings as needed
+  };
+  return mapping[country] || country.toUpperCase();
 }
 
 serve(async (req) => {
@@ -133,6 +151,10 @@ serve(async (req) => {
       throw new Error("AI service not configured");
     }
 
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
     const { items, project } = await req.json() as AnalysisRequest;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
@@ -144,13 +166,64 @@ serve(async (req) => {
 
     console.log(`Analyzing ${items.length} cost items for project in ${project.country}`);
 
-    // Build the user prompt with project context and items
+    // Fetch relevant benchmarks from database
+    const dbCountry = mapCountryToDb(project.country);
+    console.log(`Fetching benchmarks for country: ${dbCountry}, currency: ${project.currency}`);
+
+    const { data: benchmarks, error: benchmarkError } = await supabase
+      .from('benchmark_prices')
+      .select('id, description, unit, min_price, avg_price, max_price, category, source, country, currency')
+      .eq('country', dbCountry)
+      .eq('currency', project.currency);
+
+    if (benchmarkError) {
+      console.error("Error fetching benchmarks:", benchmarkError);
+      throw new Error("Failed to fetch benchmark data");
+    }
+
+    console.log(`Fetched ${benchmarks?.length || 0} benchmarks from database`);
+
+    // If no benchmarks, still analyze but set all to clarification
+    if (!benchmarks || benchmarks.length === 0) {
+      console.warn(`No benchmarks found for ${dbCountry}/${project.currency}`);
+      const fallbackItems = items.map(item => ({
+        id: item.id,
+        matchedBenchmarkId: null,
+        matchConfidence: 0,
+        matchReasoning: `No benchmarks available for ${dbCountry}/${project.currency}`,
+        interpretedScope: item.originalDescription,
+        recommendedUnitPrice: null,
+        benchmarkMin: null,
+        benchmarkTypical: null,
+        benchmarkMax: null,
+        priceSource: null,
+        status: "clarification",
+        aiComment: `No benchmark database available for ${project.country}. Manual pricing required.`
+      }));
+      
+      return new Response(
+        JSON.stringify({ items: fallbackItems }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Build the user prompt with project context, items, AND benchmark data
+    const benchmarkSummary = benchmarks.slice(0, 500).map((b: BenchmarkPrice) => 
+      `ID: ${b.id} | ${b.description} | ${b.unit} | ${b.avg_price} ${project.currency} (min: ${b.min_price || 'N/A'}, max: ${b.max_price || 'N/A'}) | Category: ${b.category} | Source: ${b.source || 'Unknown'}`
+    ).join('\n');
+
     const userPrompt = `## PROJECT CONTEXT
 
 - Country: ${project.country}
 - Currency: ${project.currency}
 - Project Type: ${project.projectType}
 ${project.name ? `- Project Name: ${project.name}` : ''}
+
+## BENCHMARK DATABASE (${benchmarks.length} entries available)
+
+${benchmarkSummary}
+
+${benchmarks.length > 500 ? `\n... and ${benchmarks.length - 500} more benchmarks available` : ''}
 
 ## COST ITEMS TO ANALYZE
 
@@ -163,7 +236,7 @@ ${item.trade ? `- Trade: ${item.trade}` : ''}
 ${item.sheetName ? `- Sheet/Section: ${item.sheetName}` : ''}
 `).join('\n')}
 
-Analyze each item and provide your assessment in the required JSON format.`;
+IMPORTANT: For each item, find the BEST matching benchmark from the database above. Use the benchmark ID, description, and prices EXACTLY as provided. Do NOT invent prices.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -220,8 +293,54 @@ Analyze each item and provide your assessment in the required JSON format.`;
       throw new Error("Invalid AI response format");
     }
 
+    // Validate and enrich results with benchmark data
+    const enrichedItems = analysisResult.items?.map((result: any) => {
+      // If AI provided a benchmark ID, verify it exists and use exact values
+      if (result.matchedBenchmarkId) {
+        const matchedBenchmark = benchmarks.find((b: BenchmarkPrice) => b.id === result.matchedBenchmarkId);
+        if (matchedBenchmark) {
+          console.log(`Item ${result.id}: Matched to benchmark "${matchedBenchmark.description}" with confidence ${result.matchConfidence}`);
+          return {
+            ...result,
+            recommendedUnitPrice: matchedBenchmark.avg_price,
+            benchmarkMin: matchedBenchmark.min_price || matchedBenchmark.avg_price * 0.85,
+            benchmarkTypical: matchedBenchmark.avg_price,
+            benchmarkMax: matchedBenchmark.max_price || matchedBenchmark.avg_price * 1.15,
+            priceSource: `${matchedBenchmark.source || 'Benchmark'} - ${matchedBenchmark.description}`,
+          };
+        } else {
+          console.warn(`Item ${result.id}: AI returned invalid benchmark ID ${result.matchedBenchmarkId}`);
+          // AI hallucinated a benchmark ID - reject and set to clarification
+          return {
+            ...result,
+            matchedBenchmarkId: null,
+            matchConfidence: 0,
+            recommendedUnitPrice: null,
+            benchmarkMin: null,
+            benchmarkTypical: null,
+            benchmarkMax: null,
+            priceSource: null,
+            status: "clarification",
+            aiComment: "No valid benchmark match found. Manual review required.",
+          };
+        }
+      }
+      
+      // No benchmark match
+      console.log(`Item ${result.id}: No benchmark match (confidence: ${result.matchConfidence || 0})`);
+      return {
+        ...result,
+        recommendedUnitPrice: null,
+        benchmarkMin: null,
+        benchmarkTypical: null,
+        benchmarkMax: null,
+        priceSource: null,
+        status: "clarification",
+      };
+    }) || [];
+
     return new Response(
-      JSON.stringify(analysisResult),
+      JSON.stringify({ items: enrichedItems }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
