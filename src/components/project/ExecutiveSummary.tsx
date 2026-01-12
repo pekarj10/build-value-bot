@@ -87,29 +87,51 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
           </div>
         </div>
         
-        {/* Expand/Collapse button - only visible on tablet and below */}
-        <Button
-          variant="ghost"
-          size="sm"
-          className="xl:hidden flex-shrink-0"
-          onClick={() => setIsExpanded(!isExpanded)}
-        >
-          {isExpanded ? (
-            <>
-              <ChevronUp className="h-4 w-4 mr-1" />
-              <span className="hidden sm:inline">Less</span>
-            </>
-          ) : (
-            <>
-              <ChevronDown className="h-4 w-4 mr-1" />
-              <span className="hidden sm:inline">More</span>
-            </>
-          )}
-        </Button>
+        {/* Expand/Collapse button - visible on tablet/mobile OR touch devices */}
+        {(forceCompactLayout) && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="flex-shrink-0"
+            onClick={() => setIsExpanded(!isExpanded)}
+          >
+            {isExpanded ? (
+              <>
+                <ChevronUp className="h-4 w-4 mr-1" />
+                <span className="hidden sm:inline">Less</span>
+              </>
+            ) : (
+              <>
+                <ChevronDown className="h-4 w-4 mr-1" />
+                <span className="hidden sm:inline">More</span>
+              </>
+            )}
+          </Button>
+        )}
+        {!forceCompactLayout && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="xl:hidden flex-shrink-0"
+            onClick={() => setIsExpanded(!isExpanded)}
+          >
+            {isExpanded ? (
+              <>
+                <ChevronUp className="h-4 w-4 mr-1" />
+                <span className="hidden sm:inline">Less</span>
+              </>
+            ) : (
+              <>
+                <ChevronDown className="h-4 w-4 mr-1" />
+                <span className="hidden sm:inline">More</span>
+              </>
+            )}
+          </Button>
+        )}
       </div>
 
-      {/* Compact view for tablet/mobile - always shows total */}
-      <div className="xl:hidden">
+      {/* Compact view for tablet/mobile/touch - always shows total */}
+      <div className={forceCompactLayout ? '' : 'xl:hidden'}>
         {/* Always visible: Total Estimated - full width for prominence */}
         <div className="p-4 bg-card rounded-lg border mb-4">
           <div className="flex items-center gap-2 mb-2">
@@ -208,8 +230,9 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
         )}
       </div>
 
-      {/* Full grid view for desktop - unchanged */}
-      <div className="hidden xl:grid xl:grid-cols-5 gap-4">
+      {/* Full grid view for desktop (hidden on touch devices) */}
+      {!forceCompactLayout && (
+        <div className="hidden xl:grid xl:grid-cols-5 gap-4">
         {/* Total Value */}
         <div className="p-4 bg-card rounded-lg border">
           <div className="flex items-center gap-2 mb-2">
@@ -278,6 +301,7 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
           </p>
         </div>
       </div>
+      )}
     </Card>
   );
 }
