@@ -239,7 +239,7 @@ export function BenchmarkManager() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Countries</SelectItem>
-              {countries.map((country) => (
+              {countries.filter((c) => c && c.trim() !== '').map((country) => (
                 <SelectItem key={country} value={country}>
                   {country}
                 </SelectItem>
@@ -253,7 +253,7 @@ export function BenchmarkManager() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Categories</SelectItem>
-              {categories.map((category) => (
+              {categories.filter((c) => c && c.trim() !== '').map((category) => (
                 <SelectItem key={category} value={category}>
                   {category}
                 </SelectItem>
