@@ -1,12 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CostItem } from '@/types/project';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  AlertTriangle, 
-  CheckCircle, 
+import {
+  TrendingUp,
+  TrendingDown,
+  AlertTriangle,
+  CheckCircle,
   DollarSign,
   BarChart3,
   ChevronDown,
@@ -21,7 +21,18 @@ interface ExecutiveSummaryProps {
 
 export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [forceCompactLayout, setForceCompactLayout] = useState(false);
 
+  // iPad can render at desktop widths; force the compact summary on touch devices
+  // so "Total Estimated" is always readable regardless of sidebar/panel layout.
+  useEffect(() => {
+    const mql = window.matchMedia('(pointer: coarse)');
+    const onChange = (e: MediaQueryListEvent) => setForceCompactLayout(e.matches);
+
+    setForceCompactLayout(mql.matches);
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
+  }, []);
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
