@@ -68,67 +68,67 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         {/* Total Value */}
-        <div className="p-4 bg-card rounded-lg border">
+        <div className="p-4 bg-card rounded-lg border min-w-0">
           <div className="flex items-center gap-2 mb-2">
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            <DollarSign className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider truncate">
               Total Estimated
             </span>
           </div>
-          <p className="text-2xl font-bold font-mono">{formatCurrency(totalValue)}</p>
+          <p className="text-xl sm:text-2xl font-bold font-mono truncate">{formatCurrency(totalValue)}</p>
         </div>
 
         {/* Review Count */}
-        <div className="p-4 bg-card rounded-lg border">
+        <div className="p-4 bg-card rounded-lg border min-w-0">
           <div className="flex items-center gap-2 mb-2">
-            <AlertTriangle className="h-4 w-4 text-warning" />
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            <AlertTriangle className="h-4 w-4 text-warning flex-shrink-0" />
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider truncate">
               Need Review
             </span>
           </div>
-          <p className="text-2xl font-bold">
+          <p className="text-xl sm:text-2xl font-bold">
             {reviewCount} <span className="text-sm font-normal text-muted-foreground">items</span>
           </p>
         </div>
 
         {/* Potential Savings */}
-        <div className="p-4 bg-card rounded-lg border">
+        <div className="p-4 bg-card rounded-lg border min-w-0">
           <div className="flex items-center gap-2 mb-2">
-            <TrendingDown className="h-4 w-4 text-success" />
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            <TrendingDown className="h-4 w-4 text-success flex-shrink-0" />
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider truncate">
               Potential Savings
             </span>
           </div>
-          <p className={cn("text-2xl font-bold font-mono", potentialSavings > 0 && "text-success")}>
+          <p className={cn("text-xl sm:text-2xl font-bold font-mono truncate", potentialSavings > 0 && "text-success")}>
             {formatCurrency(potentialSavings)}
           </p>
         </div>
 
         {/* Underpriced Risk */}
-        <div className="p-4 bg-card rounded-lg border">
+        <div className="p-4 bg-card rounded-lg border min-w-0">
           <div className="flex items-center gap-2 mb-2">
-            <TrendingUp className="h-4 w-4 text-destructive" />
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            <TrendingUp className="h-4 w-4 text-destructive flex-shrink-0" />
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider truncate">
               Underpriced Risk
             </span>
           </div>
-          <p className={cn("text-2xl font-bold font-mono", underpricedRisk > 0 && "text-destructive")}>
+          <p className={cn("text-xl sm:text-2xl font-bold font-mono truncate", underpricedRisk > 0 && "text-destructive")}>
             {formatCurrency(underpricedRisk)}
           </p>
         </div>
 
         {/* Average Variance */}
-        <div className="p-4 bg-card rounded-lg border">
+        <div className="p-4 bg-card rounded-lg border min-w-0">
           <div className="flex items-center gap-2 mb-2">
-            <CheckCircle className="h-4 w-4 text-muted-foreground" />
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            <CheckCircle className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider truncate">
               Avg Variance
             </span>
           </div>
           <p className={cn(
-            "text-2xl font-bold",
+            "text-xl sm:text-2xl font-bold",
             Math.abs(avgVariance) <= 10 && "text-success",
             Math.abs(avgVariance) > 10 && Math.abs(avgVariance) <= 25 && "text-warning",
             Math.abs(avgVariance) > 25 && "text-destructive"
