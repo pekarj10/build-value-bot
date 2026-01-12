@@ -472,7 +472,7 @@ export function BenchmarkUploader({ onUploadComplete }: { onUploadComplete: () =
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="_none_">-- None --</SelectItem>
-                    {headers.map((header) => (
+                    {headers.filter((h) => h && h.trim() !== '').map((header) => (
                       <SelectItem key={header} value={header}>
                         {header}
                       </SelectItem>
