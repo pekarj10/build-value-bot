@@ -462,16 +462,16 @@ export function BenchmarkUploader({ onUploadComplete }: { onUploadComplete: () =
                   )}
                 </Label>
                 <Select
-                  value={value}
+                  value={value || '_none_'}
                   onValueChange={(v) =>
-                    setColumnMapping((prev) => ({ ...prev, [field]: v }))
+                    setColumnMapping((prev) => ({ ...prev, [field]: v === '_none_' ? '' : v }))
                   }
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select column" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">-- None --</SelectItem>
+                    <SelectItem value="_none_">-- None --</SelectItem>
                     {headers.map((header) => (
                       <SelectItem key={header} value={header}>
                         {header}
