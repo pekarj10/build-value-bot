@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { TablePagination } from '@/components/project/TablePagination';
+import { BenchmarkManager } from '@/components/admin/BenchmarkManager';
 import { 
   Users, 
   FolderOpen, 
@@ -32,7 +33,8 @@ import {
   ChevronRight,
   TrendingUp,
   AlertTriangle,
-  CheckCircle2
+  CheckCircle2,
+  Database
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -64,7 +66,7 @@ export default function AdminDashboard() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'users' | 'projects'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'projects' | 'benchmarks'>('users');
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -320,36 +322,51 @@ export default function AdminDashboard() {
                   <FolderOpen className="h-4 w-4 mr-2" />
                   Projects
                 </Button>
-              </div>
-
-              <div className="flex gap-2">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder={activeTab === 'users' ? 'Search users...' : 'Search projects...'}
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9 w-64"
-                  />
-                </div>
-
-                <Select
-                  value={pageSize.toString()}
-                  onValueChange={(v) => setPageSize(Number(v))}
+                <Button
+                  variant={activeTab === 'benchmarks' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setActiveTab('benchmarks')}
                 >
-                  <SelectTrigger className="w-20">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="10">10</SelectItem>
-                    <SelectItem value="25">25</SelectItem>
-                    <SelectItem value="50">50</SelectItem>
-                  </SelectContent>
-                </Select>
+                  <Database className="h-4 w-4 mr-2" />
+                  Benchmarks
+                </Button>
               </div>
+
+              {activeTab !== 'benchmarks' && (
+                <div className="flex gap-2">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder={activeTab === 'users' ? 'Search users...' : 'Search projects...'}
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-9 w-64"
+                    />
+                  </div>
+
+                  <Select
+                    value={pageSize.toString()}
+                    onValueChange={(v) => setPageSize(Number(v))}
+                  >
+                    <SelectTrigger className="w-20">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="10">10</SelectItem>
+                      <SelectItem value="25">25</SelectItem>
+                      <SelectItem value="50">50</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
           </CardHeader>
 
+          {activeTab === 'benchmarks' ? (
+            <CardContent className="p-0">
+              <BenchmarkManager />
+            </CardContent>
+          ) : (
           <CardContent>
             {isLoading ? (
               <div className="space-y-3">
@@ -495,6 +512,7 @@ export default function AdminDashboard() {
               </>
             )}
           </CardContent>
+          )}
         </Card>
       </div>
     </AppLayout>
