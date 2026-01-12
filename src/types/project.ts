@@ -37,16 +37,21 @@ export interface CostItem {
   quantity: number;
   unit: string;
   originalUnitPrice?: number;
-  recommendedUnitPrice: number;
-  benchmarkMin: number;
-  benchmarkTypical: number;
-  benchmarkMax: number;
+  recommendedUnitPrice: number | null;
+  benchmarkMin: number | null;
+  benchmarkTypical: number | null;
+  benchmarkMax: number | null;
   totalPrice: number;
   status: CostItemStatus;
   aiComment: string;
   clarificationQuestion?: string;
   userClarification?: string;
   userOverridePrice?: number;
+  // New benchmark matching fields
+  matchedBenchmarkId?: string | null;
+  matchConfidence?: number | null;
+  matchReasoning?: string | null;
+  priceSource?: string | null;
 }
 
 export interface ProjectInsight {

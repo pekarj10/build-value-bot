@@ -69,8 +69,12 @@ export type Database = {
           created_at: string
           id: string
           interpreted_scope: string | null
+          match_confidence: number | null
+          match_reasoning: string | null
+          matched_benchmark_id: string | null
           original_description: string
           original_unit_price: number | null
+          price_source: string | null
           project_id: string
           quantity: number
           recommended_unit_price: number | null
@@ -92,8 +96,12 @@ export type Database = {
           created_at?: string
           id?: string
           interpreted_scope?: string | null
+          match_confidence?: number | null
+          match_reasoning?: string | null
+          matched_benchmark_id?: string | null
           original_description: string
           original_unit_price?: number | null
+          price_source?: string | null
           project_id: string
           quantity?: number
           recommended_unit_price?: number | null
@@ -115,8 +123,12 @@ export type Database = {
           created_at?: string
           id?: string
           interpreted_scope?: string | null
+          match_confidence?: number | null
+          match_reasoning?: string | null
+          matched_benchmark_id?: string | null
           original_description?: string
           original_unit_price?: number | null
+          price_source?: string | null
           project_id?: string
           quantity?: number
           recommended_unit_price?: number | null
@@ -130,6 +142,13 @@ export type Database = {
           user_override_price?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "cost_items_matched_benchmark_id_fkey"
+            columns: ["matched_benchmark_id"]
+            isOneToOne: false
+            referencedRelation: "benchmark_prices"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "cost_items_project_id_fkey"
             columns: ["project_id"]

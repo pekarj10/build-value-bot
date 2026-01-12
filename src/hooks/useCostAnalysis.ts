@@ -23,13 +23,18 @@ interface ProjectContext {
 interface AnalysisResult {
   id: string;
   interpretedScope: string;
-  recommendedUnitPrice: number;
-  benchmarkMin: number;
-  benchmarkTypical: number;
-  benchmarkMax: number;
+  recommendedUnitPrice: number | null;
+  benchmarkMin: number | null;
+  benchmarkTypical: number | null;
+  benchmarkMax: number | null;
   status: CostItemStatus;
   aiComment: string;
   clarificationQuestion?: string;
+  // New benchmark matching fields
+  matchedBenchmarkId?: string | null;
+  matchConfidence?: number | null;
+  matchReasoning?: string | null;
+  priceSource?: string | null;
 }
 
 export function useCostAnalysis() {
@@ -62,6 +67,7 @@ export function useCostAnalysis() {
         const result = results.find((r) => r.id === item.id);
         
         if (result) {
+          const recommendedPrice = result.recommendedUnitPrice ?? null;
           return {
             id: item.id,
             projectId: '', // Will be set by caller
@@ -72,13 +78,18 @@ export function useCostAnalysis() {
             quantity: item.quantity,
             unit: item.unit,
             originalUnitPrice: item.originalUnitPrice,
-            recommendedUnitPrice: result.recommendedUnitPrice,
-            benchmarkMin: result.benchmarkMin,
-            benchmarkTypical: result.benchmarkTypical,
-            benchmarkMax: result.benchmarkMax,
-            totalPrice: item.quantity * result.recommendedUnitPrice,
+            recommendedUnitPrice: recommendedPrice,
+            benchmarkMin: result.benchmarkMin ?? null,
+            benchmarkTypical: result.benchmarkTypical ?? null,
+            benchmarkMax: result.benchmarkMax ?? null,
+            totalPrice: recommendedPrice ? item.quantity * recommendedPrice : 0,
             status: result.status,
             aiComment: result.aiComment,
+            // New benchmark matching fields
+            matchedBenchmarkId: result.matchedBenchmarkId ?? null,
+            matchConfidence: result.matchConfidence ?? null,
+            matchReasoning: result.matchReasoning ?? null,
+            priceSource: result.priceSource ?? null,
           };
         }
 
@@ -93,13 +104,17 @@ export function useCostAnalysis() {
           quantity: item.quantity,
           unit: item.unit,
           originalUnitPrice: item.originalUnitPrice,
-          recommendedUnitPrice: item.originalUnitPrice || 0,
-          benchmarkMin: 0,
-          benchmarkTypical: 0,
-          benchmarkMax: 0,
-          totalPrice: item.quantity * (item.originalUnitPrice || 0),
+          recommendedUnitPrice: null,
+          benchmarkMin: null,
+          benchmarkTypical: null,
+          benchmarkMax: null,
+          totalPrice: 0,
           status: 'clarification' as const,
-          aiComment: 'Unable to analyze this item. Please provide more details.',
+          aiComment: 'Unable to analyze this item. No benchmark match found.',
+          matchedBenchmarkId: null,
+          matchConfidence: null,
+          matchReasoning: null,
+          priceSource: null,
         };
       });
 
