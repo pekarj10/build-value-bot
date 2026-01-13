@@ -202,6 +202,41 @@ async function callAIDeterministic(
 }
 
 /**
+ * FETCH ALL BENCHMARKS (no 1000-row cap)
+ * Supabase has a default 1000 row limit per request, so we must paginate.
+ * Ordering by id + deterministic pagination keeps results stable.
+ */
+async function fetchAllBenchmarks(
+  supabase: any,
+  dbCountry: string,
+  currency: string
+): Promise<BenchmarkPrice[]> {
+  const pageSize = 1000;
+  const all: BenchmarkPrice[] = [];
+  let from = 0;
+
+  while (true) {
+    const { data, error } = await supabase
+      .from('benchmark_prices')
+      .select('id, description, unit, min_price, avg_price, max_price, category, source, country, currency')
+      .eq('country', dbCountry)
+      .eq('currency', currency)
+      .order('id', { ascending: true })
+      .range(from, from + pageSize - 1);
+
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+
+    all.push(...data);
+    if (data.length < pageSize) break;
+
+    from += pageSize;
+  }
+
+  return all.sort((a, b) => a.id.localeCompare(b.id));
+}
+
+/**
  * GENERATE SEARCH TERMS - Deterministic English-to-local translation
  * ENHANCED: Comprehensive mapping for common construction terms
  */
@@ -370,23 +405,115 @@ function filterBenchmarkCandidates(
     // Skip if wrong unit
     if (!unitsCompatible(itemUnit, benchmark.unit)) continue;
 
-    // Check if any search term matches description or category
     const descLower = (benchmark.description || '').toLowerCase();
     const catLower = (benchmark.category || '').toLowerCase();
 
     for (const term of searchTerms) {
-      if (descLower.includes(term) || catLower.includes(term)) {
+      const t = term.toLowerCase();
+      if (!t) continue;
+      if (descLower.includes(t) || catLower.includes(t)) {
         if (!seenIds.has(benchmark.id)) {
           seenIds.add(benchmark.id);
           candidates.push(benchmark);
         }
-        break; // Found a match, no need to check other terms
+        break;
       }
     }
   }
 
-  // Sort by ID for deterministic ordering
+  // Stable baseline ordering (actual relevance ranking is applied later)
   return candidates.sort((a, b) => a.id.localeCompare(b.id));
+}
+
+type ScoredBenchmark = BenchmarkPrice & { _score: number };
+
+function scoreBenchmarkCandidate(
+  benchmark: BenchmarkPrice,
+  itemDescLower: string,
+  searchTerms: string[]
+): number {
+  const desc = (benchmark.description || '').toLowerCase();
+  const cat = (benchmark.category || '').toLowerCase();
+
+  let score = 0;
+
+  // Core scoring: reward term hits (codes/longer terms weigh more)
+  for (const term of searchTerms) {
+    const t = term.toLowerCase();
+    if (!t) continue;
+
+    const inDesc = desc.includes(t);
+    const inCat = cat.includes(t);
+    if (!inDesc && !inCat) continue;
+
+    const isCode = /^[0-9]{2,4}$/.test(t);
+    const base = isCode ? 20 : t.length >= 10 ? 10 : t.length >= 6 ? 6 : 3;
+    score += base;
+    if (inCat) score += 2;
+    if (inDesc && inCat) score += 3;
+  }
+
+  // Behavior / scope hints
+  const wantsReplacement = /(replacement|replace|replacing|byte|utbyte)/.test(itemDescLower);
+  if (wantsReplacement && desc.includes('byte')) score += 8;
+
+  // Penalize obvious non-replacement activities when user wants replacement
+  if (wantsReplacement && (desc.includes('strykning') || desc.includes('målning') || desc.includes('lack'))) {
+    score -= 12;
+  }
+
+  // Grass heuristics
+  if (/(grass|lawn|gräs|gräsytor|gräsmatta)/.test(itemDescLower)) {
+    if (desc.includes('gräsytor')) score += 8;
+    if (desc.includes('omläggning')) score += 14;
+    if (desc.includes('kompletteringsådd')) score -= 8;
+  }
+
+  // Windows heuristics
+  if (/(window|windows|fönster|fönsterbyte)/.test(itemDescLower)) {
+    if (desc.includes('fönster')) score += 8;
+    const wantsTriple = /(triple|3-glas|treglas)/.test(itemDescLower);
+    if (wantsTriple && (desc.includes('3-glas') || desc.includes('treglas'))) score += 10;
+  }
+
+  // Doors heuristics
+  if (/(door|doors|dörr|entrance|entré|ytterdörr)/.test(itemDescLower)) {
+    if (desc.includes('dörr')) score += 8;
+    if (desc.includes('ytter')) score += 4;
+    if (desc.includes('entré')) score += 4;
+  }
+
+  // Carpet / textile flooring heuristics
+  if (/(carpet|carpets|textilgolv|nålfilt|matta)/.test(itemDescLower)) {
+    if (cat.includes('textilgolv') || desc.includes('textilgolv') || desc.includes('nålfilt')) score += 16;
+    if (desc.includes('byte')) score += 6;
+  }
+
+  // Facade insulation: prefer explicit "Tilläggsisolering fasad" rows
+  if (/(facade|fasad)/.test(itemDescLower) && /(insulation|isolering|tilläggsisol)/.test(itemDescLower)) {
+    if (desc.includes('tilläggsisolering fasad')) score += 40;
+    if (desc.includes('tilläggsisol')) score += 12;
+    if (desc.includes('renovering')) score -= 4;
+  }
+
+  return score;
+}
+
+function rankBenchmarkCandidates(
+  candidates: BenchmarkPrice[],
+  item: CostItemInput,
+  searchTerms: string[]
+): ScoredBenchmark[] {
+  const itemDescLower = (item.originalDescription || '').toLowerCase();
+
+  const scored: ScoredBenchmark[] = candidates.map((b) => ({
+    ...b,
+    _score: scoreBenchmarkCandidate(b, itemDescLower, searchTerms),
+  }));
+
+  // Deterministic: score desc, then UUID asc
+  scored.sort((a, b) => (b._score - a._score) || a.id.localeCompare(b.id));
+  return scored;
 }
 
 /**
@@ -419,7 +546,7 @@ async function processCostItem(
     const searchTerms = generateSearchTerms(item.originalDescription);
     console.log(`[${item.originalDescription}] Search terms: ${searchTerms.slice(0, 10).join(', ')}`);
 
-    // STEP 2: Filter benchmarks in memory (deterministic - sorted by ID)
+    // STEP 2: Filter benchmarks in memory (unit-compatible + term hits)
     const candidates = filterBenchmarkCandidates(allBenchmarks, searchTerms, item.unit);
     console.log(`[${item.originalDescription}] Candidates: ${candidates.length} (unit: ${item.unit})`);
 
@@ -429,27 +556,24 @@ async function processCostItem(
       return noMatchResult;
     }
 
-    // STEP 3: AI selects best match (single deterministic call)
-    const candidateList = candidates.slice(0, 25).map(b =>
-      `ID: ${b.id}\nCategory: ${b.category}\nDescription: ${b.description}\nUnit: ${b.unit}\nPrice: ${b.avg_price} (${b.min_price || 'N/A'} - ${b.max_price || 'N/A'})`
-    ).join('\n\n');
+    // STEP 3: Rank candidates deterministically by relevance (fixes UUID-top-25 issue)
+    const ranked = rankBenchmarkCandidates(candidates, item, searchTerms);
+    const top = ranked.slice(0, 40); // keep prompt small but representative
+
+    console.log(
+      `[${item.originalDescription}] Top candidates: ` +
+        top.slice(0, 5).map(c => `${c.category} | ${c.description} (score=${c._score})`).join(' || ')
+    );
+
+    // STEP 4: AI selects best match from TOP ranked candidates
+    const candidateList = top.map(b =>
+      `score=${b._score} | ID=${b.id} | ${b.category} | ${b.description} | unit=${b.unit} | avg=${b.avg_price}`
+    ).join('\n');
 
     const aiResult = await callAIDeterministic(
       apiKey,
       UNIFIED_MATCH_PROMPT,
-      `COST ITEM TO MATCH:
-Description: "${item.originalDescription}"
-Unit: ${item.unit}
-Quantity: ${item.quantity}
-${item.originalUnitPrice ? `Original Price: ${item.originalUnitPrice}` : ''}
-
-TARGET LANGUAGE: ${targetLanguage}
-PROJECT TYPE: ${project.projectType || 'construction'}
-
-AVAILABLE BENCHMARKS (${candidates.length} total, showing first 25):
-${candidateList}
-
-Select the BEST matching benchmark ID or return null if none are suitable.`
+      `COST ITEM TO MATCH:\nDescription: "${item.originalDescription}"\nUnit: ${item.unit}\nQuantity: ${item.quantity}\n${item.originalUnitPrice ? `Original Price: ${item.originalUnitPrice}` : ''}\n\nTARGET LANGUAGE: ${targetLanguage}\nPROJECT TYPE: ${project.projectType || 'construction'}\n\nAVAILABLE BENCHMARKS (ranked by deterministic relevance; showing top ${top.length} of ${ranked.length}):\n${candidateList}\n\nSelect the BEST matching benchmark ID from the list above, or return null if none are suitable.`
     );
 
     console.log(`[${item.originalDescription}] AI result:`, JSON.stringify(aiResult));
@@ -545,20 +669,10 @@ serve(async (req) => {
     console.log(`Analyzing ${items.length} items for ${project.country} (${dbCountry})`);
     console.log(`Target language: ${targetLanguage}`);
 
-    // STEP 1: Fetch ALL benchmarks for this country/currency ONCE
-    const { data: allBenchmarks, error: benchmarkError } = await supabase
-      .from('benchmark_prices')
-      .select('id, description, unit, min_price, avg_price, max_price, category, source, country, currency')
-      .eq('country', dbCountry)
-      .eq('currency', project.currency)
-      .order('id', { ascending: true }); // CRITICAL: Deterministic ordering
+    // STEP 1: Fetch ALL benchmarks for this country/currency (no 1000-row cap)
+    const allBenchmarks = await fetchAllBenchmarks(supabase, dbCountry, project.currency);
 
-    if (benchmarkError) {
-      console.error("Error fetching benchmarks:", benchmarkError);
-      throw new Error("Failed to fetch benchmark data");
-    }
-
-    console.log(`Fetched ${allBenchmarks?.length || 0} benchmarks from database`);
+    console.log(`Fetched ${allBenchmarks.length} benchmarks from database`);
 
     if (!allBenchmarks || allBenchmarks.length === 0) {
       console.warn(`No benchmarks found for ${dbCountry}/${project.currency}`);
