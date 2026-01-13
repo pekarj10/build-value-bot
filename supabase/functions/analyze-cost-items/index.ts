@@ -283,7 +283,8 @@ serve(async (req) => {
         const seenIds = new Set<string>();
 
         for (const term of searchTerms) {
-          const { data: matches } = await supabase
+          // Search in description
+          const { data: descMatches } = await supabase
             .from('benchmark_prices')
             .select('id, description, unit, min_price, avg_price, max_price, category, source, country, currency')
             .eq('country', dbCountry)
@@ -291,8 +292,26 @@ serve(async (req) => {
             .ilike('description', `%${term}%`)
             .limit(20);
 
-          if (matches) {
-            for (const m of matches) {
+          if (descMatches) {
+            for (const m of descMatches) {
+              if (!seenIds.has(m.id)) {
+                seenIds.add(m.id);
+                candidateBenchmarks.push(m);
+              }
+            }
+          }
+
+          // Also search in category (e.g., "315 - Textilgolv")
+          const { data: catMatches } = await supabase
+            .from('benchmark_prices')
+            .select('id, description, unit, min_price, avg_price, max_price, category, source, country, currency')
+            .eq('country', dbCountry)
+            .eq('currency', project.currency)
+            .ilike('category', `%${term}%`)
+            .limit(20);
+
+          if (catMatches) {
+            for (const m of catMatches) {
               if (!seenIds.has(m.id)) {
                 seenIds.add(m.id);
                 candidateBenchmarks.push(m);
