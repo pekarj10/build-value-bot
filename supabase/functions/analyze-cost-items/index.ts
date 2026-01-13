@@ -229,7 +229,53 @@ serve(async (req) => {
           `Cost item: "${item.originalDescription}"\nUnit: ${item.unit}\nQuantity: ${item.quantity}`
         );
         
-        const searchTerms = searchTermsResult.searchTerms || [];
+        let searchTerms: string[] = searchTermsResult.searchTerms || [];
+        
+        // KEYWORD EXPANSION: Add Swedish translations for common English construction terms
+        const keywordMap: Record<string, string[]> = {
+          'carpet': ['textilgolv', 'matta', 'heltäckningsmatta'],
+          'flooring': ['golv', 'golvbeläggning'],
+          'grass': ['gräs', 'gräsytor', 'gräsmatta'],
+          'lawn': ['gräs', 'gräsytor', 'gräsmatta'],
+          'window': ['fönster', 'fönsterbyte'],
+          'windows': ['fönster', 'fönsterbyte'],
+          'door': ['dörr', 'dörrbyte'],
+          'doors': ['dörr', 'dörrbyte'],
+          'demolition': ['rivning', 'demontering'],
+          'facade': ['fasad', 'fasadrenovering'],
+          'painting': ['målning', 'måla'],
+          'paint': ['målning', 'färg'],
+          'roof': ['tak', 'takarbete', 'takrenovering'],
+          'roofing': ['tak', 'takbeläggning'],
+          'wall': ['vägg', 'väggar'],
+          'walls': ['vägg', 'väggar'],
+          'floor': ['golv', 'golvläggning'],
+          'tile': ['kakel', 'plattor', 'klinker'],
+          'tiles': ['kakel', 'plattor', 'klinker'],
+          'bathroom': ['badrum', 'våtrum'],
+          'kitchen': ['kök', 'köksrenovering'],
+          'plumbing': ['vvs', 'rörläggning', 'rörmokare'],
+          'electrical': ['el', 'elinstallation', 'elektriker'],
+          'concrete': ['betong', 'gjutning'],
+          'insulation': ['isolering', 'värmeisolering'],
+          'drainage': ['dränering', 'avlopp'],
+          'heating': ['värme', 'uppvärmning'],
+          'ventilation': ['ventilation', 'fläkt'],
+          'replacement': ['byte', 'utbyte'],
+          'installation': ['installation', 'montering'],
+          'renovation': ['renovering', 'ombyggnad'],
+          'construction': ['byggnation', 'byggarbete'],
+        };
+        
+        const descLower = item.originalDescription.toLowerCase();
+        for (const [english, swedish] of Object.entries(keywordMap)) {
+          if (descLower.includes(english)) {
+            searchTerms = [...searchTerms, ...swedish];
+          }
+        }
+        
+        // Remove duplicates
+        searchTerms = [...new Set(searchTerms)];
         console.log(`Generated search terms: ${searchTerms.join(', ')}`);
 
         // STEP 2: Search database for candidates using ILIKE
