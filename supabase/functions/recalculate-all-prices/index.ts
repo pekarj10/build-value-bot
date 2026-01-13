@@ -7,44 +7,22 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // - Update min/avg/max values with new data points
 // - Create new benchmark entries for novel items
 // - Build ultimate self-learning price database
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const SYSTEM_PROMPT = `You are an AI Cost Intelligence Engine. Your ONLY job is to find the BEST SEMANTIC MATCH between a cost item description and benchmark database entries.
+const SEARCH_TERMS_PROMPT = `You are a construction cost expert. Generate search terms for a Swedish price database.
+Generate 5-10 Swedish/English search terms.
+Return JSON: { "searchTerms": ["term1", "term2", ...] }`;
 
-## MATCHING RULES
-
-1. **Language Understanding**:
-   - "carpets" = "textilgolv" = "matta" (Swedish)
-   - "demolition" = "rivning", "replacement" = "byte"
-   - Understand semantic equivalents across languages
-
-2. **Unit Compatibility**: CRITICAL - only match items with SAME units
-   - m² must match m² benchmarks
-   - st (piece) must match st benchmarks
-
-3. **Confidence Scoring** (0-100):
-   - 90-100: Perfect match
-   - 70-89: Good match
-   - Below 70: No valid match - return null
-
-## OUTPUT FORMAT
-
-Return JSON array with one entry per item:
-{
-  "matches": [
-    {
-      "itemId": "item-uuid",
-      "benchmarkId": "benchmark-uuid or null",
-      "confidence": 85,
-      "reasoning": "Short explanation"
-    }
-  ]
-}
-
-NEVER return a benchmarkId if confidence < 70.`;
+const MATCH_PROMPT = `You are a senior quantity surveyor. Pick the BEST matching benchmark.
+RULES:
+1. UNIT MUST MATCH exactly
+2. Return the EXACT benchmark ID from the list
+3. Confidence < 70 = return null
+Return JSON: { "matchedBenchmarkId": "uuid-or-null", "confidence": 0-100, "reasoning": "why" }`;
 
 interface CostItem {
   id: string;
@@ -63,7 +41,6 @@ interface BenchmarkPrice {
   min_price: number | null;
   avg_price: number;
   max_price: number | null;
-  category: string;
   source: string | null;
 }
 
@@ -74,8 +51,53 @@ interface Project {
   project_type: string;
 }
 
-// Process items in batches to avoid token limits
-const BATCH_SIZE = 20;
+function mapCountryToDb(country: string): string {
+  const mapping: Record<string, string> = {
+    'SE': 'SWEDEN', 'Sweden': 'SWEDEN', 'SWEDEN': 'SWEDEN',
+    'CZ': 'CZECH_REPUBLIC', 'Czech Republic': 'CZECH_REPUBLIC',
+    'DE': 'GERMANY', 'Germany': 'GERMANY',
+  };
+  return mapping[country] || country.toUpperCase().replace(/ /g, '_');
+}
+
+function normalizeUnit(unit: string): string {
+  const u = unit.toLowerCase().trim();
+  if (u === 'm2' || u === 'm²' || u === 'sqm') return 'm²';
+  if (u === 'st' || u === 'pcs' || u === 'pc' || u === 'piece' || u === 'styck') return 'st';
+  if (u === 'm' || u === 'meter' || u === 'lm' || u === 'rm') return 'm';
+  return u;
+}
+
+function unitsCompatible(a: string, b: string): boolean {
+  return normalizeUnit(a) === normalizeUnit(b);
+}
+
+async function callAI(apiKey: string, systemPrompt: string, userPrompt: string): Promise<any> {
+  const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "google/gemini-2.5-flash",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      response_format: { type: "json_object" },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`AI error: ${response.status}`);
+  }
+
+  const data = await response.json();
+  const content = data.choices?.[0]?.message?.content;
+  if (!content) throw new Error("Empty AI response");
+  return JSON.parse(content);
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -83,7 +105,6 @@ serve(async (req) => {
   }
 
   try {
-    // Verify admin authorization
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(
@@ -101,7 +122,7 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Check if user is admin
+    // Check admin
     const token = authHeader.replace("Bearer ", "");
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     
@@ -120,13 +141,12 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Admin ${user.id} initiating recalculation of all prices`);
+    console.log(`Admin ${user.id} initiating full price recalculation`);
 
-    // Get request body for optional filtering
     const body = await req.json().catch(() => ({}));
-    const projectId = body.projectId; // Optional: recalculate only one project
+    const projectId = body.projectId;
 
-    // Fetch all projects (or specific project)
+    // Fetch projects
     let projectsQuery = supabase.from('projects').select('id, country, currency, project_type');
     if (projectId) {
       projectsQuery = projectsQuery.eq('id', projectId);
@@ -139,51 +159,24 @@ serve(async (req) => {
 
     console.log(`Processing ${projects?.length || 0} projects`);
 
-    const results: {
-      processed: number;
-      updated: number;
-      errors: number;
-      changes: Array<{
+    const results = {
+      processed: 0,
+      updated: 0,
+      errors: 0,
+      changes: [] as Array<{
         itemId: string;
         description: string;
         oldPrice: number | null;
         newPrice: number | null;
         priceSource: string | null;
         confidence: number;
-      }>;
-    } = {
-      processed: 0,
-      updated: 0,
-      errors: 0,
-      changes: [],
-    };
-
-    // Map country codes to database format
-    const countryMapping: Record<string, string> = {
-      'SE': 'SWEDEN',
-      'Sweden': 'SWEDEN',
-      'CZ': 'CZECH_REPUBLIC',
-      'Czech Republic': 'CZECH_REPUBLIC',
-      'DE': 'GERMANY',
-      'Germany': 'GERMANY',
+      }>,
     };
 
     for (const project of projects || []) {
-      const dbCountry = countryMapping[project.country] || project.country.toUpperCase();
+      const dbCountry = mapCountryToDb(project.country);
       
-      // Fetch benchmarks for this project's country/currency
-      const { data: benchmarks, error: benchmarkError } = await supabase
-        .from('benchmark_prices')
-        .select('id, description, unit, min_price, avg_price, max_price, category, source')
-        .eq('country', dbCountry)
-        .eq('currency', project.currency);
-
-      if (benchmarkError || !benchmarks?.length) {
-        console.warn(`No benchmarks for project ${project.id} (${dbCountry}/${project.currency})`);
-        continue;
-      }
-
-      // Fetch cost items for this project
+      // Fetch cost items
       const { data: costItems, error: itemsError } = await supabase
         .from('cost_items')
         .select('id, original_description, quantity, unit, original_unit_price, recommended_unit_price, project_id')
@@ -194,166 +187,192 @@ serve(async (req) => {
         continue;
       }
 
-      console.log(`Project ${project.id}: ${costItems.length} items, ${benchmarks.length} benchmarks`);
+      console.log(`Project ${project.id}: ${costItems.length} items`);
 
-      // Process items in batches
-      for (let i = 0; i < costItems.length; i += BATCH_SIZE) {
-        const batch = costItems.slice(i, i + BATCH_SIZE);
+      for (const item of costItems) {
+        results.processed++;
         
-        // Build prompt for this batch
-        const benchmarkSummary = benchmarks.slice(0, 300).map((b: BenchmarkPrice) =>
-          `ID: ${b.id} | ${b.description} | ${b.unit} | ${b.avg_price} ${project.currency}`
-        ).join('\n');
-
-        const itemsPrompt = batch.map((item: CostItem) =>
-          `ID: ${item.id} | "${item.original_description}" | ${item.quantity} ${item.unit}`
-        ).join('\n');
-
-        const userPrompt = `## BENCHMARKS (${benchmarks.length} total)\n${benchmarkSummary}\n\n## ITEMS TO MATCH\n${itemsPrompt}\n\nFind the best matching benchmark for each item. Return JSON with "matches" array.`;
-
         try {
-          const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${LOVABLE_API_KEY}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              model: "google/gemini-2.5-flash",
-              messages: [
-                { role: "system", content: SYSTEM_PROMPT },
-                { role: "user", content: userPrompt },
-              ],
-              response_format: { type: "json_object" },
-            }),
-          });
-
-          if (!response.ok) {
-            console.error(`AI error for batch ${i}: ${response.status}`);
-            results.errors += batch.length;
-            continue;
-          }
-
-          const data = await response.json();
-          const content = data.choices?.[0]?.message?.content;
+          // STEP 1: Generate search terms
+          const searchResult = await callAI(
+            LOVABLE_API_KEY,
+            SEARCH_TERMS_PROMPT,
+            `Cost item: "${item.original_description}"\nUnit: ${item.unit}`
+          );
           
-          if (!content) {
-            results.errors += batch.length;
-            continue;
+          const searchTerms = searchResult.searchTerms || [];
+
+          // STEP 2: Search DB
+          const candidates: BenchmarkPrice[] = [];
+          const seenIds = new Set<string>();
+
+          for (const term of searchTerms) {
+            const { data: matches } = await supabase
+              .from('benchmark_prices')
+              .select('id, description, unit, min_price, avg_price, max_price, source')
+              .eq('country', dbCountry)
+              .eq('currency', project.currency)
+              .ilike('description', `%${term}%`)
+              .limit(20);
+
+            if (matches) {
+              for (const m of matches) {
+                if (!seenIds.has(m.id)) {
+                  seenIds.add(m.id);
+                  candidates.push(m);
+                }
+              }
+            }
           }
 
-          const parsed = JSON.parse(content);
-          const matches = parsed.matches || [];
+          // STEP 3: Filter by unit
+          const unitCompatible = candidates.filter(b => unitsCompatible(item.unit, b.unit));
 
-          // Update each matched item
-          for (const match of matches) {
-            results.processed++;
-            
-            if (!match.benchmarkId || match.confidence < 70) {
-              // No valid match - set to clarification
-              const originalItem = batch.find((item: CostItem) => item.id === match.itemId);
-              if (originalItem && originalItem.recommended_unit_price !== null) {
-                // Only update if it had a price before (wrong AI-generated price)
-                await supabase
-                  .from('cost_items')
-                  .update({
-                    matched_benchmark_id: null,
-                    match_confidence: match.confidence || 0,
-                    match_reasoning: match.reasoning || "No valid benchmark match",
-                    recommended_unit_price: null,
-                    benchmark_min: null,
-                    benchmark_typical: null,
-                    benchmark_max: null,
-                    price_source: null,
-                    status: 'clarification',
-                    ai_comment: 'No valid benchmark match found. Manual review required.',
-                  })
-                  .eq('id', match.itemId);
+          if (unitCompatible.length === 0) {
+            // No match - update to clarification
+            if (item.recommended_unit_price !== null) {
+              await supabase
+                .from('cost_items')
+                .update({
+                  matched_benchmark_id: null,
+                  match_confidence: 0,
+                  match_reasoning: `No benchmarks with unit ${item.unit}`,
+                  recommended_unit_price: null,
+                  benchmark_min: null,
+                  benchmark_typical: null,
+                  benchmark_max: null,
+                  price_source: null,
+                  status: 'clarification',
+                  ai_comment: 'No benchmark match found. Manual pricing required.',
+                })
+                .eq('id', item.id);
 
-                results.updated++;
-                results.changes.push({
-                  itemId: match.itemId,
-                  description: originalItem.original_description,
-                  oldPrice: originalItem.recommended_unit_price,
-                  newPrice: null,
-                  priceSource: null,
-                  confidence: match.confidence || 0,
-                });
-              }
-              continue;
-            }
-
-            // Find the matched benchmark
-            const benchmark = benchmarks.find((b: BenchmarkPrice) => b.id === match.benchmarkId);
-            if (!benchmark) {
-              console.warn(`Invalid benchmark ID ${match.benchmarkId}`);
-              results.errors++;
-              continue;
-            }
-
-            const originalItem = batch.find((item: CostItem) => item.id === match.itemId);
-            if (!originalItem) continue;
-
-            // Calculate status based on original price vs benchmark
-            let status = 'clarification';
-            if (originalItem.original_unit_price && benchmark.avg_price) {
-              const variance = ((originalItem.original_unit_price - benchmark.avg_price) / benchmark.avg_price) * 100;
-              if (variance < -10) status = 'underpriced';
-              else if (variance > 10) status = 'review';
-              else status = 'ok';
-            }
-
-            const priceSource = `${benchmark.source || 'Benchmark'} - ${benchmark.description}`;
-
-            // Update the cost item
-            const { error: updateError } = await supabase
-              .from('cost_items')
-              .update({
-                matched_benchmark_id: benchmark.id,
-                match_confidence: match.confidence,
-                match_reasoning: match.reasoning,
-                recommended_unit_price: benchmark.avg_price,
-                benchmark_min: benchmark.min_price || benchmark.avg_price * 0.85,
-                benchmark_typical: benchmark.avg_price,
-                benchmark_max: benchmark.max_price || benchmark.avg_price * 1.15,
-                price_source: priceSource,
-                status: status,
-                ai_comment: `Matched to ${benchmark.description} with ${match.confidence}% confidence. ${match.reasoning}`,
-              })
-              .eq('id', match.itemId);
-
-            if (updateError) {
-              console.error(`Update error for item ${match.itemId}:`, updateError);
-              results.errors++;
-            } else {
               results.updated++;
-              
-              // Log the change
-              if (originalItem.recommended_unit_price !== benchmark.avg_price) {
-                results.changes.push({
-                  itemId: match.itemId,
-                  description: originalItem.original_description,
-                  oldPrice: originalItem.recommended_unit_price,
-                  newPrice: benchmark.avg_price,
-                  priceSource: priceSource,
-                  confidence: match.confidence,
-                });
-                console.log(`Item "${originalItem.original_description}": ${originalItem.recommended_unit_price} → ${benchmark.avg_price} (${priceSource})`);
-              }
+              results.changes.push({
+                itemId: item.id,
+                description: item.original_description,
+                oldPrice: item.recommended_unit_price,
+                newPrice: null,
+                priceSource: null,
+                confidence: 0,
+              });
+              console.log(`"${item.original_description}": ${item.recommended_unit_price} → NULL (no match)`);
+            }
+            continue;
+          }
+
+          // STEP 4: AI picks best match
+          const candidateList = unitCompatible.map(b => 
+            `ID: ${b.id} | ${b.description} | ${b.unit} | ${b.avg_price}`
+          ).join('\n');
+
+          const matchResult = await callAI(
+            LOVABLE_API_KEY,
+            MATCH_PROMPT,
+            `Item: "${item.original_description}" (${item.unit})\n\nBenchmarks:\n${candidateList}`
+          );
+
+          const matchedId = matchResult.matchedBenchmarkId;
+          const confidence = matchResult.confidence || 0;
+          const reasoning = matchResult.reasoning || "";
+
+          if (!matchedId || confidence < 70) {
+            // Low confidence
+            if (item.recommended_unit_price !== null) {
+              await supabase
+                .from('cost_items')
+                .update({
+                  matched_benchmark_id: null,
+                  match_confidence: confidence,
+                  match_reasoning: reasoning || "Low confidence match",
+                  recommended_unit_price: null,
+                  benchmark_min: null,
+                  benchmark_typical: null,
+                  benchmark_max: null,
+                  price_source: null,
+                  status: 'clarification',
+                  ai_comment: 'No confident benchmark match. Manual pricing required.',
+                })
+                .eq('id', item.id);
+
+              results.updated++;
+              results.changes.push({
+                itemId: item.id,
+                description: item.original_description,
+                oldPrice: item.recommended_unit_price,
+                newPrice: null,
+                priceSource: null,
+                confidence,
+              });
+              console.log(`"${item.original_description}": ${item.recommended_unit_price} → NULL (low confidence ${confidence}%)`);
+            }
+            continue;
+          }
+
+          // Validate match
+          const benchmark = unitCompatible.find(b => b.id === matchedId);
+          if (!benchmark) {
+            console.warn(`Invalid benchmark ID: ${matchedId}`);
+            results.errors++;
+            continue;
+          }
+
+          // Calculate status
+          let status = 'ok';
+          if (item.original_unit_price && benchmark.avg_price) {
+            const variance = ((item.original_unit_price - benchmark.avg_price) / benchmark.avg_price) * 100;
+            if (variance < -10) status = 'underpriced';
+            else if (variance > 10) status = 'review';
+          }
+
+          const priceSource = `${benchmark.source || 'Benchmark'} - ${benchmark.description}`;
+
+          // Update
+          const { error: updateError } = await supabase
+            .from('cost_items')
+            .update({
+              matched_benchmark_id: benchmark.id,
+              match_confidence: confidence,
+              match_reasoning: reasoning,
+              recommended_unit_price: benchmark.avg_price,
+              benchmark_min: benchmark.min_price || benchmark.avg_price * 0.85,
+              benchmark_typical: benchmark.avg_price,
+              benchmark_max: benchmark.max_price || benchmark.avg_price * 1.15,
+              price_source: priceSource,
+              status: status,
+              ai_comment: `Matched to ${benchmark.description} (${confidence}% confidence). ${reasoning}`,
+            })
+            .eq('id', item.id);
+
+          if (updateError) {
+            console.error(`Update error:`, updateError);
+            results.errors++;
+          } else {
+            if (item.recommended_unit_price !== benchmark.avg_price) {
+              results.updated++;
+              results.changes.push({
+                itemId: item.id,
+                description: item.original_description,
+                oldPrice: item.recommended_unit_price,
+                newPrice: benchmark.avg_price,
+                priceSource,
+                confidence,
+              });
+              console.log(`"${item.original_description}": ${item.recommended_unit_price} → ${benchmark.avg_price} (${priceSource})`);
             }
           }
 
-          // Small delay between batches to avoid rate limits
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-        } catch (batchError) {
-          console.error(`Batch error:`, batchError);
-          results.errors += batch.length;
+          // Rate limit delay
+          await new Promise(r => setTimeout(r, 200));
+
+        } catch (itemError) {
+          console.error(`Error processing item ${item.id}:`, itemError);
+          results.errors++;
         }
       }
     }
 
-    console.log(`Recalculation complete: ${results.processed} processed, ${results.updated} updated, ${results.errors} errors`);
+    console.log(`\nRecalculation complete: ${results.processed} processed, ${results.updated} updated, ${results.errors} errors`);
 
     return new Response(
       JSON.stringify(results),

@@ -34,9 +34,12 @@ import {
   TrendingUp,
   AlertTriangle,
   CheckCircle2,
-  Database
+  Database,
+  RefreshCw,
+  Loader2
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { toast } from 'sonner';
 
 interface UserProfile {
   id: string;
@@ -67,6 +70,20 @@ export default function AdminDashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'users' | 'projects' | 'benchmarks'>('users');
+  const [isRecalculating, setIsRecalculating] = useState(false);
+  const [recalculateResults, setRecalculateResults] = useState<{
+    processed: number;
+    updated: number;
+    errors: number;
+    changes: Array<{
+      itemId: string;
+      description: string;
+      oldPrice: number | null;
+      newPrice: number | null;
+      priceSource: string | null;
+      confidence: number;
+    }>;
+  } | null>(null);
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -79,6 +96,50 @@ export default function AdminDashboard() {
     totalItems: 0,
     totalIssues: 0,
   });
+  
+  const handleRecalculateAllPrices = async () => {
+    setIsRecalculating(true);
+    setRecalculateResults(null);
+    
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error('Not authenticated');
+        return;
+      }
+
+      toast.info('Starting price recalculation for all projects...');
+      
+      const { data, error } = await supabase.functions.invoke('recalculate-all-prices', {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (error) {
+        console.error('Recalculation error:', error);
+        toast.error(`Recalculation failed: ${error.message}`);
+        return;
+      }
+
+      setRecalculateResults(data);
+      
+      if (data.updated > 0) {
+        toast.success(`Updated ${data.updated} prices across ${data.processed} items`);
+      } else {
+        toast.info(`Processed ${data.processed} items, no updates needed`);
+      }
+      
+      // Refresh data
+      fetchData();
+      
+    } catch (error) {
+      console.error('Recalculation error:', error);
+      toast.error('Failed to recalculate prices');
+    } finally {
+      setIsRecalculating(false);
+    }
+  };
 
   useEffect(() => {
     if (!authLoading && !isAdmin) {
@@ -329,6 +390,20 @@ export default function AdminDashboard() {
                 >
                   <Database className="h-4 w-4 mr-2" />
                   Benchmarks
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRecalculateAllPrices}
+                  disabled={isRecalculating}
+                  className="ml-4 border-warning text-warning hover:bg-warning/10"
+                >
+                  {isRecalculating ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                  )}
+                  {isRecalculating ? 'Recalculating...' : 'Recalculate All Prices'}
                 </Button>
               </div>
 
