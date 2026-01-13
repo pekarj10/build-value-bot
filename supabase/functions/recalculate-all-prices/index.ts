@@ -200,23 +200,88 @@ serve(async (req) => {
             `Cost item: "${item.original_description}"\nUnit: ${item.unit}`
           );
           
-          const searchTerms = searchResult.searchTerms || [];
+          let searchTerms: string[] = searchResult.searchTerms || [];
+          
+          // KEYWORD EXPANSION: Add Swedish translations for common English construction terms
+          const keywordMap: Record<string, string[]> = {
+            'carpet': ['textilgolv', 'matta', 'heltäckningsmatta'],
+            'flooring': ['golv', 'golvbeläggning'],
+            'grass': ['gräs', 'gräsytor', 'gräsmatta'],
+            'lawn': ['gräs', 'gräsytor', 'gräsmatta'],
+            'window': ['fönster', 'fönsterbyte'],
+            'windows': ['fönster', 'fönsterbyte'],
+            'door': ['dörr', 'dörrbyte'],
+            'doors': ['dörr', 'dörrbyte'],
+            'demolition': ['rivning', 'demontering'],
+            'facade': ['fasad', 'fasadrenovering'],
+            'painting': ['målning', 'måla'],
+            'paint': ['målning', 'färg'],
+            'roof': ['tak', 'takarbete', 'takrenovering'],
+            'roofing': ['tak', 'takbeläggning'],
+            'wall': ['vägg', 'väggar'],
+            'walls': ['vägg', 'väggar'],
+            'floor': ['golv', 'golvläggning'],
+            'tile': ['kakel', 'plattor', 'klinker'],
+            'tiles': ['kakel', 'plattor', 'klinker'],
+            'bathroom': ['badrum', 'våtrum'],
+            'kitchen': ['kök', 'köksrenovering'],
+            'plumbing': ['vvs', 'rörläggning', 'rörmokare'],
+            'electrical': ['el', 'elinstallation', 'elektriker'],
+            'concrete': ['betong', 'gjutning'],
+            'insulation': ['isolering', 'värmeisolering'],
+            'drainage': ['dränering', 'avlopp'],
+            'heating': ['värme', 'uppvärmning'],
+            'ventilation': ['ventilation', 'fläkt'],
+            'replacement': ['byte', 'utbyte'],
+            'installation': ['installation', 'montering'],
+            'renovation': ['renovering', 'ombyggnad'],
+            'construction': ['byggnation', 'byggarbete'],
+          };
+          
+          const descLower = item.original_description.toLowerCase();
+          for (const [english, swedish] of Object.entries(keywordMap)) {
+            if (descLower.includes(english)) {
+              searchTerms = [...searchTerms, ...swedish];
+            }
+          }
+          
+          // Remove duplicates
+          searchTerms = [...new Set(searchTerms)];
 
           // STEP 2: Search DB
           const candidates: BenchmarkPrice[] = [];
           const seenIds = new Set<string>();
 
           for (const term of searchTerms) {
-            const { data: matches } = await supabase
+            // Search in description
+            const { data: descMatches } = await supabase
               .from('benchmark_prices')
-              .select('id, description, unit, min_price, avg_price, max_price, source')
+              .select('id, description, unit, min_price, avg_price, max_price, category, source')
               .eq('country', dbCountry)
               .eq('currency', project.currency)
               .ilike('description', `%${term}%`)
               .limit(20);
 
-            if (matches) {
-              for (const m of matches) {
+            if (descMatches) {
+              for (const m of descMatches) {
+                if (!seenIds.has(m.id)) {
+                  seenIds.add(m.id);
+                  candidates.push(m);
+                }
+              }
+            }
+
+            // Also search in category (e.g., "315 - Textilgolv")
+            const { data: catMatches } = await supabase
+              .from('benchmark_prices')
+              .select('id, description, unit, min_price, avg_price, max_price, category, source')
+              .eq('country', dbCountry)
+              .eq('currency', project.currency)
+              .ilike('category', `%${term}%`)
+              .limit(20);
+
+            if (catMatches) {
+              for (const m of catMatches) {
                 if (!seenIds.has(m.id)) {
                   seenIds.add(m.id);
                   candidates.push(m);
