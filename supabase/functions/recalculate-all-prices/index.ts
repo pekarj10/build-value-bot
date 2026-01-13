@@ -247,14 +247,15 @@ serve(async (req) => {
           
           // Remove duplicates
           searchTerms = [...new Set(searchTerms)];
+          console.log(`[${item.original_description}] Search terms: ${searchTerms.join(', ')}`);
 
-          // STEP 2: Search DB
+          // STEP 2: Search DB in BOTH description AND category
           const candidates: BenchmarkPrice[] = [];
           const seenIds = new Set<string>();
 
           for (const term of searchTerms) {
             // Search in description
-            const { data: descMatches } = await supabase
+            const { data: descMatches, error: descError } = await supabase
               .from('benchmark_prices')
               .select('id, description, unit, min_price, avg_price, max_price, category, source')
               .eq('country', dbCountry)
@@ -262,7 +263,11 @@ serve(async (req) => {
               .ilike('description', `%${term}%`)
               .limit(20);
 
-            if (descMatches) {
+            if (descError) {
+              console.error(`Search error (description) for "${term}":`, descError);
+            }
+            if (descMatches && descMatches.length > 0) {
+              console.log(`[${term}] Found ${descMatches.length} in DESCRIPTION: ${descMatches.map(m => m.description).join(', ')}`);
               for (const m of descMatches) {
                 if (!seenIds.has(m.id)) {
                   seenIds.add(m.id);
@@ -271,8 +276,8 @@ serve(async (req) => {
               }
             }
 
-            // Also search in category (e.g., "315 - Textilgolv")
-            const { data: catMatches } = await supabase
+            // ALSO search in category (e.g., "315 - Textilgolv")
+            const { data: catMatches, error: catError } = await supabase
               .from('benchmark_prices')
               .select('id, description, unit, min_price, avg_price, max_price, category, source')
               .eq('country', dbCountry)
@@ -280,7 +285,11 @@ serve(async (req) => {
               .ilike('category', `%${term}%`)
               .limit(20);
 
-            if (catMatches) {
+            if (catError) {
+              console.error(`Search error (category) for "${term}":`, catError);
+            }
+            if (catMatches && catMatches.length > 0) {
+              console.log(`[${term}] Found ${catMatches.length} in CATEGORY: ${catMatches.map(m => `${m.category}:${m.description}`).join(', ')}`);
               for (const m of catMatches) {
                 if (!seenIds.has(m.id)) {
                   seenIds.add(m.id);
@@ -289,6 +298,8 @@ serve(async (req) => {
               }
             }
           }
+
+          console.log(`[${item.original_description}] Total candidates found: ${candidates.length}`);
 
           // STEP 3: Filter by unit
           const unitCompatible = candidates.filter(b => unitsCompatible(item.unit, b.unit));
