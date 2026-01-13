@@ -13,8 +13,27 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const SEARCH_TERMS_PROMPT = `You are a construction cost expert. Generate search terms for a Swedish price database.
-Generate 5-10 Swedish/English search terms.
+// AI-POWERED MULTILINGUAL TRANSLATION PROMPT - Optimized for construction databases
+const TRANSLATE_PROMPT = `You are a Swedish construction industry expert translating cost items for a REPAB-style price database.
+
+For Swedish (SWEDEN) projects, use these EXACT industry terms:
+- Carpets/flooring: textilgolv, nålfilt, heltäckningsmatta, tuftad matta, golvmatta
+- Grass/landscaping: gräsytor, gräsmatta, gräsyta, omläggning
+- Windows: fönster, fönsterbyte, 3-glas, treglasfönster
+- Doors: entrédörr, entréparti, ytterdörr, dörrbyte
+- Demolition: rivning, demontering, byte
+- Installation: montering, installation, läggning
+- Actions: byte (replacement), ombyggnad (renovation)
+
+CRITICAL: For Swedish databases, always include the REPAB-style category words like:
+- "textilgolv" NOT just "matta" for carpets
+- "gräsytor" NOT just "gräs" for grass
+- "entréparti" for entrance doors
+
+Return JSON: { "translatedTerms": ["term1", "term2", ...], "mainTerm": "primary translation" }`;
+
+const SEARCH_TERMS_PROMPT = `You are a construction cost expert. Generate search terms for a Swedish REPAB-style price database.
+Include REPAB category terms like: textilgolv, gräsytor, entréparti, fönsterbyte, etc.
 Return JSON: { "searchTerms": ["term1", "term2", ...] }`;
 
 const MATCH_PROMPT = `You are a senior quantity surveyor picking benchmarks for construction cost items.
@@ -200,103 +219,62 @@ serve(async (req) => {
         results.processed++;
         
         try {
-          // STEP 1: Generate search terms
+          // STEP 1: AI-POWERED TRANSLATION - translates to project country language
+          const countryLanguageMap: Record<string, string> = {
+            'SWEDEN': 'Swedish',
+            'SE': 'Swedish',
+            'Sweden': 'Swedish',
+            'GERMANY': 'German',
+            'DE': 'German',
+            'Germany': 'German',
+            'CZECH_REPUBLIC': 'Czech',
+            'CZ': 'Czech',
+            'Czech Republic': 'Czech',
+            'AUSTRIA': 'German',
+            'AT': 'German',
+            'Austria': 'German',
+            'POLAND': 'Polish',
+            'PL': 'Polish',
+            'Poland': 'Polish',
+            'UNITED_KINGDOM': 'English',
+            'GB': 'English',
+            'United Kingdom': 'English',
+            'UNITED_STATES': 'English',
+            'US': 'English',
+            'United States': 'English',
+          };
+          
+          const targetLanguage = countryLanguageMap[project.country] || 'English';
+          
+          // AI translates the cost item to target language
+          const translationResult = await callAI(
+            LOVABLE_API_KEY,
+            TRANSLATE_PROMPT,
+            `Cost item: "${item.original_description}"\nTarget language: ${targetLanguage}\nConstruction context: ${project.project_type || 'general construction'}`
+          );
+          
+          const translatedTerms: string[] = translationResult.translatedTerms || [];
+          const mainTerm: string = translationResult.mainTerm || item.original_description;
+          console.log(`[${item.original_description}] AI Translation → [${translatedTerms.join(', ')}] (main: ${mainTerm})`);
+          
+          // STEP 2: Generate additional search terms with context
           const searchResult = await callAI(
             LOVABLE_API_KEY,
             SEARCH_TERMS_PROMPT,
-            `Cost item: "${item.original_description}"\nUnit: ${item.unit}`
+            `Cost item: "${item.original_description}"\nTranslated term: "${mainTerm}"\nUnit: ${item.unit}\nProject country: ${project.country}\nTarget language: ${targetLanguage}`
           );
           
-          let searchTerms: string[] = searchResult.searchTerms || [];
+          // Combine translated terms with AI-generated search terms
+          let searchTerms: string[] = [
+            ...translatedTerms,
+            ...(searchResult.searchTerms || []),
+            item.original_description.toLowerCase(),
+            mainTerm.toLowerCase(),
+          ];
           
-          // COMPREHENSIVE EN->SV KEYWORD EXPANSION for Swedish construction database
-          const keywordMap: Record<string, string[]> = {
-            // Flooring
-            'carpet': ['textilgolv', 'matta', 'heltäckningsmatta', 'nålfilt', 'golvmatta'],
-            'flooring': ['golv', 'golvbeläggning', 'golvmaterial'],
-            'floor': ['golv', 'golvläggning', 'bjälklag'],
-            'tile': ['kakel', 'plattor', 'klinker', 'golvplattor'],
-            'tiles': ['kakel', 'plattor', 'klinker', 'golvplattor'],
-            'parquet': ['parkett', 'trägolv', 'parkettgolv'],
-            'laminate': ['laminat', 'laminatgolv'],
-            'vinyl': ['vinyl', 'vinylgolv', 'plastmatta'],
-            
-            // Exterior & Landscaping
-            'grass': ['gräs', 'gräsyta', 'gräsmatta', 'gräsytor', 'lawn'],
-            'lawn': ['gräsyta', 'gräs', 'gräsmatta', 'gräsytor'],
-            'garden': ['trädgård', 'gräsyta', 'utemiljö', 'markarbete'],
-            'landscaping': ['markarbete', 'trädgård', 'utemiljö'],
-            'paving': ['plattsättning', 'marksten', 'stenläggning'],
-            'asphalt': ['asfalt', 'asfaltbeläggning'],
-            'fence': ['staket', 'stängsel', 'inhägnad'],
-            'terrace': ['terrass', 'altan', 'uteplats'],
-            'balcony': ['balkong', 'balkongrenovering'],
-            
-            // Building Envelope
-            'facade': ['fasad', 'puts', 'fasadrenovering', 'fasadmaterial'],
-            'roof': ['tak', 'takläggning', 'takrenovering', 'takarbete'],
-            'roofing': ['tak', 'takbeläggning', 'taktäckning'],
-            'wall': ['vägg', 'väggar', 'innervägg'],
-            'walls': ['vägg', 'väggar', 'innerväggar'],
-            'ceiling': ['tak', 'innertak', 'undertak'],
-            'insulation': ['isolering', 'värmeisolering', 'mineralull'],
-            
-            // Windows & Doors
-            'window': ['fönster', 'fönsterbyte', 'fönstermontering'],
-            'windows': ['fönster', 'fönsterbyte', 'fönstermontering'],
-            'door': ['dörr', 'dörrbyte', 'dörrmontering', 'entrédörr'],
-            'doors': ['dörr', 'dörrbyte', 'dörrmontering'],
-            'entrance': ['entré', 'ingång', 'entrédörr', 'entréparti'],
-            'gate': ['grind', 'port', 'garageport'],
-            
-            // Actions/Work Types
-            'demolition': ['rivning', 'demontering', 'rivningsarbete'],
-            'replacement': ['byte', 'utbyte', 'ersättning'],
-            'renovation': ['renovering', 'ombyggnad', 'upprustning'],
-            'installation': ['installation', 'montering', 'uppsättning'],
-            'repair': ['reparation', 'lagning', 'underhåll'],
-            'maintenance': ['underhåll', 'service', 'skötsel'],
-            'removal': ['borttagning', 'rivning', 'demontering'],
-            'construction': ['byggnation', 'byggarbete', 'nybyggnad'],
-            
-            // Rooms
-            'bathroom': ['badrum', 'våtrum', 'duschrum', 'wc'],
-            'kitchen': ['kök', 'köksrenovering', 'köksinstallation'],
-            'bedroom': ['sovrum'],
-            'living room': ['vardagsrum'],
-            'basement': ['källare', 'källarplan'],
-            'attic': ['vind', 'vindsutrymme'],
-            
-            // Systems
-            'heating': ['värme', 'uppvärmning', 'värmesystem'],
-            'ventilation': ['ventilation', 'fläkt', 'luftbehandling'],
-            'plumbing': ['vvs', 'rörläggning', 'rörmokare', 'rörinstallation'],
-            'electrical': ['el', 'elinstallation', 'elektriker', 'elanläggning'],
-            'drainage': ['dränering', 'avlopp', 'avloppssystem'],
-            'hvac': ['vvs', 'klimat', 'kyla'],
-            
-            // Materials
-            'concrete': ['betong', 'gjutning', 'betongarbete'],
-            'steel': ['stål', 'stålkonstruktion'],
-            'wood': ['trä', 'träarbete', 'virke'],
-            'brick': ['tegel', 'murning', 'murverk'],
-            'glass': ['glas', 'glasning', 'glaspartier'],
-            'paint': ['målning', 'färg', 'lackering'],
-            'painting': ['målning', 'måla', 'målningsarbete'],
-            'plaster': ['puts', 'putsning', 'gipsning'],
-            'drywall': ['gips', 'gipsskiva', 'gipsvägg'],
-          };
-          
-          const descLower = item.original_description.toLowerCase();
-          for (const [english, swedish] of Object.entries(keywordMap)) {
-            if (descLower.includes(english)) {
-              searchTerms = [...searchTerms, ...swedish];
-            }
-          }
-          
-          // Remove duplicates
-          searchTerms = [...new Set(searchTerms)];
-          console.log(`[${item.original_description}] Search terms: ${searchTerms.join(', ')}`);
+          // Remove duplicates and empty strings
+          searchTerms = [...new Set(searchTerms.filter(t => t && t.trim().length > 0))];
+          console.log(`[${item.original_description}] Combined search terms (${searchTerms.length}): ${searchTerms.join(', ')}`);
 
           // STEP 2: Search DB in BOTH description AND category
           const candidates: BenchmarkPrice[] = [];
