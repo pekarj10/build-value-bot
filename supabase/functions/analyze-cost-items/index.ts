@@ -203,75 +203,155 @@ async function callAIDeterministic(
 
 /**
  * GENERATE SEARCH TERMS - Deterministic English-to-local translation
+ * ENHANCED: Comprehensive mapping for common construction terms
  */
 function generateSearchTerms(description: string): string[] {
   const terms: string[] = [description.toLowerCase()];
   const desc = description.toLowerCase();
 
-  // Comprehensive English-Swedish mapping for consistent searching
+  // COMPREHENSIVE English-Swedish mapping for construction industry
+  // This ensures common terms always find relevant benchmarks
   const translations: Record<string, string[]> = {
-    // Flooring
-    'carpet': ['textilgolv', 'nålfilt', 'heltäckningsmatta', 'golvmatta', 'matta'],
-    'floor': ['golv', 'golvläggning', 'golvarbeten'],
-    'tile': ['kakel', 'klinker', 'plattor'],
-    'parquet': ['parkett', 'trägolv'],
-    'vinyl': ['vinyl', 'plastmatta'],
+    // === FLOORING ===
+    'carpet': ['textilgolv', 'nålfilt', 'heltäckningsmatta', 'golvmatta', 'matta', 'textil'],
+    'carpets': ['textilgolv', 'nålfilt', 'heltäckningsmatta', 'golvmatta', 'matta', 'textil'],
+    'floor': ['golv', 'golvläggning', 'golvarbeten', 'golvbeläggning'],
+    'flooring': ['golv', 'golvläggning', 'golvarbeten', 'golvbeläggning'],
+    'tile': ['kakel', 'klinker', 'plattor', 'keramik'],
+    'tiles': ['kakel', 'klinker', 'plattor', 'keramik'],
+    'parquet': ['parkett', 'trägolv', 'laminat'],
+    'vinyl': ['vinyl', 'plastmatta', 'plastgolv'],
+    'laminate': ['laminat', 'laminatgolv'],
 
-    // Exterior
-    'grass': ['gräsytor', 'gräsmatta', 'gräs', 'omläggning gräsytor'],
-    'lawn': ['gräsytor', 'gräsmatta'],
-    'garden': ['trädgård', 'utemiljö'],
-    'facade': ['fasad', 'puts', 'fasadrenovering'],
-    'roof': ['tak', 'takläggning', 'taktäckning'],
-    'insulation': ['isolering', 'tilläggsisolering', 'fasadisolering'],
-    'polystyrene': ['polystyren', 'cellplast', 'EPS'],
-
-    // Windows & Doors
-    'window': ['fönster', 'fönsterbyte', 'fönstermontering'],
-    'double glazed': ['2-glas', 'tvåglas'],
+    // === EXTERIOR / LANDSCAPING ===
+    'grass': ['gräs', 'gräsytor', 'gräsmatta', 'gräsyta', '111'],
+    'lawn': ['gräs', 'gräsytor', 'gräsmatta', 'gräsyta', '111'],
+    'turf': ['gräs', 'gräsytor', 'gräsmatta', 'rullgräs'],
+    'garden': ['trädgård', 'utemiljö', 'gräsytor', 'plantering'],
+    'landscaping': ['markarbeten', 'utemiljö', 'trädgård', 'gräsytor'],
+    'whole garden': ['gräsytor', 'gräsmatta', 'omläggning', '111'],
+    
+    // === FACADE ===
+    'facade': ['fasad', 'puts', 'fasadrenovering', 'fasadisolering', '203'],
+    'external wall': ['fasad', 'yttervägg', 'puts'],
+    'rendering': ['puts', 'putsning', 'fasadputs'],
+    'cladding': ['fasadbeklädnad', 'fasadskivor', 'beklädnad'],
+    
+    // === INSULATION ===
+    'insulation': ['isolering', 'tilläggsisolering', 'fasadisolering', 'isoler'],
+    'polystyrene': ['polystyren', 'cellplast', 'EPS', 'frigolitt'],
+    'eps': ['polystyren', 'cellplast', 'EPS'],
+    'mineral wool': ['mineralull', 'stenull', 'glasull'],
+    
+    // === ROOFING ===
+    'roof': ['tak', 'takläggning', 'taktäckning', 'takarbeten'],
+    'roofing': ['tak', 'takläggning', 'taktäckning', 'takarbeten'],
+    
+    // === WINDOWS & DOORS ===
+    'window': ['fönster', 'fönsterbyte', 'fönstermontering', '204', 'byte fönster'],
+    'windows': ['fönster', 'fönsterbyte', 'fönstermontering', '204', 'byte fönster'],
+    'glazed': ['glas', 'glasning', 'fönster'],
+    'double glazed': ['2-glas', 'tvåglas', 'fönster'],
     'triple glazed': ['3-glas', 'treglas', 'treglasfönster'],
     'triple': ['3-glas', 'treglas'],
-    'door': ['dörr', 'dörrmontering'],
-    'entrance': ['entré', 'entrédörr', 'entréparti', 'ytterdörr'],
+    'door': ['dörr', 'dörrmontering', 'dörrbyte', '204', 'byte dörr'],
+    'doors': ['dörr', 'dörrmontering', 'dörrbyte', '204', 'byte dörr'],
+    'entrance': ['entré', 'entrédörr', 'entréparti', 'ytterdörr', 'huvudentré'],
+    'entrance door': ['entrédörr', 'ytterdörr', 'entré', 'dörr'],
+    'entrance doors': ['entrédörr', 'ytterdörr', 'entré', 'dörr'],
 
-    // Demolition & Construction
-    'demolition': ['rivning', 'demontering', 'rivningsarbeten'],
-    'partition': ['innervägg', 'mellanvägg', 'gipsväggar', 'rumsavskiljare'],
-    'internal': ['inner', 'invändig'],
+    // === DEMOLITION ===
+    'demolition': ['rivning', 'demontering', 'rivningsarbeten', 'riv'],
+    'demolish': ['rivning', 'demontering', 'riv'],
+    'remove': ['rivning', 'demontering', 'borttagning'],
+    'removal': ['rivning', 'demontering', 'borttagning'],
+    
+    // === WALLS / PARTITIONS ===
+    'partition': ['innervägg', 'mellanvägg', 'gipsväggar', 'rumsavskiljare', 'lätta väggar'],
+    'partitions': ['innervägg', 'mellanvägg', 'gipsväggar', 'rumsavskiljare', 'lätta väggar'],
+    'internal': ['inner', 'invändig', 'inre'],
     'wall': ['vägg', 'väggar'],
+    'walls': ['vägg', 'väggar'],
+    'drywall': ['gips', 'gipsskivor', 'gipsvägg'],
+    'gypsum': ['gips', 'gipsskivor'],
 
-    // Systems
-    'heat pump': ['värmepump', 'luft-vatten', 'bergvärme'],
-    'air to water': ['luft-vatten', 'luft/vatten'],
-    'heating': ['värme', 'uppvärmning', 'värmesystem'],
-    'ventilation': ['ventilation', 'fläkt', 'ventilationsaggregat'],
-    'plumbing': ['VVS', 'rör', 'rörarbeten'],
-    'electrical': ['el', 'elinstallation', 'elarbeten'],
+    // === HVAC / SYSTEMS ===
+    'heat pump': ['värmepump', 'luft-vatten', 'bergvärme', 'värmepumpar'],
+    'heat': ['värme', 'uppvärmning'],
+    'pump': ['pump', 'värmepump'],
+    'air to water': ['luft-vatten', 'luft/vatten', 'luftvärmepump'],
+    'air-to-water': ['luft-vatten', 'luft/vatten', 'luftvärmepump'],
+    'heating': ['värme', 'uppvärmning', 'värmesystem', 'radiatorer'],
+    'ventilation': ['ventilation', 'fläkt', 'ventilationsaggregat', 'luft'],
+    'hvac': ['VVS', 'ventilation', 'värme', 'kyla'],
+    'plumbing': ['VVS', 'rör', 'rörarbeten', 'rörmokare'],
+    'electrical': ['el', 'elinstallation', 'elarbeten', 'elanläggning'],
 
-    // Actions
-    'replacement': ['byte', 'utbyte'],
-    'renovation': ['renovering', 'ombyggnad'],
-    'installation': ['installation', 'montering'],
-    'repair': ['reparation', 'lagning'],
-    'new': ['ny', 'nytt', 'nyinstallation'],
+    // === ACTIONS / VERBS ===
+    'replacement': ['byte', 'utbyte', 'ersättning'],
+    'replace': ['byte', 'utbyte', 'byta'],
+    'replacing': ['byte', 'utbyte', 'byta'],
+    'renovation': ['renovering', 'ombyggnad', 'upprustning'],
+    'renovate': ['renovering', 'renovera'],
+    'installation': ['installation', 'montering', 'montage'],
+    'install': ['installation', 'montera', 'installera'],
+    'installing': ['installation', 'montering'],
+    'repair': ['reparation', 'lagning', 'åtgärd'],
+    'new': ['ny', 'nytt', 'nyinstallation', 'nybyggnad'],
+    'putting': ['läggning', 'montering', 'byte'],
+    'old': ['gammal', 'befintlig', 'byte'],
   };
 
-  // Add translations for matching terms
+  // STEP 1: Check for multi-word phrases first (more specific matches)
+  const multiWordPhrases = [
+    'entrance door', 'entrance doors', 'heat pump', 'air to water', 'air-to-water',
+    'double glazed', 'triple glazed', 'whole garden', 'external wall', 'mineral wool'
+  ];
+  for (const phrase of multiWordPhrases) {
+    if (desc.includes(phrase) && translations[phrase]) {
+      terms.push(...translations[phrase]);
+    }
+  }
+
+  // STEP 2: Add translations for single-word matching terms
   for (const [eng, swe] of Object.entries(translations)) {
-    if (desc.includes(eng)) {
+    // Skip multi-word phrases (already handled)
+    if (eng.includes(' ') || eng.includes('-')) continue;
+    
+    // Check if this word appears in the description
+    const wordPattern = new RegExp(`\\b${eng}\\b`, 'i');
+    if (wordPattern.test(desc)) {
       terms.push(...swe);
     }
   }
 
-  // Also extract individual words
-  const words = desc.split(/\s+/);
+  // STEP 3: Add Swedish category codes if detected in context
+  // This helps when descriptions clearly map to specific REPAB categories
+  if (desc.includes('grass') || desc.includes('lawn') || desc.includes('garden')) {
+    terms.push('111', 'gräsytor');
+  }
+  if (desc.includes('window') || desc.includes('door')) {
+    terms.push('204', 'fönster och dörrar');
+  }
+  if (desc.includes('facade') || desc.includes('render') || desc.includes('cladding')) {
+    terms.push('203', 'fasad');
+  }
+
+  // STEP 4: Also add individual words from the original description
+  const words = desc.split(/[\s,.\-\/]+/);
   for (const word of words) {
-    if (translations[word]) {
-      terms.push(...translations[word]);
+    if (word.length >= 3) {
+      const cleanWord = word.toLowerCase();
+      if (translations[cleanWord]) {
+        terms.push(...translations[cleanWord]);
+      }
     }
   }
 
-  return [...new Set(terms.filter(t => t && t.trim().length >= 2))];
+  // Return unique terms, minimum 2 chars
+  const unique = [...new Set(terms.filter(t => t && t.trim().length >= 2))];
+  console.log(`Generated ${unique.length} search terms for: "${description}"`);
+  return unique;
 }
 
 /**
