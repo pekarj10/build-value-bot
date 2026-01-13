@@ -130,7 +130,7 @@ export function AIChatPanel({ project, items, onItemsUpdate, className }: AIChat
               recommendedPrice: result.recommendedUnitPrice,
             }));
 
-            // Apply updates
+            // Apply updates - INCLUDING all benchmark matching fields
             const updates = data.items.map((result: any) => {
               const originalItem = items.find(i => i.id === result.id);
               return {
@@ -144,7 +144,12 @@ export function AIChatPanel({ project, items, onItemsUpdate, className }: AIChat
                   status: result.status,
                   aiComment: result.aiComment,
                   clarificationQuestion: result.clarificationQuestion,
-                  totalPrice: originalItem ? originalItem.quantity * result.recommendedUnitPrice : undefined,
+                  totalPrice: originalItem ? originalItem.quantity * (result.recommendedUnitPrice || 0) : undefined,
+                  // CRITICAL: Include benchmark matching fields for consistency
+                  matchedBenchmarkId: result.matchedBenchmarkId || null,
+                  matchConfidence: result.matchConfidence || null,
+                  matchReasoning: result.matchReasoning || null,
+                  priceSource: result.priceSource || null,
                 },
               };
             });

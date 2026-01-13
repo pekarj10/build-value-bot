@@ -252,17 +252,22 @@ export function useProject() {
   const updateCostItem = useCallback(async (
     itemId: string,
     updates: Partial<{
-      recommended_unit_price: number;
-      benchmark_min: number;
-      benchmark_typical: number;
-      benchmark_max: number;
+      recommended_unit_price: number | null;
+      benchmark_min: number | null;
+      benchmark_typical: number | null;
+      benchmark_max: number | null;
       status: string;
       ai_comment: string;
       clarification_question: string;
       interpreted_scope: string;
       user_clarification: string;
-      user_override_price: number;
+      user_override_price: number | null;
       total_price: number;
+      // Benchmark matching fields - MUST persist for consistency
+      matched_benchmark_id: string | null;
+      match_confidence: number | null;
+      match_reasoning: string | null;
+      price_source: string | null;
     }>
   ) => {
     try {

@@ -1,49 +1,51 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+/**
+ * DETERMINISTIC AI-POWERED COST ITEM ANALYSIS
+ * 
+ * Key reliability features:
+ * 1. Temperature=0 for all AI calls (deterministic outputs)
+ * 2. Fixed seed=42 for reproducibility
+ * 3. Pre-fetch ALL benchmarks once, filter in-memory (no per-term DB queries)
+ * 4. Sequential processing with stable ordering
+ * 5. Comprehensive error handling
+ * 
+ * CRITICAL: Running this multiple times on unchanged data MUST produce IDENTICAL results
+ */
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// AI-POWERED MULTILINGUAL TRANSLATION PROMPT - Optimized for construction databases
-const TRANSLATE_PROMPT = `You are a Swedish construction industry expert translating cost items for a REPAB-style price database.
+// UNIFIED AI PROMPT - Single deterministic call for translation + matching
+const UNIFIED_MATCH_PROMPT = `You are a senior construction cost expert matching cost items to a benchmark database.
 
-For Swedish (SWEDEN) projects, use these EXACT industry terms:
-- Carpets/flooring: textilgolv, nålfilt, heltäckningsmatta, tuftad matta, golvmatta
-- Grass/landscaping: gräsytor, gräsmatta, gräsyta, omläggning
-- Windows: fönster, fönsterbyte, 3-glas, treglasfönster
-- Doors: entrédörr, entréparti, ytterdörr, dörrbyte
-- Demolition: rivning, demontering, byte
-- Installation: montering, installation, läggning
-- Actions: byte (replacement), ombyggnad (renovation)
+YOUR TASK:
+1. TRANSLATE the cost item to the target language construction terminology
+2. IDENTIFY the best matching benchmark from the provided candidates
+3. PROVIDE confidence score and reasoning
 
-CRITICAL: For Swedish databases, always include the REPAB-style category words like:
-- "textilgolv" NOT just "matta" for carpets
-- "gräsytor" NOT just "gräs" for grass
-- "entréparti" for entrance doors
+MATCHING RULES:
+- Match based on scope of work, materials, and activity type
+- Units must be compatible (m² matches m², st matches st, etc.)
+- Prefer exact semantic matches over partial matches
+- If multiple benchmarks could work, pick the most specific one
 
-Return JSON: { "translatedTerms": ["term1", "term2", ...], "mainTerm": "primary translation" }`;
+CONFIDENCE SCORING:
+- 90-100%: Exact match (same work type, same materials)
+- 80-89%: Very close match (same work type, similar scope)
+- 70-79%: Good match (related work, compatible scope)
+- 50-69%: Partial match (only use if nothing better)
+- 0-49%: No suitable match - return null
 
-// STEP 1: AI generates search terms for the cost item
-const SEARCH_TERMS_PROMPT = `You are a construction cost expert. Generate search terms for a Swedish REPAB-style price database.
-Include REPAB category terms like: textilgolv, gräsytor, entréparti, fönsterbyte, etc.
-Return JSON: { "searchTerms": ["term1", "term2", ...] }`;
-
-// STEP 2: AI picks the best benchmark from candidates
-const MATCH_PROMPT = `You are a senior quantity surveyor. Pick the BEST matching benchmark for the cost item.
-
-CRITICAL RULES:
-1. UNIT MUST MATCH: If cost item is m², only match m² benchmarks. If pcs/st, only match pcs/st.
-2. SCOPE MUST MATCH: "carpet replacement" matches "textilgolv byte", not just any flooring
-3. Return the EXACT benchmark ID from the list - do NOT make up IDs
-4. If no good match (wrong unit, wrong scope), return null
-
-Return JSON:
+CRITICAL: Return EXACTLY this JSON format:
 {
+  "translatedTerm": "the term in target language",
   "matchedBenchmarkId": "exact-uuid-from-list-or-null",
-  "confidence": 0-100,
-  "reasoning": "Why this benchmark matches (or why no match)"
+  "confidence": 85,
+  "reasoning": "Why this benchmark was selected or why no match"
 }`;
 
 interface CostItemInput {
@@ -81,34 +83,54 @@ interface AnalysisRequest {
   project: ProjectContext;
 }
 
+interface AnalysisResult {
+  id: string;
+  matchedBenchmarkId: string | null;
+  matchConfidence: number;
+  matchReasoning: string;
+  interpretedScope: string;
+  recommendedUnitPrice: number | null;
+  benchmarkMin: number | null;
+  benchmarkTypical: number | null;
+  benchmarkMax: number | null;
+  priceSource: string | null;
+  status: string;
+  aiComment: string;
+}
+
 // Map country names to database country format
 function mapCountryToDb(country: string): string {
   const mapping: Record<string, string> = {
-    'SE': 'SWEDEN',
-    'Sweden': 'SWEDEN',
-    'SWEDEN': 'SWEDEN',
-    'CZ': 'CZECH_REPUBLIC',
-    'Czech Republic': 'CZECH_REPUBLIC',
-    'DE': 'GERMANY',
-    'Germany': 'GERMANY',
-    'AT': 'AUSTRIA',
-    'Austria': 'AUSTRIA',
-    'PL': 'POLAND',
-    'Poland': 'POLAND',
-    'GB': 'UNITED_KINGDOM',
-    'United Kingdom': 'UNITED_KINGDOM',
-    'US': 'UNITED_STATES',
-    'United States': 'UNITED_STATES',
+    'SE': 'SWEDEN', 'Sweden': 'SWEDEN', 'SWEDEN': 'SWEDEN',
+    'CZ': 'CZECH_REPUBLIC', 'Czech Republic': 'CZECH_REPUBLIC',
+    'DE': 'GERMANY', 'Germany': 'GERMANY',
+    'AT': 'AUSTRIA', 'Austria': 'AUSTRIA',
+    'PL': 'POLAND', 'Poland': 'POLAND',
+    'GB': 'UNITED_KINGDOM', 'United Kingdom': 'UNITED_KINGDOM',
+    'US': 'UNITED_STATES', 'United States': 'UNITED_STATES',
   };
   return mapping[country] || country.toUpperCase().replace(/ /g, '_');
+}
+
+// Get language for country
+function getLanguageForCountry(country: string): string {
+  const languageMap: Record<string, string> = {
+    'SWEDEN': 'Swedish', 'SE': 'Swedish', 'Sweden': 'Swedish',
+    'GERMANY': 'German', 'DE': 'German', 'Germany': 'German',
+    'CZECH_REPUBLIC': 'Czech', 'CZ': 'Czech', 'Czech Republic': 'Czech',
+    'AUSTRIA': 'German', 'AT': 'German', 'Austria': 'German',
+    'POLAND': 'Polish', 'PL': 'Polish', 'Poland': 'Polish',
+    'UNITED_KINGDOM': 'English', 'GB': 'English', 'United Kingdom': 'English',
+    'UNITED_STATES': 'English', 'US': 'English', 'United States': 'English',
+  };
+  return languageMap[country] || 'English';
 }
 
 // Normalize unit for comparison
 function normalizeUnit(unit: string): string {
   const u = unit.toLowerCase().trim();
-  // Map common unit variations
-  if (u === 'm2' || u === 'm²' || u === 'sqm' || u === 'square meter' || u === 'square meters') return 'm²';
-  if (u === 'st' || u === 'pcs' || u === 'pc' || u === 'piece' || u === 'pieces' || u === 'styck') return 'st';
+  if (u === 'm2' || u === 'm²' || u === 'sqm' || u === 'kvm') return 'm²';
+  if (u === 'st' || u === 'pcs' || u === 'pc' || u === 'piece' || u === 'pieces' || u === 'styck' || u === 'stk') return 'st';
   if (u === 'm' || u === 'meter' || u === 'meters' || u === 'lm' || u === 'rm') return 'm';
   if (u === 'kg' || u === 'kilogram' || u === 'kilograms') return 'kg';
   if (u === 'l' || u === 'liter' || u === 'liters' || u === 'litre') return 'l';
@@ -118,48 +140,304 @@ function normalizeUnit(unit: string): string {
 
 // Check if units are compatible
 function unitsCompatible(itemUnit: string, benchmarkUnit: string): boolean {
-  const normItem = normalizeUnit(itemUnit);
-  const normBench = normalizeUnit(benchmarkUnit);
-  return normItem === normBench;
+  return normalizeUnit(itemUnit) === normalizeUnit(benchmarkUnit);
 }
 
-async function callAI(apiKey: string, systemPrompt: string, userPrompt: string): Promise<any> {
-  const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "google/gemini-2.5-flash",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      response_format: { type: "json_object" },
-    }),
-  });
+/**
+ * DETERMINISTIC AI CALL
+ * - Temperature = 0 for consistent outputs
+ * - Seed = 42 for reproducibility
+ * - JSON mode for structured responses
+ * - Retry logic for reliability
+ */
+async function callAIDeterministic(
+  apiKey: string,
+  systemPrompt: string,
+  userPrompt: string,
+  maxRetries: number = 2
+): Promise<any> {
+  let lastError: Error | null = null;
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error("AI gateway error:", response.status, errorText);
-    throw new Error(`AI service error: ${response.status}`);
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          temperature: 0, // CRITICAL: Deterministic output
+          seed: 42, // CRITICAL: Reproducible results
+          response_format: { type: "json_object" },
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`AI error ${response.status}: ${errorText}`);
+      }
+
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content;
+      if (!content) throw new Error("Empty AI response");
+
+      return JSON.parse(content);
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      console.warn(`AI call attempt ${attempt + 1} failed:`, lastError.message);
+
+      if (attempt < maxRetries) {
+        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+      }
+    }
   }
 
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content;
-  
-  if (!content) {
-    throw new Error("Empty AI response");
+  throw lastError || new Error("AI call failed after retries");
+}
+
+/**
+ * GENERATE SEARCH TERMS - Deterministic English-to-local translation
+ */
+function generateSearchTerms(description: string): string[] {
+  const terms: string[] = [description.toLowerCase()];
+  const desc = description.toLowerCase();
+
+  // Comprehensive English-Swedish mapping for consistent searching
+  const translations: Record<string, string[]> = {
+    // Flooring
+    'carpet': ['textilgolv', 'nålfilt', 'heltäckningsmatta', 'golvmatta', 'matta'],
+    'floor': ['golv', 'golvläggning', 'golvarbeten'],
+    'tile': ['kakel', 'klinker', 'plattor'],
+    'parquet': ['parkett', 'trägolv'],
+    'vinyl': ['vinyl', 'plastmatta'],
+
+    // Exterior
+    'grass': ['gräsytor', 'gräsmatta', 'gräs', 'omläggning gräsytor'],
+    'lawn': ['gräsytor', 'gräsmatta'],
+    'garden': ['trädgård', 'utemiljö'],
+    'facade': ['fasad', 'puts', 'fasadrenovering'],
+    'roof': ['tak', 'takläggning', 'taktäckning'],
+    'insulation': ['isolering', 'tilläggsisolering', 'fasadisolering'],
+    'polystyrene': ['polystyren', 'cellplast', 'EPS'],
+
+    // Windows & Doors
+    'window': ['fönster', 'fönsterbyte', 'fönstermontering'],
+    'double glazed': ['2-glas', 'tvåglas'],
+    'triple glazed': ['3-glas', 'treglas', 'treglasfönster'],
+    'triple': ['3-glas', 'treglas'],
+    'door': ['dörr', 'dörrmontering'],
+    'entrance': ['entré', 'entrédörr', 'entréparti', 'ytterdörr'],
+
+    // Demolition & Construction
+    'demolition': ['rivning', 'demontering', 'rivningsarbeten'],
+    'partition': ['innervägg', 'mellanvägg', 'gipsväggar', 'rumsavskiljare'],
+    'internal': ['inner', 'invändig'],
+    'wall': ['vägg', 'väggar'],
+
+    // Systems
+    'heat pump': ['värmepump', 'luft-vatten', 'bergvärme'],
+    'air to water': ['luft-vatten', 'luft/vatten'],
+    'heating': ['värme', 'uppvärmning', 'värmesystem'],
+    'ventilation': ['ventilation', 'fläkt', 'ventilationsaggregat'],
+    'plumbing': ['VVS', 'rör', 'rörarbeten'],
+    'electrical': ['el', 'elinstallation', 'elarbeten'],
+
+    // Actions
+    'replacement': ['byte', 'utbyte'],
+    'renovation': ['renovering', 'ombyggnad'],
+    'installation': ['installation', 'montering'],
+    'repair': ['reparation', 'lagning'],
+    'new': ['ny', 'nytt', 'nyinstallation'],
+  };
+
+  // Add translations for matching terms
+  for (const [eng, swe] of Object.entries(translations)) {
+    if (desc.includes(eng)) {
+      terms.push(...swe);
+    }
   }
 
-  return JSON.parse(content);
+  // Also extract individual words
+  const words = desc.split(/\s+/);
+  for (const word of words) {
+    if (translations[word]) {
+      terms.push(...translations[word]);
+    }
+  }
+
+  return [...new Set(terms.filter(t => t && t.trim().length >= 2))];
+}
+
+/**
+ * FILTER BENCHMARKS IN MEMORY
+ * Search both description AND category for any of the search terms
+ */
+function filterBenchmarkCandidates(
+  allBenchmarks: BenchmarkPrice[],
+  searchTerms: string[],
+  itemUnit: string
+): BenchmarkPrice[] {
+  const candidates: BenchmarkPrice[] = [];
+  const seenIds = new Set<string>();
+
+  for (const benchmark of allBenchmarks) {
+    // Skip if wrong unit
+    if (!unitsCompatible(itemUnit, benchmark.unit)) continue;
+
+    // Check if any search term matches description or category
+    const descLower = (benchmark.description || '').toLowerCase();
+    const catLower = (benchmark.category || '').toLowerCase();
+
+    for (const term of searchTerms) {
+      if (descLower.includes(term) || catLower.includes(term)) {
+        if (!seenIds.has(benchmark.id)) {
+          seenIds.add(benchmark.id);
+          candidates.push(benchmark);
+        }
+        break; // Found a match, no need to check other terms
+      }
+    }
+  }
+
+  // Sort by ID for deterministic ordering
+  return candidates.sort((a, b) => a.id.localeCompare(b.id));
+}
+
+/**
+ * PROCESS SINGLE COST ITEM - Deterministic matching
+ */
+async function processCostItem(
+  apiKey: string,
+  item: CostItemInput,
+  allBenchmarks: BenchmarkPrice[],
+  project: ProjectContext,
+  targetLanguage: string
+): Promise<AnalysisResult> {
+  const noMatchResult: AnalysisResult = {
+    id: item.id,
+    matchedBenchmarkId: null,
+    matchConfidence: 0,
+    matchReasoning: "",
+    interpretedScope: item.originalDescription,
+    recommendedUnitPrice: null,
+    benchmarkMin: null,
+    benchmarkTypical: null,
+    benchmarkMax: null,
+    priceSource: null,
+    status: "clarification",
+    aiComment: "No benchmark match found. Manual pricing required.",
+  };
+
+  try {
+    // STEP 1: Generate search terms (deterministic)
+    const searchTerms = generateSearchTerms(item.originalDescription);
+    console.log(`[${item.originalDescription}] Search terms: ${searchTerms.slice(0, 10).join(', ')}`);
+
+    // STEP 2: Filter benchmarks in memory (deterministic - sorted by ID)
+    const candidates = filterBenchmarkCandidates(allBenchmarks, searchTerms, item.unit);
+    console.log(`[${item.originalDescription}] Candidates: ${candidates.length} (unit: ${item.unit})`);
+
+    if (candidates.length === 0) {
+      noMatchResult.matchReasoning = `No benchmarks found with compatible unit (${item.unit})`;
+      console.log(`[${item.originalDescription}] → NO MATCH (no candidates)`);
+      return noMatchResult;
+    }
+
+    // STEP 3: AI selects best match (single deterministic call)
+    const candidateList = candidates.slice(0, 25).map(b =>
+      `ID: ${b.id}\nCategory: ${b.category}\nDescription: ${b.description}\nUnit: ${b.unit}\nPrice: ${b.avg_price} (${b.min_price || 'N/A'} - ${b.max_price || 'N/A'})`
+    ).join('\n\n');
+
+    const aiResult = await callAIDeterministic(
+      apiKey,
+      UNIFIED_MATCH_PROMPT,
+      `COST ITEM TO MATCH:
+Description: "${item.originalDescription}"
+Unit: ${item.unit}
+Quantity: ${item.quantity}
+${item.originalUnitPrice ? `Original Price: ${item.originalUnitPrice}` : ''}
+
+TARGET LANGUAGE: ${targetLanguage}
+PROJECT TYPE: ${project.projectType || 'construction'}
+
+AVAILABLE BENCHMARKS (${candidates.length} total, showing first 25):
+${candidateList}
+
+Select the BEST matching benchmark ID or return null if none are suitable.`
+    );
+
+    console.log(`[${item.originalDescription}] AI result:`, JSON.stringify(aiResult));
+
+    const matchedId = aiResult.matchedBenchmarkId;
+    const confidence = aiResult.confidence || 0;
+    const reasoning = aiResult.reasoning || "";
+    const translatedTerm = aiResult.translatedTerm || item.originalDescription;
+
+    // STEP 4: Validate match
+    if (!matchedId || matchedId === 'null' || confidence < 50) {
+      noMatchResult.matchConfidence = confidence;
+      noMatchResult.matchReasoning = reasoning || "No confident match found";
+      noMatchResult.interpretedScope = translatedTerm;
+      console.log(`[${item.originalDescription}] → NO MATCH (confidence: ${confidence}%)`);
+      return noMatchResult;
+    }
+
+    const benchmark = candidates.find(b => b.id === matchedId);
+    if (!benchmark) {
+      console.warn(`[${item.originalDescription}] Invalid benchmark ID: ${matchedId}`);
+      noMatchResult.matchReasoning = "AI returned invalid benchmark ID";
+      return noMatchResult;
+    }
+
+    // STEP 5: Calculate status based on price variance
+    let status = 'ok';
+    if (item.originalUnitPrice && benchmark.avg_price) {
+      const variance = ((item.originalUnitPrice - benchmark.avg_price) / benchmark.avg_price) * 100;
+      if (variance < -15) status = 'underpriced';
+      else if (variance > 15) status = 'review';
+    }
+
+    const priceSource = `${benchmark.source || 'REPAB'} - ${benchmark.category}: ${benchmark.description}`;
+
+    console.log(`[${item.originalDescription}] → MATCHED: ${benchmark.avg_price} (${confidence}% confidence)`);
+
+    return {
+      id: item.id,
+      matchedBenchmarkId: benchmark.id,
+      matchConfidence: confidence,
+      matchReasoning: reasoning,
+      interpretedScope: `${translatedTerm} → ${benchmark.description}`,
+      recommendedUnitPrice: benchmark.avg_price,
+      benchmarkMin: benchmark.min_price || benchmark.avg_price * 0.85,
+      benchmarkTypical: benchmark.avg_price,
+      benchmarkMax: benchmark.max_price || benchmark.avg_price * 1.15,
+      priceSource: priceSource,
+      status: status,
+      aiComment: `Matched to ${benchmark.description} (${confidence}% confidence). ${reasoning}`,
+    };
+
+  } catch (error) {
+    console.error(`[${item.originalDescription}] Error:`, error);
+    noMatchResult.matchReasoning = `Error: ${error instanceof Error ? error.message : 'Unknown'}`;
+    return noMatchResult;
+  }
 }
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+
+  const startTime = Date.now();
+  console.log("=".repeat(60));
+  console.log("DETERMINISTIC COST ITEM ANALYSIS - STARTING");
+  console.log("=".repeat(60));
 
   try {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -181,17 +459,19 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Analyzing ${items.length} cost items for project in ${project.country}`);
-
     const dbCountry = mapCountryToDb(project.country);
-    console.log(`Fetching benchmarks for country: ${dbCountry}, currency: ${project.currency}`);
+    const targetLanguage = getLanguageForCountry(project.country);
 
-    // Fetch ALL benchmarks for this country/currency
+    console.log(`Analyzing ${items.length} items for ${project.country} (${dbCountry})`);
+    console.log(`Target language: ${targetLanguage}`);
+
+    // STEP 1: Fetch ALL benchmarks for this country/currency ONCE
     const { data: allBenchmarks, error: benchmarkError } = await supabase
       .from('benchmark_prices')
       .select('id, description, unit, min_price, avg_price, max_price, category, source, country, currency')
       .eq('country', dbCountry)
-      .eq('currency', project.currency);
+      .eq('currency', project.currency)
+      .order('id', { ascending: true }); // CRITICAL: Deterministic ordering
 
     if (benchmarkError) {
       console.error("Error fetching benchmarks:", benchmarkError);
@@ -200,7 +480,6 @@ serve(async (req) => {
 
     console.log(`Fetched ${allBenchmarks?.length || 0} benchmarks from database`);
 
-    // If no benchmarks, return all items as clarification
     if (!allBenchmarks || allBenchmarks.length === 0) {
       console.warn(`No benchmarks found for ${dbCountry}/${project.currency}`);
       const fallbackItems = items.map(item => ({
@@ -217,273 +496,50 @@ serve(async (req) => {
         status: "clarification",
         aiComment: `No benchmark database available for ${project.country}. Manual pricing required.`
       }));
-      
+
       return new Response(
         JSON.stringify({ items: fallbackItems }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Create benchmark ID lookup for validation
-    const benchmarkLookup = new Map<string, BenchmarkPrice>();
-    allBenchmarks.forEach((b: BenchmarkPrice) => benchmarkLookup.set(b.id, b));
+    // STEP 2: Sort items by ID for deterministic processing order
+    const sortedItems = [...items].sort((a, b) => a.id.localeCompare(b.id));
 
-    const results = [];
+    // STEP 3: Process each item SEQUENTIALLY (no parallelism = no race conditions)
+    const results: AnalysisResult[] = [];
 
-    // Process each item
-    for (const item of items) {
-      console.log(`\n--- Processing item: "${item.originalDescription}" (${item.quantity} ${item.unit}) ---`);
-      
-      try {
-        // STEP 1: AI-POWERED TRANSLATION - translates to project country language
-        const countryLanguageMap: Record<string, string> = {
-          'SWEDEN': 'Swedish',
-          'SE': 'Swedish',
-          'Sweden': 'Swedish',
-          'GERMANY': 'German',
-          'DE': 'German',
-          'Germany': 'German',
-          'CZECH_REPUBLIC': 'Czech',
-          'CZ': 'Czech',
-          'Czech Republic': 'Czech',
-          'AUSTRIA': 'German',
-          'AT': 'German',
-          'Austria': 'German',
-          'POLAND': 'Polish',
-          'PL': 'Polish',
-          'Poland': 'Polish',
-          'UNITED_KINGDOM': 'English',
-          'GB': 'English',
-          'United Kingdom': 'English',
-          'UNITED_STATES': 'English',
-          'US': 'English',
-          'United States': 'English',
-        };
-        
-        const targetLanguage = countryLanguageMap[project.country] || 'English';
-        console.log(`Translating to ${targetLanguage} for project in ${project.country}`);
-        
-        // AI translates the cost item to target language
-        const translationResult = await callAI(
-          LOVABLE_API_KEY,
-          TRANSLATE_PROMPT,
-          `Cost item: "${item.originalDescription}"\nTarget language: ${targetLanguage}\nConstruction context: ${project.projectType || 'general construction'}`
-        );
-        
-        const translatedTerms: string[] = translationResult.translatedTerms || [];
-        const mainTerm: string = translationResult.mainTerm || item.originalDescription;
-        console.log(`AI Translation: "${item.originalDescription}" → [${translatedTerms.join(', ')}] (main: ${mainTerm})`);
-        
-        // STEP 2: Generate additional search terms with context
-        const searchTermsResult = await callAI(
-          LOVABLE_API_KEY,
-          SEARCH_TERMS_PROMPT,
-          `Cost item: "${item.originalDescription}"\nTranslated term: "${mainTerm}"\nUnit: ${item.unit}\nProject country: ${project.country}\nTarget language: ${targetLanguage}`
-        );
-        
-        // Combine translated terms with AI-generated search terms
-        let searchTerms: string[] = [
-          ...translatedTerms,
-          ...(searchTermsResult.searchTerms || []),
-          item.originalDescription.toLowerCase(), // Include original
-          mainTerm.toLowerCase(), // Include main translation
-        ];
-        
-        // Remove duplicates and empty strings
-        searchTerms = [...new Set(searchTerms.filter(t => t && t.trim().length > 0))];
-        console.log(`Combined search terms (${searchTerms.length}): ${searchTerms.join(', ')}`);
+    for (let i = 0; i < sortedItems.length; i++) {
+      const item = sortedItems[i];
+      console.log(`\n[${i + 1}/${sortedItems.length}] Processing: "${item.originalDescription}"`);
 
-        // STEP 2: Search database for candidates using ILIKE
-        const candidateBenchmarks: BenchmarkPrice[] = [];
-        const seenIds = new Set<string>();
+      const result = await processCostItem(
+        LOVABLE_API_KEY,
+        item,
+        allBenchmarks,
+        project,
+        targetLanguage
+      );
 
-        for (const term of searchTerms) {
-          // Search in description
-          const { data: descMatches } = await supabase
-            .from('benchmark_prices')
-            .select('id, description, unit, min_price, avg_price, max_price, category, source, country, currency')
-            .eq('country', dbCountry)
-            .eq('currency', project.currency)
-            .ilike('description', `%${term}%`)
-            .limit(20);
+      results.push(result);
 
-          if (descMatches) {
-            for (const m of descMatches) {
-              if (!seenIds.has(m.id)) {
-                seenIds.add(m.id);
-                candidateBenchmarks.push(m);
-              }
-            }
-          }
-
-          // Also search in category (e.g., "315 - Textilgolv")
-          const { data: catMatches } = await supabase
-            .from('benchmark_prices')
-            .select('id, description, unit, min_price, avg_price, max_price, category, source, country, currency')
-            .eq('country', dbCountry)
-            .eq('currency', project.currency)
-            .ilike('category', `%${term}%`)
-            .limit(20);
-
-          if (catMatches) {
-            for (const m of catMatches) {
-              if (!seenIds.has(m.id)) {
-                seenIds.add(m.id);
-                candidateBenchmarks.push(m);
-              }
-            }
-          }
-        }
-
-        console.log(`Found ${candidateBenchmarks.length} candidate benchmarks from DB`);
-
-        // STEP 3: Filter by unit compatibility
-        const unitCompatibleCandidates = candidateBenchmarks.filter(
-          b => unitsCompatible(item.unit, b.unit)
-        );
-        console.log(`After unit filter (${item.unit}): ${unitCompatibleCandidates.length} candidates`);
-
-        // If no unit-compatible candidates, set to clarification
-        if (unitCompatibleCandidates.length === 0) {
-          console.log(`No unit-compatible benchmarks found for "${item.originalDescription}"`);
-          results.push({
-            id: item.id,
-            matchedBenchmarkId: null,
-            matchConfidence: 0,
-            matchReasoning: `No benchmarks found with compatible unit (${item.unit})`,
-            interpretedScope: item.originalDescription,
-            recommendedUnitPrice: null,
-            benchmarkMin: null,
-            benchmarkTypical: null,
-            benchmarkMax: null,
-            priceSource: null,
-            status: "clarification",
-            aiComment: `No benchmark found with unit ${item.unit}. Manual pricing required.`
-          });
-          continue;
-        }
-
-        // STEP 4: AI picks the best match from candidates
-        const candidateList = unitCompatibleCandidates.map(b => 
-          `ID: ${b.id} | ${b.description} | Unit: ${b.unit} | Price: ${b.avg_price} ${project.currency} (${b.min_price || 'N/A'} - ${b.max_price || 'N/A'}) | Source: ${b.source || 'Unknown'}`
-        ).join('\n');
-
-        const matchResult = await callAI(
-          LOVABLE_API_KEY,
-          MATCH_PROMPT,
-          `COST ITEM:
-Description: "${item.originalDescription}"
-Quantity: ${item.quantity} ${item.unit}
-${item.originalUnitPrice ? `Original Price: ${item.originalUnitPrice} ${project.currency}` : 'Original Price: Not provided'}
-${item.trade ? `Trade: ${item.trade}` : ''}
-
-CANDIDATE BENCHMARKS (all have compatible units):
-${candidateList}
-
-Pick the BEST matching benchmark. Return the EXACT ID from the list above, or null if none match well.`
-        );
-
-        console.log(`AI match result:`, JSON.stringify(matchResult));
-
-        // STEP 5: Validate the match - CRITICAL: verify ID exists in our lookup
-        const matchedId = matchResult.matchedBenchmarkId;
-        const confidence = matchResult.confidence || 0;
-        const reasoning = matchResult.reasoning || "";
-
-        if (!matchedId || confidence < 70) {
-          console.log(`Low confidence (${confidence}) or no match for "${item.originalDescription}"`);
-          results.push({
-            id: item.id,
-            matchedBenchmarkId: null,
-            matchConfidence: confidence,
-            matchReasoning: reasoning || "No confident benchmark match found",
-            interpretedScope: item.originalDescription,
-            recommendedUnitPrice: null,
-            benchmarkMin: null,
-            benchmarkTypical: null,
-            benchmarkMax: null,
-            priceSource: null,
-            status: "clarification",
-            aiComment: "No confident benchmark match found. Manual pricing required."
-          });
-          continue;
-        }
-
-        // Verify the benchmark ID exists AND is in our candidates
-        const matchedBenchmark = unitCompatibleCandidates.find(b => b.id === matchedId);
-        
-        if (!matchedBenchmark) {
-          // AI hallucinated an ID - reject it
-          console.warn(`AI returned invalid benchmark ID: ${matchedId}`);
-          results.push({
-            id: item.id,
-            matchedBenchmarkId: null,
-            matchConfidence: 0,
-            matchReasoning: "AI returned invalid benchmark reference",
-            interpretedScope: item.originalDescription,
-            recommendedUnitPrice: null,
-            benchmarkMin: null,
-            benchmarkTypical: null,
-            benchmarkMax: null,
-            priceSource: null,
-            status: "clarification",
-            aiComment: "No valid benchmark match found. Manual pricing required."
-          });
-          continue;
-        }
-
-        // SUCCESS: We have a valid DB match
-        console.log(`✓ Matched to "${matchedBenchmark.description}" at ${matchedBenchmark.avg_price} ${project.currency}`);
-
-        // Calculate status based on original price vs benchmark
-        let status = 'ok';
-        if (item.originalUnitPrice && matchedBenchmark.avg_price) {
-          const variance = ((item.originalUnitPrice - matchedBenchmark.avg_price) / matchedBenchmark.avg_price) * 100;
-          if (variance < -10) status = 'underpriced';
-          else if (variance > 10) status = 'review';
-          else status = 'ok';
-        } else {
-          status = 'ok'; // No original price to compare
-        }
-
-        const priceSource = `${matchedBenchmark.source || 'Benchmark'} - ${matchedBenchmark.description}`;
-
-        results.push({
-          id: item.id,
-          matchedBenchmarkId: matchedBenchmark.id,
-          matchConfidence: confidence,
-          matchReasoning: reasoning,
-          interpretedScope: `${matchedBenchmark.description} (matched from: ${item.originalDescription})`,
-          recommendedUnitPrice: matchedBenchmark.avg_price,
-          benchmarkMin: matchedBenchmark.min_price || matchedBenchmark.avg_price * 0.85,
-          benchmarkTypical: matchedBenchmark.avg_price,
-          benchmarkMax: matchedBenchmark.max_price || matchedBenchmark.avg_price * 1.15,
-          priceSource: priceSource,
-          status: status,
-          aiComment: `Matched to ${matchedBenchmark.description} with ${confidence}% confidence. ${reasoning}`
-        });
-
-      } catch (itemError) {
-        console.error(`Error processing item ${item.id}:`, itemError);
-        results.push({
-          id: item.id,
-          matchedBenchmarkId: null,
-          matchConfidence: 0,
-          matchReasoning: `Processing error: ${itemError instanceof Error ? itemError.message : 'Unknown error'}`,
-          interpretedScope: item.originalDescription,
-          recommendedUnitPrice: null,
-          benchmarkMin: null,
-          benchmarkTypical: null,
-          benchmarkMax: null,
-          priceSource: null,
-          status: "clarification",
-          aiComment: "Error during analysis. Manual pricing required."
-        });
+      // Rate limiting between items (consistent timing)
+      if (i < sortedItems.length - 1) {
+        await new Promise(r => setTimeout(r, 200));
       }
     }
 
-    console.log(`\nAnalysis complete: ${results.length} items processed`);
-    
+    const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+    const matchedCount = results.filter(r => r.matchedBenchmarkId).length;
+
+    console.log("\n" + "=".repeat(60));
+    console.log("ANALYSIS COMPLETE");
+    console.log("=".repeat(60));
+    console.log(`Duration: ${duration}s`);
+    console.log(`Processed: ${results.length}`);
+    console.log(`Matched: ${matchedCount}`);
+    console.log(`Match Rate: ${((matchedCount / results.length) * 100).toFixed(1)}%`);
+
     return new Response(
       JSON.stringify({ items: results }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
