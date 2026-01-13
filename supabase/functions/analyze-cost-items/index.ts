@@ -231,40 +231,82 @@ serve(async (req) => {
         
         let searchTerms: string[] = searchTermsResult.searchTerms || [];
         
-        // KEYWORD EXPANSION: Add Swedish translations for common English construction terms
+        // COMPREHENSIVE EN->SV KEYWORD EXPANSION for Swedish construction database
         const keywordMap: Record<string, string[]> = {
-          'carpet': ['textilgolv', 'matta', 'heltäckningsmatta'],
-          'flooring': ['golv', 'golvbeläggning'],
-          'grass': ['gräs', 'gräsytor', 'gräsmatta'],
-          'lawn': ['gräs', 'gräsytor', 'gräsmatta'],
-          'window': ['fönster', 'fönsterbyte'],
-          'windows': ['fönster', 'fönsterbyte'],
-          'door': ['dörr', 'dörrbyte'],
-          'doors': ['dörr', 'dörrbyte'],
-          'demolition': ['rivning', 'demontering'],
-          'facade': ['fasad', 'fasadrenovering'],
-          'painting': ['målning', 'måla'],
-          'paint': ['målning', 'färg'],
-          'roof': ['tak', 'takarbete', 'takrenovering'],
-          'roofing': ['tak', 'takbeläggning'],
-          'wall': ['vägg', 'väggar'],
-          'walls': ['vägg', 'väggar'],
-          'floor': ['golv', 'golvläggning'],
-          'tile': ['kakel', 'plattor', 'klinker'],
-          'tiles': ['kakel', 'plattor', 'klinker'],
-          'bathroom': ['badrum', 'våtrum'],
-          'kitchen': ['kök', 'köksrenovering'],
-          'plumbing': ['vvs', 'rörläggning', 'rörmokare'],
-          'electrical': ['el', 'elinstallation', 'elektriker'],
-          'concrete': ['betong', 'gjutning'],
-          'insulation': ['isolering', 'värmeisolering'],
-          'drainage': ['dränering', 'avlopp'],
-          'heating': ['värme', 'uppvärmning'],
-          'ventilation': ['ventilation', 'fläkt'],
-          'replacement': ['byte', 'utbyte'],
-          'installation': ['installation', 'montering'],
-          'renovation': ['renovering', 'ombyggnad'],
-          'construction': ['byggnation', 'byggarbete'],
+          // Flooring
+          'carpet': ['textilgolv', 'matta', 'heltäckningsmatta', 'nålfilt', 'golvmatta'],
+          'flooring': ['golv', 'golvbeläggning', 'golvmaterial'],
+          'floor': ['golv', 'golvläggning', 'bjälklag'],
+          'tile': ['kakel', 'plattor', 'klinker', 'golvplattor'],
+          'tiles': ['kakel', 'plattor', 'klinker', 'golvplattor'],
+          'parquet': ['parkett', 'trägolv', 'parkettgolv'],
+          'laminate': ['laminat', 'laminatgolv'],
+          'vinyl': ['vinyl', 'vinylgolv', 'plastmatta'],
+          
+          // Exterior & Landscaping
+          'grass': ['gräs', 'gräsyta', 'gräsmatta', 'gräsytor', 'lawn'],
+          'lawn': ['gräsyta', 'gräs', 'gräsmatta', 'gräsytor'],
+          'garden': ['trädgård', 'gräsyta', 'utemiljö', 'markarbete'],
+          'landscaping': ['markarbete', 'trädgård', 'utemiljö'],
+          'paving': ['plattsättning', 'marksten', 'stenläggning'],
+          'asphalt': ['asfalt', 'asfaltbeläggning'],
+          'fence': ['staket', 'stängsel', 'inhägnad'],
+          'terrace': ['terrass', 'altan', 'uteplats'],
+          'balcony': ['balkong', 'balkongrenovering'],
+          
+          // Building Envelope
+          'facade': ['fasad', 'puts', 'fasadrenovering', 'fasadmaterial'],
+          'roof': ['tak', 'takläggning', 'takrenovering', 'takarbete'],
+          'roofing': ['tak', 'takbeläggning', 'taktäckning'],
+          'wall': ['vägg', 'väggar', 'innervägg'],
+          'walls': ['vägg', 'väggar', 'innerväggar'],
+          'ceiling': ['tak', 'innertak', 'undertak'],
+          'insulation': ['isolering', 'värmeisolering', 'mineralull'],
+          
+          // Windows & Doors
+          'window': ['fönster', 'fönsterbyte', 'fönstermontering'],
+          'windows': ['fönster', 'fönsterbyte', 'fönstermontering'],
+          'door': ['dörr', 'dörrbyte', 'dörrmontering', 'entrédörr'],
+          'doors': ['dörr', 'dörrbyte', 'dörrmontering'],
+          'entrance': ['entré', 'ingång', 'entrédörr', 'entréparti'],
+          'gate': ['grind', 'port', 'garageport'],
+          
+          // Actions/Work Types
+          'demolition': ['rivning', 'demontering', 'rivningsarbete'],
+          'replacement': ['byte', 'utbyte', 'ersättning'],
+          'renovation': ['renovering', 'ombyggnad', 'upprustning'],
+          'installation': ['installation', 'montering', 'uppsättning'],
+          'repair': ['reparation', 'lagning', 'underhåll'],
+          'maintenance': ['underhåll', 'service', 'skötsel'],
+          'removal': ['borttagning', 'rivning', 'demontering'],
+          'construction': ['byggnation', 'byggarbete', 'nybyggnad'],
+          
+          // Rooms
+          'bathroom': ['badrum', 'våtrum', 'duschrum', 'wc'],
+          'kitchen': ['kök', 'köksrenovering', 'köksinstallation'],
+          'bedroom': ['sovrum'],
+          'living room': ['vardagsrum'],
+          'basement': ['källare', 'källarplan'],
+          'attic': ['vind', 'vindsutrymme'],
+          
+          // Systems
+          'heating': ['värme', 'uppvärmning', 'värmesystem'],
+          'ventilation': ['ventilation', 'fläkt', 'luftbehandling'],
+          'plumbing': ['vvs', 'rörläggning', 'rörmokare', 'rörinstallation'],
+          'electrical': ['el', 'elinstallation', 'elektriker', 'elanläggning'],
+          'drainage': ['dränering', 'avlopp', 'avloppssystem'],
+          'hvac': ['vvs', 'klimat', 'kyla'],
+          
+          // Materials
+          'concrete': ['betong', 'gjutning', 'betongarbete'],
+          'steel': ['stål', 'stålkonstruktion'],
+          'wood': ['trä', 'träarbete', 'virke'],
+          'brick': ['tegel', 'murning', 'murverk'],
+          'glass': ['glas', 'glasning', 'glaspartier'],
+          'paint': ['målning', 'färg', 'lackering'],
+          'painting': ['målning', 'måla', 'målningsarbete'],
+          'plaster': ['puts', 'putsning', 'gipsning'],
+          'drywall': ['gips', 'gipsskiva', 'gipsvägg'],
         };
         
         const descLower = item.originalDescription.toLowerCase();

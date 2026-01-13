@@ -17,12 +17,19 @@ const SEARCH_TERMS_PROMPT = `You are a construction cost expert. Generate search
 Generate 5-10 Swedish/English search terms.
 Return JSON: { "searchTerms": ["term1", "term2", ...] }`;
 
-const MATCH_PROMPT = `You are a senior quantity surveyor. Pick the BEST matching benchmark.
-RULES:
-1. UNIT MUST MATCH exactly
-2. Return the EXACT benchmark ID from the list
-3. Confidence < 70 = return null
-Return JSON: { "matchedBenchmarkId": "uuid-or-null", "confidence": 0-100, "reasoning": "why" }`;
+const MATCH_PROMPT = `You are a senior quantity surveyor picking benchmarks for construction cost items.
+
+Given a cost item and a list of benchmark candidates (already filtered by unit), select the BEST match.
+
+INSTRUCTIONS:
+1. All candidates have compatible units - pick the most semantically similar one
+2. Match based on: scope of work, materials, activity type
+3. Return the EXACT benchmark ID from the list (copy-paste the UUID)
+4. Give confidence 70-100 for good matches, 50-69 for partial matches
+5. If truly no match (completely different scope), return null with confidence 0
+
+Return JSON: { "matchedBenchmarkId": "exact-uuid-from-list-or-null", "confidence": 0-100, "reasoning": "brief explanation" }`;
+
 
 interface CostItem {
   id: string;
@@ -202,40 +209,82 @@ serve(async (req) => {
           
           let searchTerms: string[] = searchResult.searchTerms || [];
           
-          // KEYWORD EXPANSION: Add Swedish translations for common English construction terms
+          // COMPREHENSIVE EN->SV KEYWORD EXPANSION for Swedish construction database
           const keywordMap: Record<string, string[]> = {
-            'carpet': ['textilgolv', 'matta', 'heltäckningsmatta'],
-            'flooring': ['golv', 'golvbeläggning'],
-            'grass': ['gräs', 'gräsytor', 'gräsmatta'],
-            'lawn': ['gräs', 'gräsytor', 'gräsmatta'],
-            'window': ['fönster', 'fönsterbyte'],
-            'windows': ['fönster', 'fönsterbyte'],
-            'door': ['dörr', 'dörrbyte'],
-            'doors': ['dörr', 'dörrbyte'],
-            'demolition': ['rivning', 'demontering'],
-            'facade': ['fasad', 'fasadrenovering'],
-            'painting': ['målning', 'måla'],
-            'paint': ['målning', 'färg'],
-            'roof': ['tak', 'takarbete', 'takrenovering'],
-            'roofing': ['tak', 'takbeläggning'],
-            'wall': ['vägg', 'väggar'],
-            'walls': ['vägg', 'väggar'],
-            'floor': ['golv', 'golvläggning'],
-            'tile': ['kakel', 'plattor', 'klinker'],
-            'tiles': ['kakel', 'plattor', 'klinker'],
-            'bathroom': ['badrum', 'våtrum'],
-            'kitchen': ['kök', 'köksrenovering'],
-            'plumbing': ['vvs', 'rörläggning', 'rörmokare'],
-            'electrical': ['el', 'elinstallation', 'elektriker'],
-            'concrete': ['betong', 'gjutning'],
-            'insulation': ['isolering', 'värmeisolering'],
-            'drainage': ['dränering', 'avlopp'],
-            'heating': ['värme', 'uppvärmning'],
-            'ventilation': ['ventilation', 'fläkt'],
-            'replacement': ['byte', 'utbyte'],
-            'installation': ['installation', 'montering'],
-            'renovation': ['renovering', 'ombyggnad'],
-            'construction': ['byggnation', 'byggarbete'],
+            // Flooring
+            'carpet': ['textilgolv', 'matta', 'heltäckningsmatta', 'nålfilt', 'golvmatta'],
+            'flooring': ['golv', 'golvbeläggning', 'golvmaterial'],
+            'floor': ['golv', 'golvläggning', 'bjälklag'],
+            'tile': ['kakel', 'plattor', 'klinker', 'golvplattor'],
+            'tiles': ['kakel', 'plattor', 'klinker', 'golvplattor'],
+            'parquet': ['parkett', 'trägolv', 'parkettgolv'],
+            'laminate': ['laminat', 'laminatgolv'],
+            'vinyl': ['vinyl', 'vinylgolv', 'plastmatta'],
+            
+            // Exterior & Landscaping
+            'grass': ['gräs', 'gräsyta', 'gräsmatta', 'gräsytor', 'lawn'],
+            'lawn': ['gräsyta', 'gräs', 'gräsmatta', 'gräsytor'],
+            'garden': ['trädgård', 'gräsyta', 'utemiljö', 'markarbete'],
+            'landscaping': ['markarbete', 'trädgård', 'utemiljö'],
+            'paving': ['plattsättning', 'marksten', 'stenläggning'],
+            'asphalt': ['asfalt', 'asfaltbeläggning'],
+            'fence': ['staket', 'stängsel', 'inhägnad'],
+            'terrace': ['terrass', 'altan', 'uteplats'],
+            'balcony': ['balkong', 'balkongrenovering'],
+            
+            // Building Envelope
+            'facade': ['fasad', 'puts', 'fasadrenovering', 'fasadmaterial'],
+            'roof': ['tak', 'takläggning', 'takrenovering', 'takarbete'],
+            'roofing': ['tak', 'takbeläggning', 'taktäckning'],
+            'wall': ['vägg', 'väggar', 'innervägg'],
+            'walls': ['vägg', 'väggar', 'innerväggar'],
+            'ceiling': ['tak', 'innertak', 'undertak'],
+            'insulation': ['isolering', 'värmeisolering', 'mineralull'],
+            
+            // Windows & Doors
+            'window': ['fönster', 'fönsterbyte', 'fönstermontering'],
+            'windows': ['fönster', 'fönsterbyte', 'fönstermontering'],
+            'door': ['dörr', 'dörrbyte', 'dörrmontering', 'entrédörr'],
+            'doors': ['dörr', 'dörrbyte', 'dörrmontering'],
+            'entrance': ['entré', 'ingång', 'entrédörr', 'entréparti'],
+            'gate': ['grind', 'port', 'garageport'],
+            
+            // Actions/Work Types
+            'demolition': ['rivning', 'demontering', 'rivningsarbete'],
+            'replacement': ['byte', 'utbyte', 'ersättning'],
+            'renovation': ['renovering', 'ombyggnad', 'upprustning'],
+            'installation': ['installation', 'montering', 'uppsättning'],
+            'repair': ['reparation', 'lagning', 'underhåll'],
+            'maintenance': ['underhåll', 'service', 'skötsel'],
+            'removal': ['borttagning', 'rivning', 'demontering'],
+            'construction': ['byggnation', 'byggarbete', 'nybyggnad'],
+            
+            // Rooms
+            'bathroom': ['badrum', 'våtrum', 'duschrum', 'wc'],
+            'kitchen': ['kök', 'köksrenovering', 'köksinstallation'],
+            'bedroom': ['sovrum'],
+            'living room': ['vardagsrum'],
+            'basement': ['källare', 'källarplan'],
+            'attic': ['vind', 'vindsutrymme'],
+            
+            // Systems
+            'heating': ['värme', 'uppvärmning', 'värmesystem'],
+            'ventilation': ['ventilation', 'fläkt', 'luftbehandling'],
+            'plumbing': ['vvs', 'rörläggning', 'rörmokare', 'rörinstallation'],
+            'electrical': ['el', 'elinstallation', 'elektriker', 'elanläggning'],
+            'drainage': ['dränering', 'avlopp', 'avloppssystem'],
+            'hvac': ['vvs', 'klimat', 'kyla'],
+            
+            // Materials
+            'concrete': ['betong', 'gjutning', 'betongarbete'],
+            'steel': ['stål', 'stålkonstruktion'],
+            'wood': ['trä', 'träarbete', 'virke'],
+            'brick': ['tegel', 'murning', 'murverk'],
+            'glass': ['glas', 'glasning', 'glaspartier'],
+            'paint': ['målning', 'färg', 'lackering'],
+            'painting': ['målning', 'måla', 'målningsarbete'],
+            'plaster': ['puts', 'putsning', 'gipsning'],
+            'drywall': ['gips', 'gipsskiva', 'gipsvägg'],
           };
           
           const descLower = item.original_description.toLowerCase();
@@ -303,8 +352,13 @@ serve(async (req) => {
 
           // STEP 3: Filter by unit
           const unitCompatible = candidates.filter(b => unitsCompatible(item.unit, b.unit));
+          console.log(`[${item.original_description}] Unit-compatible: ${unitCompatible.length} of ${candidates.length} (item unit: ${item.unit})`);
 
           if (unitCompatible.length === 0) {
+            // List first few candidate units for debugging
+            const sampleUnits = [...new Set(candidates.slice(0, 10).map(c => c.unit))].join(', ');
+            console.log(`[${item.original_description}] No unit match. Sample benchmark units: ${sampleUnits}`);
+            
             // No match - update to clarification
             if (item.recommended_unit_price !== null) {
               await supabase
@@ -312,7 +366,7 @@ serve(async (req) => {
                 .update({
                   matched_benchmark_id: null,
                   match_confidence: 0,
-                  match_reasoning: `No benchmarks with unit ${item.unit}`,
+                  match_reasoning: `No benchmarks with unit ${item.unit}. Available units: ${sampleUnits}`,
                   recommended_unit_price: null,
                   benchmark_min: null,
                   benchmark_typical: null,
@@ -351,6 +405,7 @@ serve(async (req) => {
           const matchedId = matchResult.matchedBenchmarkId;
           const confidence = matchResult.confidence || 0;
           const reasoning = matchResult.reasoning || "";
+          console.log(`[${item.original_description}] AI response: matchedId=${matchedId}, confidence=${confidence}, reasoning="${reasoning}"`);
 
           if (!matchedId || confidence < 70) {
             // Low confidence
