@@ -210,7 +210,7 @@ export default function ProjectDetail() {
       return item;
     }));
 
-    // Persist to database
+    // Persist to database - INCLUDING all benchmark matching fields
     for (const { id, updates: itemUpdates } of updates) {
       await updateCostItem(id, {
         interpreted_scope: itemUpdates.interpretedScope,
@@ -222,6 +222,11 @@ export default function ProjectDetail() {
         ai_comment: itemUpdates.aiComment,
         clarification_question: itemUpdates.clarificationQuestion,
         total_price: itemUpdates.totalPrice,
+        // CRITICAL: Persist benchmark matching fields for consistency
+        matched_benchmark_id: itemUpdates.matchedBenchmarkId || null,
+        match_confidence: itemUpdates.matchConfidence || null,
+        match_reasoning: itemUpdates.matchReasoning || null,
+        price_source: itemUpdates.priceSource || null,
       });
     }
 
@@ -282,7 +287,7 @@ export default function ProjectDetail() {
         return item;
       }));
       
-      // Persist analysis results to database
+      // Persist analysis results to database - INCLUDING all benchmark matching fields
       for (const analyzed of analyzedItems) {
         await updateCostItem(analyzed.id, {
           interpreted_scope: analyzed.interpretedScope,
@@ -293,6 +298,11 @@ export default function ProjectDetail() {
           total_price: analyzed.totalPrice,
           status: analyzed.status,
           ai_comment: analyzed.aiComment,
+          // CRITICAL: Persist benchmark matching fields for consistency
+          matched_benchmark_id: analyzed.matchedBenchmarkId || null,
+          match_confidence: analyzed.matchConfidence || null,
+          match_reasoning: analyzed.matchReasoning || null,
+          price_source: analyzed.priceSource || null,
         });
       }
       
@@ -389,7 +399,7 @@ export default function ProjectDetail() {
         return item;
       }));
       
-      // Persist analysis results to database
+      // Persist analysis results to database - INCLUDING all benchmark matching fields
       for (const analyzed of analyzedItems) {
         await updateCostItem(analyzed.id, {
           interpreted_scope: analyzed.interpretedScope,
@@ -400,6 +410,11 @@ export default function ProjectDetail() {
           total_price: analyzed.totalPrice,
           status: analyzed.status,
           ai_comment: analyzed.aiComment,
+          // CRITICAL: Persist benchmark matching fields for consistency
+          matched_benchmark_id: analyzed.matchedBenchmarkId || null,
+          match_confidence: analyzed.matchConfidence || null,
+          match_reasoning: analyzed.matchReasoning || null,
+          price_source: analyzed.priceSource || null,
         });
       }
       

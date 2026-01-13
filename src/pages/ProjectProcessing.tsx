@@ -93,6 +93,11 @@ export default function ProjectProcessing() {
           total_price: item.totalPrice,
           status: item.status,
           ai_comment: item.aiComment,
+          // CRITICAL: Persist benchmark matching fields for consistency
+          matched_benchmark_id: item.matchedBenchmarkId || null,
+          match_confidence: item.matchConfidence || null,
+          match_reasoning: item.matchReasoning || null,
+          price_source: item.priceSource || null,
         });
 
         if (success) {
