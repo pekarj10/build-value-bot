@@ -27,7 +27,8 @@ import {
   BarChart3,
   Table,
   Bot,
-  Trash2
+  Trash2,
+  Download
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -452,8 +453,8 @@ export default function ProjectDetail() {
               Delete
             </Button>
             <Button variant="outline" onClick={() => setShowExportDialog(true)}>
-              <FileSpreadsheet className="h-4 w-4 mr-2" />
-              Export Excel
+              <Download className="h-4 w-4 mr-2" />
+              Export
             </Button>
           </div>
         }
