@@ -43,7 +43,7 @@ export default function ProjectDetail() {
   const { isAdmin } = useAuth();
   const { showAsAdmin } = useViewMode();
   const effectiveIsAdmin = isAdmin && showAsAdmin;
-  const { getProject, getCostItems, updateCostItem, deleteCostItem, addCostItem, deleteProject, updateProjectNotes } = useProject();
+  const { getProject, getCostItems, updateCostItem, deleteCostItem, addCostItem, deleteProject, updateProjectNotes, syncProjectTotals } = useProject();
   const { processClarification, analyzeItems, isAnalyzing } = useCostAnalysis();
 
   const [project, setProject] = useState<Project | null>(null);
@@ -123,6 +123,7 @@ export default function ProjectDetail() {
     setItems(prev => prev.map(item => 
       item.id === itemId ? { ...item, status: 'ok' as const } : item
     ));
+    if (id) await syncProjectTotals(id);
     toast.success('Item accepted');
   };
 
@@ -141,6 +142,7 @@ export default function ProjectDetail() {
         ? { ...i, userOverridePrice: price, status: 'ok' as const, totalPrice } 
         : i
     ));
+    if (id) await syncProjectTotals(id);
     toast.success('Price updated');
   };
 
@@ -163,6 +165,7 @@ export default function ProjectDetail() {
     setItems(prev => prev.map(item => 
       itemIds.includes(item.id) ? { ...item, status: 'ok' as const } : item
     ));
+    if (id) await syncProjectTotals(id);
     toast.success(`${itemIds.length} items accepted`);
   };
 
@@ -173,6 +176,7 @@ export default function ProjectDetail() {
     setItems(prev => prev.map(item => 
       itemIds.includes(item.id) ? { ...item, status: 'review' as const } : item
     ));
+    if (id) await syncProjectTotals(id);
     toast.success(`${itemIds.length} items marked for review`);
   };
 
@@ -204,6 +208,7 @@ export default function ProjectDetail() {
         i.id === itemId ? { ...i, ...updatedFields, userClarification: text } : i
       ));
       setSelectedItem(null);
+      if (id) await syncProjectTotals(id);
       toast.success('Item re-analyzed with clarification');
     } catch (error) {
       console.error('Clarification failed:', error);
@@ -234,8 +239,8 @@ export default function ProjectDetail() {
     }));
 
     // Persist to database - INCLUDING all benchmark matching fields
-    for (const { id, updates: itemUpdates } of updates) {
-      await updateCostItem(id, {
+    for (const { id: itemId, updates: itemUpdates } of updates) {
+      await updateCostItem(itemId, {
         interpreted_scope: itemUpdates.interpretedScope,
         recommended_unit_price: itemUpdates.recommendedUnitPrice,
         benchmark_min: itemUpdates.benchmarkMin,
@@ -253,6 +258,8 @@ export default function ProjectDetail() {
       });
     }
 
+    // Sync project totals after AI updates
+    if (id) await syncProjectTotals(id);
     toast.success(`${updates.length} items updated by AI`);
   };
 
@@ -278,6 +285,7 @@ export default function ProjectDetail() {
     setItems(prev => prev.map(i => 
       i.id === itemId ? { ...i, status: 'ok' as const } : i
     ));
+    if (id) await syncProjectTotals(id);
     toast.success('Item marked as resolved');
   };
 
@@ -286,6 +294,7 @@ export default function ProjectDetail() {
     setItems(prev => prev.map(i => 
       i.id === itemId ? { ...i, status: 'review' as const } : i
     ));
+    if (id) await syncProjectTotals(id);
     toast.success('Clarification status removed');
   };
 
@@ -294,6 +303,7 @@ export default function ProjectDetail() {
     const success = await deleteCostItem(itemId);
     if (success) {
       setItems(prev => prev.filter(item => item.id !== itemId));
+      if (id) await syncProjectTotals(id);
     }
     return success;
   };
@@ -358,6 +368,9 @@ export default function ProjectDetail() {
       const underpricedCount = analyzedItems.filter(i => i.status === 'underpriced').length;
       const reviewCount = analyzedItems.filter(i => i.status === 'review').length;
       const okCount = analyzedItems.filter(i => i.status === 'ok').length;
+      
+      // Sync project totals after re-analysis
+      if (id) await syncProjectTotals(id);
       
       if (underpricedCount > 0 || reviewCount > 0) {
         toast.warning(`Analysis complete: ${okCount} OK, ${underpricedCount} underpriced, ${reviewCount} need review`);
@@ -469,6 +482,9 @@ export default function ProjectDetail() {
       
       const underpricedCount = analyzedItems.filter(i => i.status === 'underpriced').length;
       const reviewCount = analyzedItems.filter(i => i.status === 'review').length;
+      
+      // Sync project totals after adding items
+      if (id) await syncProjectTotals(id);
       
       if (underpricedCount > 0 || reviewCount > 0) {
         toast.warning(`Analysis complete: ${underpricedCount} underpriced, ${reviewCount} need review`);

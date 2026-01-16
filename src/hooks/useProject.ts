@@ -377,6 +377,46 @@ export function useProject() {
     }
   }, []);
 
+  // Sync project total_value with actual cost items sum
+  const syncProjectTotals = useCallback(async (projectId: string): Promise<boolean> => {
+    try {
+      // Fetch all cost items for the project
+      const { data: items, error: fetchError } = await supabase
+        .from('cost_items')
+        .select('quantity, user_override_price, recommended_unit_price, original_unit_price, status')
+        .eq('project_id', projectId);
+
+      if (fetchError) throw fetchError;
+
+      // Calculate totals
+      const totalValue = (items || []).reduce((sum, item) => {
+        const price = item.user_override_price || item.recommended_unit_price || item.original_unit_price || 0;
+        return sum + (Number(price) * Number(item.quantity));
+      }, 0);
+
+      const totalItems = items?.length || 0;
+      const issuesCount = (items || []).filter(item => 
+        item.status === 'clarification' || item.status === 'review'
+      ).length;
+
+      // Update project with new totals
+      const { error: updateError } = await supabase
+        .from('projects')
+        .update({ 
+          total_value: totalValue,
+          total_items: totalItems,
+          issues_count: issuesCount
+        })
+        .eq('id', projectId);
+
+      if (updateError) throw updateError;
+      return true;
+    } catch (error) {
+      console.error('Sync project totals error:', error);
+      return false;
+    }
+  }, []);
+
   const deleteProject = useCallback(async (projectId: string): Promise<boolean> => {
     try {
       // Delete cost items first (cascade)
@@ -433,6 +473,7 @@ export function useProject() {
     addCostItem,
     updateProjectStatus,
     updateProjectNotes,
+    syncProjectTotals,
     deleteProject,
   };
 }
