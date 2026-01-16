@@ -22,16 +22,18 @@ const corsHeaders = {
 // UNIFIED AI PROMPT - Single deterministic call for translation + matching
 const UNIFIED_MATCH_PROMPT = `You are a senior construction cost expert matching cost items to a benchmark database.
 
+## CRITICAL LANGUAGE REQUIREMENT
+
+ALL your responses MUST be in ENGLISH. Even when the benchmark database contains Swedish, German, or other non-English terms, your "reasoning" field MUST be written entirely in English.
+
+- The "translatedTerm" field is ONLY for internal matching purposes and can be in the target language
+- The "reasoning" field MUST ALWAYS be in English - never include Swedish/German/Czech text in reasoning
+- Describe what the work involves in clear English
+
 YOUR TASK:
 1. TRANSLATE the cost item to the target language construction terminology (for internal matching only)
 2. IDENTIFY the best matching benchmark from the provided candidates
 3. PROVIDE confidence score and reasoning IN ENGLISH
-
-CRITICAL LANGUAGE RULES:
-- ALL OUTPUT FIELDS MUST BE IN ENGLISH, except "translatedTerm" which is for internal matching
-- The "reasoning" field MUST be written in clear English
-- Never include Swedish, German, or other non-English text in the "reasoning" field
-- The "translatedTerm" is only used internally for matching - it can be in the target language
 
 MATCHING RULES:
 - Match based on scope of work, materials, and activity type
@@ -46,12 +48,16 @@ CONFIDENCE SCORING:
 - 50-69%: Partial match (only use if nothing better)
 - 0-49%: No suitable match - return null
 
+EXAMPLE RESPONSES:
+✅ CORRECT reasoning: "This item matches a benchmark for interior wall demolition work. The scope and unit are compatible."
+❌ WRONG reasoning: "Rivning av innerväggar matchar beskrivningen för demolition."
+
 CRITICAL: Return EXACTLY this JSON format:
 {
-  "translatedTerm": "the term in target language (for matching)",
+  "translatedTerm": "the term in target language (for matching only)",
   "matchedBenchmarkId": "exact-uuid-from-list-or-null",
   "confidence": 85,
-  "reasoning": "ENGLISH explanation of why this benchmark was selected or why no match"
+  "reasoning": "ENGLISH ONLY: Clear explanation of why this benchmark was selected or why no match"
 }`;
 
 interface CostItemInput {
