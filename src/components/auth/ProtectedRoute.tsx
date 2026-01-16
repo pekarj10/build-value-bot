@@ -1,6 +1,7 @@
 import { ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { useViewMode } from '@/hooks/useViewMode';
 import { Loader2 } from 'lucide-react';
 
 interface ProtectedRouteProps {
@@ -10,6 +11,7 @@ interface ProtectedRouteProps {
 
 export function ProtectedRoute({ children, requireAdmin = false }: ProtectedRouteProps) {
   const { user, isLoading, isAdmin } = useAuth();
+  const { showAsAdmin } = useViewMode();
   const location = useLocation();
 
   if (isLoading) {
@@ -24,7 +26,9 @@ export function ProtectedRoute({ children, requireAdmin = false }: ProtectedRout
     return <Navigate to="/auth" state={{ from: location }} replace />;
   }
 
-  if (requireAdmin && !isAdmin) {
+  // Use showAsAdmin which respects both actual admin status AND view mode
+  // When admin is viewing as user, showAsAdmin is false, blocking admin pages
+  if (requireAdmin && !showAsAdmin) {
     return <Navigate to="/" replace />;
   }
 
