@@ -545,12 +545,10 @@ export default function ProjectDetail() {
               <Bot className="h-4 w-4" />
               AI Assistant
             </TabsTrigger>
-            {effectiveIsAdmin && (
-              <TabsTrigger value="notes" className="flex items-center gap-2">
-                <StickyNote className="h-4 w-4" />
-                Notes
-              </TabsTrigger>
-            )}
+            <TabsTrigger value="notes" className="flex items-center gap-2">
+              <StickyNote className="h-4 w-4" />
+              Notes
+            </TabsTrigger>
             <TabsTrigger value="insights" className="flex items-center gap-2">
               <BarChart3 className="h-4 w-4" />
               Insights
@@ -602,16 +600,14 @@ export default function ProjectDetail() {
             </div>
           </TabsContent>
 
-          {effectiveIsAdmin && (
-            <TabsContent value="notes">
-              <ProjectNotes
-                projectId={project.id}
-                initialNotes={project.projectNotes || ''}
-                onSave={handleSaveProjectNotes}
-                lastUpdated={project.updatedAt}
-              />
-            </TabsContent>
-          )}
+          <TabsContent value="notes">
+            <ProjectNotes
+              projectId={project.id}
+              initialNotes={project.projectNotes || ''}
+              onSave={handleSaveProjectNotes}
+              lastUpdated={project.updatedAt}
+            />
+          </TabsContent>
 
           <TabsContent value="insights">
             <InsightsPanel 
