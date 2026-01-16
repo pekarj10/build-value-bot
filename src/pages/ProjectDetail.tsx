@@ -65,6 +65,13 @@ export default function ProjectDetail() {
     [items]
   );
 
+  // Project notes handler - must be before conditional returns
+  const handleSaveProjectNotes = useCallback(async (notes: string) => {
+    if (!id) return;
+    await updateProjectNotes(id, notes);
+    setProject(prev => prev ? { ...prev, projectNotes: notes } : prev);
+  }, [id, updateProjectNotes]);
+
   useEffect(() => {
     if (!id) return;
     
@@ -282,12 +289,6 @@ export default function ProjectDetail() {
     toast.success('Clarification status removed');
   };
 
-  // Project notes handler
-  const handleSaveProjectNotes = useCallback(async (notes: string) => {
-    if (!id) return;
-    await updateProjectNotes(id, notes);
-    setProject(prev => prev ? { ...prev, projectNotes: notes } : prev);
-  }, [id, updateProjectNotes]);
 
   const handleDeleteItem = async (itemId: string): Promise<boolean> => {
     const success = await deleteCostItem(itemId);
