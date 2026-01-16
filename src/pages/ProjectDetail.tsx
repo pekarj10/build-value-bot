@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { AppLayout, PageHeader } from '@/components/layout/AppLayout';
 import { ExecutiveSummary } from '@/components/project/ExecutiveSummary';
@@ -10,6 +10,8 @@ import { AIFloatingButton } from '@/components/project/AIFloatingButton';
 import { ExportDialog } from '@/components/project/ExportDialog';
 import { DeleteProjectDialog } from '@/components/project/DeleteProjectDialog';
 import { AddCostItemDialog } from '@/components/project/AddCostItemDialog';
+import { ClarificationsList } from '@/components/project/ClarificationsList';
+import { ProjectNotes } from '@/components/project/ProjectNotes';
 
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
@@ -22,8 +24,6 @@ import { useCostAnalysis } from '@/hooks/useCostAnalysis';
 import { useAuth } from '@/hooks/useAuth';
 import { useViewMode } from '@/hooks/useViewMode';
 import { 
-  FileSpreadsheet, 
-  FileText,
   MapPin,
   Calendar,
   LayoutDashboard,
@@ -31,8 +31,8 @@ import {
   Table,
   Bot,
   Trash2,
-  Download,
-  FileDown
+  FileDown,
+  StickyNote
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -43,7 +43,7 @@ export default function ProjectDetail() {
   const { isAdmin } = useAuth();
   const { showAsAdmin } = useViewMode();
   const effectiveIsAdmin = isAdmin && showAsAdmin;
-  const { getProject, getCostItems, updateCostItem, deleteCostItem, addCostItem, deleteProject } = useProject();
+  const { getProject, getCostItems, updateCostItem, deleteCostItem, addCostItem, deleteProject, updateProjectNotes } = useProject();
   const { processClarification, analyzeItems, isAnalyzing } = useCostAnalysis();
 
   const [project, setProject] = useState<Project | null>(null);
@@ -256,6 +256,38 @@ export default function ProjectDetail() {
       navigate('/projects', { replace: true });
     }
   };
+
+  // Clarification management handlers
+  const handleUpdateClarification = async (itemId: string, clarification: string) => {
+    await updateCostItem(itemId, { user_clarification: clarification });
+    setItems(prev => prev.map(i => 
+      i.id === itemId ? { ...i, userClarification: clarification } : i
+    ));
+    toast.success('Clarification updated');
+  };
+
+  const handleResolveClarification = async (itemId: string) => {
+    await updateCostItem(itemId, { status: 'ok' });
+    setItems(prev => prev.map(i => 
+      i.id === itemId ? { ...i, status: 'ok' as const } : i
+    ));
+    toast.success('Item marked as resolved');
+  };
+
+  const handleDeleteClarification = async (itemId: string) => {
+    await updateCostItem(itemId, { status: 'review' });
+    setItems(prev => prev.map(i => 
+      i.id === itemId ? { ...i, status: 'review' as const } : i
+    ));
+    toast.success('Clarification status removed');
+  };
+
+  // Project notes handler
+  const handleSaveProjectNotes = useCallback(async (notes: string) => {
+    if (!id) return;
+    await updateProjectNotes(id, notes);
+    setProject(prev => prev ? { ...prev, projectNotes: notes } : prev);
+  }, [id, updateProjectNotes]);
 
   const handleDeleteItem = async (itemId: string): Promise<boolean> => {
     const success = await deleteCostItem(itemId);
@@ -512,6 +544,12 @@ export default function ProjectDetail() {
               <Bot className="h-4 w-4" />
               AI Assistant
             </TabsTrigger>
+            {effectiveIsAdmin && (
+              <TabsTrigger value="notes" className="flex items-center gap-2">
+                <StickyNote className="h-4 w-4" />
+                Notes
+              </TabsTrigger>
+            )}
             <TabsTrigger value="insights" className="flex items-center gap-2">
               <BarChart3 className="h-4 w-4" />
               Insights
@@ -541,14 +579,38 @@ export default function ProjectDetail() {
           </TabsContent>
 
           <TabsContent value="ai">
-            <div className="h-[600px]">
-              <AIChatPanel 
-                project={project}
-                items={items}
-                onItemsUpdate={handleAIItemsUpdate}
-              />
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Main AI Chat */}
+              <div className="lg:col-span-2 h-[600px]">
+                <AIChatPanel 
+                  project={project}
+                  items={items}
+                  onItemsUpdate={handleAIItemsUpdate}
+                />
+              </div>
+              
+              {/* Clarifications Panel */}
+              <div className="lg:col-span-1">
+                <ClarificationsList
+                  items={items}
+                  onUpdateClarification={handleUpdateClarification}
+                  onResolveClarification={handleResolveClarification}
+                  onDeleteClarification={handleDeleteClarification}
+                />
+              </div>
             </div>
           </TabsContent>
+
+          {effectiveIsAdmin && (
+            <TabsContent value="notes">
+              <ProjectNotes
+                projectId={project.id}
+                initialNotes={project.projectNotes || ''}
+                onSave={handleSaveProjectNotes}
+                lastUpdated={project.updatedAt}
+              />
+            </TabsContent>
+          )}
 
           <TabsContent value="insights">
             <InsightsPanel 
