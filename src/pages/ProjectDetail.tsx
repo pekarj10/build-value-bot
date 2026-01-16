@@ -10,6 +10,7 @@ import { AIFloatingButton } from '@/components/project/AIFloatingButton';
 import { ExportDialog } from '@/components/project/ExportDialog';
 import { DeleteProjectDialog } from '@/components/project/DeleteProjectDialog';
 import { AddCostItemDialog } from '@/components/project/AddCostItemDialog';
+import { ViewModeToggle, UserPreviewBadge } from '@/components/project/ViewModeToggle';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -19,6 +20,7 @@ import { CostItem, PROJECT_TYPE_LABELS, SUPPORTED_COUNTRIES, Project } from '@/t
 import { useProject } from '@/hooks/useProject';
 import { useCostAnalysis } from '@/hooks/useCostAnalysis';
 import { useAuth } from '@/hooks/useAuth';
+import { useViewMode } from '@/hooks/useViewMode';
 import { 
   FileSpreadsheet, 
   FileText,
@@ -39,6 +41,8 @@ export default function ProjectDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
+  const { showAsAdmin } = useViewMode();
+  const effectiveIsAdmin = isAdmin && showAsAdmin;
   const { getProject, getCostItems, updateCostItem, deleteCostItem, addCostItem, deleteProject } = useProject();
   const { processClarification, analyzeItems, isAnalyzing } = useCostAnalysis();
 
@@ -135,6 +139,14 @@ export default function ProjectDetail() {
 
   const handlePriceUpdate = async (itemId: string, price: number) => {
     await handleOverride(itemId, price);
+  };
+
+  const handleResetPrice = async (itemId: string) => {
+    const item = items.find(i => i.id === itemId);
+    if (!item || !item.recommendedUnitPrice) return;
+    const totalPrice = item.quantity * item.recommendedUnitPrice;
+    await updateCostItem(itemId, { user_override_price: null, total_price: totalPrice });
+    setItems(prev => prev.map(i => i.id === itemId ? { ...i, userOverridePrice: undefined, totalPrice } : i));
   };
 
   const handleBulkAccept = async (itemIds: string[]) => {
@@ -457,7 +469,7 @@ export default function ProjectDetail() {
             </Button>
             <Button variant="outline" onClick={() => setShowExportDialog(true)}>
               <FileDown className="h-4 w-4 mr-2" />
-              {isAdmin ? 'Export' : 'Export PDF'}
+              {effectiveIsAdmin ? 'Export' : 'Export PDF'}
             </Button>
           </div>
         }
@@ -516,6 +528,7 @@ export default function ProjectDetail() {
               currency={project.currency}
               onItemSelect={setSelectedItem}
               onPriceUpdate={handlePriceUpdate}
+              onResetPrice={handleResetPrice}
               onBulkAccept={handleBulkAccept}
               onBulkMarkReviewed={handleBulkMarkReviewed}
               onDeleteItem={handleDeleteItem}
@@ -594,10 +607,15 @@ export default function ProjectDetail() {
         onAccept={handleAccept}
         onOverride={handleOverride}
         onClarify={handleClarify}
+        onResetPrice={handleResetPrice}
         isProcessingClarification={isProcessingClarification}
         isAdmin={isAdmin}
         projectCountry={project.country}
       />
+
+      {/* View Mode Toggle and Badge for Admins */}
+      <ViewModeToggle />
+      <UserPreviewBadge />
 
       {/* Floating AI Button */}
       <AIFloatingButton 

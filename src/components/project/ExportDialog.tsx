@@ -20,6 +20,7 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { formatCurrency } from '@/lib/formatters';
+import { useViewMode } from '@/hooks/useViewMode';
 
 interface ExportDialogProps {
   open: boolean;
@@ -72,10 +73,14 @@ export function ExportDialog({
   selectedItemIds,
   isAdmin = false,
 }: ExportDialogProps) {
+  const { showAsAdmin } = useViewMode();
+  // Effective admin check: actual admin AND not in user preview mode
+  const effectiveIsAdmin = isAdmin && showAsAdmin;
+  
   const [options, setOptions] = useState<ExportOptions>(DEFAULT_OPTIONS);
   const [isExporting, setIsExporting] = useState(false);
-  // Default to PDF for non-admin users
-  const [exportType, setExportType] = useState<'excel' | 'pdf'>(isAdmin ? 'excel' : 'pdf');
+  // Default to PDF for non-admin users (or admin in user preview mode)
+  const [exportType, setExportType] = useState<'excel' | 'pdf'>(effectiveIsAdmin ? 'excel' : 'pdf');
 
   const handleExport = async () => {
     setIsExporting(true);
@@ -122,8 +127,8 @@ export function ExportDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {/* Only show tabs for admin, regular users only get PDF */}
-        {isAdmin ? (
+        {/* Only show tabs for effective admin, regular users (or admin in preview) only get PDF */}
+        {effectiveIsAdmin ? (
           <Tabs value={exportType} onValueChange={(v) => setExportType(v as 'excel' | 'pdf')}>
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="excel" className="gap-2">

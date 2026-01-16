@@ -12,13 +12,14 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
-import { Check, MessageSquare, TrendingUp, Loader2, HelpCircle } from 'lucide-react';
+import { Check, MessageSquare, TrendingUp, Loader2, HelpCircle, RotateCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { 
   sanitizeAnalysisNoteForUser, 
   getPriceRangeLabel,
   getUserFriendlyScope 
 } from '@/lib/roleUtils';
+import { useViewMode } from '@/hooks/useViewMode';
 
 interface CostItemDrawerProps {
   item: CostItem | null;
@@ -28,6 +29,7 @@ interface CostItemDrawerProps {
   onAccept: (itemId: string) => void;
   onOverride: (itemId: string, price: number) => void;
   onClarify: (itemId: string, text: string) => void;
+  onResetPrice?: (itemId: string) => void;
   isProcessingClarification?: boolean;
   isAdmin?: boolean;
   projectCountry?: string;
@@ -41,10 +43,15 @@ export function CostItemDrawer({
   onAccept,
   onOverride,
   onClarify,
+  onResetPrice,
   isProcessingClarification = false,
   isAdmin = false,
   projectCountry = '',
 }: CostItemDrawerProps) {
+  const { showAsAdmin } = useViewMode();
+  // Use viewMode-aware admin check: actual admin AND not in user preview mode
+  const effectiveIsAdmin = isAdmin && showAsAdmin;
+  
   const [overridePrice, setOverridePrice] = useState('');
   const [clarification, setClarification] = useState('');
   const [showOverride, setShowOverride] = useState(false);
@@ -114,18 +121,26 @@ export function CostItemDrawer({
     return price < item.benchmarkMin || price > item.benchmarkMax;
   };
 
-  // Get sanitized content for regular users
-  const displayAnalysisNote = isAdmin 
+  // Get sanitized content for regular users (respects view mode)
+  const displayAnalysisNote = effectiveIsAdmin 
     ? (item.aiComment || 'No analysis notes available.')
     : sanitizeAnalysisNoteForUser(item.aiComment, item.matchConfidence, projectCountry, currency);
 
   const displayInterpretedScope = getUserFriendlyScope(
     item.originalDescription,
     item.interpretedScope,
-    isAdmin
+    effectiveIsAdmin
   );
 
   const needsClarification = item.status === 'clarification';
+  const hasOverride = item.userOverridePrice !== undefined && item.userOverridePrice !== null;
+
+  const handleResetPrice = () => {
+    if (onResetPrice && item) {
+      onResetPrice(item.id);
+      onClose();
+    }
+  };
   const hasClarificationQuestion = item.clarificationQuestion && item.clarificationQuestion.trim().length > 0;
 
   return (
@@ -185,7 +200,7 @@ export function CostItemDrawer({
           {displayInterpretedScope && (
             <div className="space-y-2">
               <Label className="text-muted-foreground">
-                {isAdmin ? 'AI Interpretation' : 'Item Summary'}
+                {effectiveIsAdmin ? 'AI Interpretation' : 'Item Summary'}
               </Label>
               <div className="p-4 bg-muted/50 rounded-lg text-sm">
                 {displayInterpretedScope}
@@ -240,7 +255,7 @@ export function CostItemDrawer({
             {item.benchmarkMax > 0 && (
               <div className="space-y-2">
                 <Label className="text-xs text-muted-foreground">
-                  {getPriceRangeLabel(isAdmin)}
+                  {getPriceRangeLabel(effectiveIsAdmin)}
                 </Label>
                 <div className="flex justify-between text-xs text-muted-foreground">
                   <span>Min: {formatPrice(item.benchmarkMin)}</span>
@@ -325,6 +340,17 @@ export function CostItemDrawer({
                   <TrendingUp className="h-4 w-4 mr-2" />
                   Override Price
                 </Button>
+                {/* Reset to Recommended - only show when price is overridden */}
+                {hasOverride && onResetPrice && (
+                  <Button
+                    variant="outline"
+                    onClick={handleResetPrice}
+                    className="w-full justify-start text-primary hover:text-primary"
+                  >
+                    <RotateCcw className="h-4 w-4 mr-2" />
+                    Reset to Recommended ({formatPrice(item.recommendedUnitPrice)} {currency})
+                  </Button>
+                )}
                 {needsClarification && !hasClarificationQuestion && (
                   <Button
                     variant="outline"
