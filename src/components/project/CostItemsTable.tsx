@@ -67,7 +67,7 @@ interface CostItemsTableProps {
   isLoading?: boolean;
 }
 
-type SortField = 'description' | 'quantity' | 'originalPrice' | 'recommendedPrice' | 'variance' | 'trade' | 'status';
+type SortField = 'description' | 'quantity' | 'originalPrice' | 'recommendedPrice' | 'originalTotal' | 'recommendedTotal' | 'variance' | 'trade' | 'status';
 type SortDirection = 'asc' | 'desc';
 
 const VARIANCE_RANGES = [
@@ -241,6 +241,18 @@ export function CostItemsTable({
   }, [items, statusFilters, tradeFilters, searchQuery, priceMin, priceMax, varianceRange, quickFilters]);
 
   // Sort items
+  // Helper to calculate totals
+  const getOriginalTotal = (item: CostItem) => {
+    if (!item.originalUnitPrice) return null;
+    return item.originalUnitPrice * item.quantity;
+  };
+
+  const getRecommendedTotal = (item: CostItem) => {
+    const price = item.userOverridePrice || item.recommendedUnitPrice;
+    if (!price) return null;
+    return price * item.quantity;
+  };
+
   const sortedItems = useMemo(() => {
     if (!sortField) return filteredItems;
     
@@ -259,6 +271,12 @@ export function CostItemsTable({
           break;
         case 'recommendedPrice':
           comparison = (a.recommendedUnitPrice || 0) - (b.recommendedUnitPrice || 0);
+          break;
+        case 'originalTotal':
+          comparison = (getOriginalTotal(a) || 0) - (getOriginalTotal(b) || 0);
+          break;
+        case 'recommendedTotal':
+          comparison = (getRecommendedTotal(a) || 0) - (getRecommendedTotal(b) || 0);
           break;
         case 'variance':
           const vA = getItemVariance(a) || 0;
@@ -812,52 +830,110 @@ export function CostItemsTable({
                   />
                 </th>
                 <th 
-                  className="w-[35%] cursor-pointer hover:bg-muted/70"
+                  className="min-w-[250px] cursor-pointer hover:bg-muted/70"
                   onClick={() => handleSort('description')}
                 >
-                  <div className="flex items-center">
-                    Description
-                    <SortIcon field="description" />
-                  </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center">
+                        Description
+                        <SortIcon field="description" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>Item description from uploaded file</TooltipContent>
+                  </Tooltip>
                 </th>
                 <th 
-                  className="w-[80px] cursor-pointer hover:bg-muted/70"
+                  className="w-[70px] cursor-pointer hover:bg-muted/70"
                   onClick={() => handleSort('quantity')}
                 >
-                  <div className="flex items-center">
-                    Qty
-                    <SortIcon field="quantity" />
-                  </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center">
+                        Qty
+                        <SortIcon field="quantity" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>Quantity of units</TooltipContent>
+                  </Tooltip>
                 </th>
-                <th className="w-[60px]">Unit</th>
-                <th 
-                  className="w-[120px] cursor-pointer hover:bg-muted/70"
-                  onClick={() => handleSort('originalPrice')}
-                >
-                  <div className="flex items-center justify-end">
-                    Original
-                    <SortIcon field="originalPrice" />
-                  </div>
-                </th>
-                <th 
-                  className="w-[140px] cursor-pointer hover:bg-muted/70"
-                  onClick={() => handleSort('recommendedPrice')}
-                >
-                  <div className="flex items-center justify-end">
-                    Recommended
-                    <SortIcon field="recommendedPrice" />
-                  </div>
+                <th className="w-[50px]">
+                  <Tooltip>
+                    <TooltipTrigger>Unit</TooltipTrigger>
+                    <TooltipContent>Unit of measurement</TooltipContent>
+                  </Tooltip>
                 </th>
                 <th 
                   className="w-[100px] cursor-pointer hover:bg-muted/70"
+                  onClick={() => handleSort('originalPrice')}
+                >
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center justify-end">
+                        Orig. Price
+                        <SortIcon field="originalPrice" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>Original unit price from uploaded file</TooltipContent>
+                  </Tooltip>
+                </th>
+                <th 
+                  className="w-[110px] cursor-pointer hover:bg-muted/70"
+                  onClick={() => handleSort('originalTotal')}
+                >
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center justify-end">
+                        Orig. Total
+                        <SortIcon field="originalTotal" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>Qty × Original Price</TooltipContent>
+                  </Tooltip>
+                </th>
+                <th 
+                  className="w-[100px] cursor-pointer hover:bg-muted/70"
+                  onClick={() => handleSort('recommendedPrice')}
+                >
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center justify-end">
+                        Rec. Price
+                        <SortIcon field="recommendedPrice" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>AI recommended unit price based on benchmarks</TooltipContent>
+                  </Tooltip>
+                </th>
+                <th 
+                  className="w-[110px] cursor-pointer hover:bg-muted/70"
+                  onClick={() => handleSort('recommendedTotal')}
+                >
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center justify-end">
+                        Rec. Total
+                        <SortIcon field="recommendedTotal" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>Qty × Recommended Price</TooltipContent>
+                  </Tooltip>
+                </th>
+                <th 
+                  className="w-[90px] cursor-pointer hover:bg-muted/70"
                   onClick={() => handleSort('status')}
                 >
-                  <div className="flex items-center">
-                    Status
-                    <SortIcon field="status" />
-                  </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center">
+                        Status
+                        <SortIcon field="status" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>Item review status</TooltipContent>
+                  </Tooltip>
                 </th>
-                <th className="w-[60px]"></th>
+                <th className="w-[50px]"></th>
               </tr>
             </thead>
             <tbody>
@@ -892,15 +968,19 @@ export function CostItemsTable({
                         </p>
                       </div>
                     </td>
-                    <td className="font-mono text-sm">{formatPrice(item.quantity)}</td>
-                    <td className="text-muted-foreground">{item.unit}</td>
-                    <td className="text-right font-mono">
-                      <div className="flex items-center justify-end gap-2">
+                    <td className="font-mono text-sm text-right">{item.quantity.toLocaleString()}</td>
+                    <td className="text-muted-foreground text-xs">{item.unit}</td>
+                    <td className="text-right font-mono text-sm">
+                      <div className="flex items-center justify-end gap-1.5">
                         <span>{item.originalUnitPrice ? formatPrice(item.originalUnitPrice) : '—'}</span>
                         {variance !== null && (
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <span className={cn('text-xs font-medium', getVarianceColor(variance))}>
+                              <span className={cn('text-[10px] font-semibold px-1 py-0.5 rounded', 
+                                Math.abs(variance) <= 10 && 'bg-success/10 text-success',
+                                Math.abs(variance) > 10 && Math.abs(variance) <= 25 && 'bg-warning/10 text-warning',
+                                Math.abs(variance) > 25 && 'bg-destructive/10 text-destructive'
+                              )}>
                                 {variance > 0 ? '+' : ''}{variance.toFixed(0)}%
                               </span>
                             </TooltipTrigger>
@@ -911,6 +991,11 @@ export function CostItemsTable({
                         )}
                       </div>
                     </td>
+                    <td className="text-right font-mono text-sm">
+                      <span className={cn(!getOriginalTotal(item) && "text-muted-foreground")}>
+                        {getOriginalTotal(item) ? formatPrice(getOriginalTotal(item)!) : '—'}
+                      </span>
+                    </td>
                     <td className="text-right" onClick={(e) => e.stopPropagation()}>
                       {isEditing ? (
                         <div className="flex items-center justify-end gap-1">
@@ -919,7 +1004,7 @@ export function CostItemsTable({
                             value={editValue}
                             onChange={(e) => setEditValue(e.target.value)}
                             onKeyDown={(e) => handleKeyDown(e, item.id)}
-                            className="w-24 h-8 text-right font-mono"
+                            className="w-20 h-7 text-right font-mono text-sm"
                             autoFocus
                           />
                           <Tooltip>
@@ -927,10 +1012,10 @@ export function CostItemsTable({
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-8 w-8"
+                                className="h-7 w-7"
                                 onClick={(e) => handleEditSave(item.id, e)}
                               >
-                                <Check className="h-4 w-4 text-success" />
+                                <Check className="h-3.5 w-3.5 text-success" />
                               </Button>
                             </TooltipTrigger>
                             <TooltipContent>Save price</TooltipContent>
@@ -940,27 +1025,26 @@ export function CostItemsTable({
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-8 w-8"
+                                className="h-7 w-7"
                                 onClick={handleEditCancel}
                               >
-                                <X className="h-4 w-4 text-destructive" />
+                                <X className="h-3.5 w-3.5 text-destructive" />
                               </Button>
                             </TooltipTrigger>
                             <TooltipContent>Cancel</TooltipContent>
                           </Tooltip>
                         </div>
                       ) : (
-                        <div className="flex items-center justify-end gap-2 group">
-                          {/* Admin tooltip showing price source */}
+                        <div className="flex items-center justify-end gap-1.5 group">
                           {isAdmin && item.priceSource ? (
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <span className={cn(
-                                  "font-mono font-medium cursor-help",
+                                  "font-mono text-sm font-medium cursor-help",
                                   hasOverride && "text-warning"
                                 )}>
                                   {displayPrice ? formatPrice(displayPrice) : '—'}
-                                  <Database className="inline-block h-3 w-3 ml-1 text-muted-foreground" />
+                                  <Database className="inline-block h-2.5 w-2.5 ml-1 text-muted-foreground" />
                                 </span>
                               </TooltipTrigger>
                               <TooltipContent className="max-w-xs">
@@ -974,7 +1058,7 @@ export function CostItemsTable({
                             </Tooltip>
                           ) : (
                             <span className={cn(
-                              "font-mono font-medium",
+                              "font-mono text-sm font-medium",
                               hasOverride && "text-warning",
                               !displayPrice && "text-muted-foreground"
                             )}>
@@ -987,10 +1071,10 @@ export function CostItemsTable({
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
                                   onClick={(e) => handleEditStart(item, e)}
                                 >
-                                  <Pencil className="h-3 w-3" />
+                                  <Pencil className="h-2.5 w-2.5" />
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent>Edit price</TooltipContent>
@@ -999,29 +1083,34 @@ export function CostItemsTable({
                         </div>
                       )}
                     </td>
+                    <td className="text-right font-mono text-sm font-medium">
+                      <span className={cn(
+                        getRecommendedTotal(item) ? "text-primary" : "text-muted-foreground"
+                      )}>
+                        {getRecommendedTotal(item) ? formatPrice(getRecommendedTotal(item)!) : '—'}
+                      </span>
+                    </td>
                     <td>
-                      <div className="flex items-center gap-2">
-                        <StatusBadge status={item.status} showIcon={false} />
+                      <StatusBadge status={item.status} showIcon={false} />
+                    </td>
+                    <td>
+                      <div className="flex items-center gap-0.5">
                         {item.userClarification && (
                           <Tooltip>
                             <TooltipTrigger>
-                              <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
+                              <MessageSquare className="h-3 w-3 text-muted-foreground" />
                             </TooltipTrigger>
                             <TooltipContent>Has clarification notes</TooltipContent>
                           </Tooltip>
                         )}
-                      </div>
-                    </td>
-                    <td>
-                      <div className="flex items-center gap-1">
-                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
                         {onDeleteItem && (
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                                className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
                                 onClick={async (e) => {
                                   e.stopPropagation();
                                   const success = await onDeleteItem(item.id);
@@ -1030,7 +1119,7 @@ export function CostItemsTable({
                                   }
                                 }}
                               >
-                                <Trash2 className="h-3.5 w-3.5" />
+                                <Trash2 className="h-3 w-3" />
                               </Button>
                             </TooltipTrigger>
                             <TooltipContent>Delete item</TooltipContent>
