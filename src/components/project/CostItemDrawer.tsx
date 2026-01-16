@@ -14,6 +14,11 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { Check, MessageSquare, TrendingUp, Loader2, HelpCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { 
+  sanitizeAnalysisNoteForUser, 
+  getPriceRangeLabel,
+  getUserFriendlyScope 
+} from '@/lib/roleUtils';
 
 interface CostItemDrawerProps {
   item: CostItem | null;
@@ -24,6 +29,8 @@ interface CostItemDrawerProps {
   onOverride: (itemId: string, price: number) => void;
   onClarify: (itemId: string, text: string) => void;
   isProcessingClarification?: boolean;
+  isAdmin?: boolean;
+  projectCountry?: string;
 }
 
 export function CostItemDrawer({
@@ -35,6 +42,8 @@ export function CostItemDrawer({
   onOverride,
   onClarify,
   isProcessingClarification = false,
+  isAdmin = false,
+  projectCountry = '',
 }: CostItemDrawerProps) {
   const [overridePrice, setOverridePrice] = useState('');
   const [clarification, setClarification] = useState('');
@@ -82,13 +91,39 @@ export function CostItemDrawer({
     }
   };
 
+  // FIX: Use the actual displayed price (override or recommended) for slider position
+  // Also handle cases where price is outside the benchmark range
   const getBenchmarkPosition = () => {
     if (item.benchmarkMax === item.benchmarkMin) return 50;
-    const price = item.originalUnitPrice || item.recommendedUnitPrice;
+    // Use the current effective price (override takes precedence)
+    const price = item.userOverridePrice || item.originalUnitPrice || item.recommendedUnitPrice;
+    if (!price) return 50;
+    
     const range = item.benchmarkMax - item.benchmarkMin;
     const position = ((price - item.benchmarkMin) / range) * 100;
-    return Math.max(0, Math.min(100, position));
+    
+    // Allow position to go beyond 0-100% to show prices outside range
+    // But cap at -10% and 110% for visual purposes
+    return Math.max(-10, Math.min(110, position));
   };
+
+  // Determine if price is outside the benchmark range
+  const isOutsideRange = () => {
+    const price = item.userOverridePrice || item.originalUnitPrice || item.recommendedUnitPrice;
+    if (!price || !item.benchmarkMax) return false;
+    return price < item.benchmarkMin || price > item.benchmarkMax;
+  };
+
+  // Get sanitized content for regular users
+  const displayAnalysisNote = isAdmin 
+    ? (item.aiComment || 'No analysis notes available.')
+    : sanitizeAnalysisNoteForUser(item.aiComment, item.matchConfidence, projectCountry, currency);
+
+  const displayInterpretedScope = getUserFriendlyScope(
+    item.originalDescription,
+    item.interpretedScope,
+    isAdmin
+  );
 
   const needsClarification = item.status === 'clarification';
   const hasClarificationQuestion = item.clarificationQuestion && item.clarificationQuestion.trim().length > 0;
@@ -146,13 +181,17 @@ export function CostItemDrawer({
             </div>
           )}
 
-          {/* AI Interpretation */}
-          <div className="space-y-2">
-            <Label className="text-muted-foreground">AI Interpretation</Label>
-            <div className="p-4 bg-muted/50 rounded-lg text-sm">
-              {item.interpretedScope}
+          {/* AI Interpretation - Only show to admins or if content is safe for users */}
+          {displayInterpretedScope && (
+            <div className="space-y-2">
+              <Label className="text-muted-foreground">
+                {isAdmin ? 'AI Interpretation' : 'Item Summary'}
+              </Label>
+              <div className="p-4 bg-muted/50 rounded-lg text-sm">
+                {displayInterpretedScope}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Quantity & Unit */}
           <div className="grid grid-cols-2 gap-4">
@@ -197,9 +236,12 @@ export function CostItemDrawer({
               </div>
             </div>
 
-            {/* Benchmark Range */}
+            {/* Market Price Range - use role-appropriate labeling */}
             {item.benchmarkMax > 0 && (
               <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">
+                  {getPriceRangeLabel(isAdmin)}
+                </Label>
                 <div className="flex justify-between text-xs text-muted-foreground">
                   <span>Min: {formatPrice(item.benchmarkMin)}</span>
                   <span>Typical: {formatPrice(item.benchmarkTypical)}</span>
@@ -211,10 +253,25 @@ export function CostItemDrawer({
                     style={{ left: '0%', right: '0%' }}
                   />
                   <div
-                    className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-primary rounded-full border-2 border-card shadow-sm"
-                    style={{ left: `${getBenchmarkPosition()}%`, marginLeft: '-6px' }}
+                    className={cn(
+                      "absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 border-card shadow-sm transition-all",
+                      isOutsideRange() 
+                        ? "bg-destructive" 
+                        : item.userOverridePrice 
+                          ? "bg-warning" 
+                          : "bg-primary"
+                    )}
+                    style={{ 
+                      left: `${Math.max(0, Math.min(100, getBenchmarkPosition()))}%`, 
+                      marginLeft: '-6px' 
+                    }}
                   />
                 </div>
+                {isOutsideRange() && (
+                  <p className="text-xs text-destructive">
+                    ⚠ Price is outside the typical market range
+                  </p>
+                )}
               </div>
             )}
 
@@ -229,12 +286,12 @@ export function CostItemDrawer({
 
           <Separator />
 
-          {/* AI Comment */}
+          {/* Analysis Note - sanitized for regular users */}
           <div className="space-y-2">
             <Label className="text-muted-foreground">Analysis Note</Label>
             <div className="p-4 bg-muted/50 rounded-lg text-sm flex items-start gap-3">
               <MessageSquare className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
-              <p>{item.aiComment || 'No analysis notes available.'}</p>
+              <p>{displayAnalysisNote}</p>
             </div>
           </div>
 
