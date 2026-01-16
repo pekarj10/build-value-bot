@@ -49,12 +49,14 @@ import { SaveFilterDialog } from './SaveFilterDialog';
 import { EmptyState } from './EmptyState';
 import { useSavedFilters, FilterState } from '@/hooks/useSavedFilters';
 import { useAuth } from '@/hooks/useAuth';
+import { useViewMode } from '@/hooks/useViewMode';
 
 interface CostItemsTableProps {
   items: CostItem[];
   currency: string;
   onItemSelect: (item: CostItem) => void;
   onPriceUpdate?: (itemId: string, price: number) => void;
+  onResetPrice?: (itemId: string) => void;
   onBulkAccept?: (itemIds: string[]) => void;
   onBulkMarkReviewed?: (itemIds: string[]) => void;
   onBulkStatusChange?: (itemIds: string[], status: string) => void;
@@ -90,6 +92,7 @@ export function CostItemsTable({
   currency, 
   onItemSelect, 
   onPriceUpdate,
+  onResetPrice,
   onBulkAccept,
   onBulkMarkReviewed,
   onBulkStatusChange,
@@ -102,6 +105,9 @@ export function CostItemsTable({
   isLoading = false,
 }: CostItemsTableProps) {
   const { isAdmin } = useAuth();
+  const { showAsAdmin } = useViewMode();
+  // Effective admin check: actual admin AND not in user preview mode
+  const effectiveIsAdmin = isAdmin && showAsAdmin;
   // Filter states
   const [statusFilters, setStatusFilters] = useState<string[]>(
     externalStatusFilter && externalStatusFilter !== 'all' ? [externalStatusFilter] : []
@@ -1036,7 +1042,7 @@ export function CostItemsTable({
                         </div>
                       ) : (
                         <div className="flex items-center justify-end gap-1.5 group">
-                          {isAdmin && item.priceSource ? (
+                          {effectiveIsAdmin && item.priceSource ? (
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <span className={cn(
@@ -1048,7 +1054,7 @@ export function CostItemsTable({
                                 </span>
                               </TooltipTrigger>
                               <TooltipContent className="max-w-xs">
-                                {isAdmin ? (
+                                {effectiveIsAdmin ? (
                                   <>
                                     <p className="text-xs font-medium">{item.priceSource}</p>
                                     {item.matchConfidence && (
@@ -1070,6 +1076,26 @@ export function CostItemsTable({
                             )}>
                               {displayPrice ? formatPrice(displayPrice) : '—'}
                             </span>
+                          )}
+                          {/* Reset price icon - only show when price is overridden */}
+                          {hasOverride && onResetPrice && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity text-primary hover:text-primary"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onResetPrice(item.id);
+                                    toast.success(`Price reset to ${formatPrice(item.recommendedUnitPrice)} ${currency}`);
+                                  }}
+                                >
+                                  <RotateCcw className="h-2.5 w-2.5" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Reset to recommended ({formatPrice(item.recommendedUnitPrice)} {currency})</TooltipContent>
+                            </Tooltip>
                           )}
                           {onPriceUpdate && displayPrice && (
                             <Tooltip>
