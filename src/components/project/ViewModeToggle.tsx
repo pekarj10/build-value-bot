@@ -1,21 +1,20 @@
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, Users, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { useViewMode } from '@/hooks/useViewMode';
-import { Badge } from '@/components/ui/badge';
 
 /**
- * Floating button for admins to toggle between admin and user view modes.
+ * View mode selector for the sidebar - allows admins to toggle between admin and user views.
  * Regular users never see this component.
  */
-export function ViewModeToggle() {
-  const { isActualAdmin, isUserPreview, toggleViewMode } = useViewMode();
+export function SidebarViewModeToggle() {
+  const { isActualAdmin, isUserPreview, setViewMode, viewMode } = useViewMode();
 
   // Only show to actual admins
   if (!isActualAdmin) {
@@ -23,40 +22,57 @@ export function ViewModeToggle() {
   }
 
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            size="lg"
-            variant={isUserPreview ? "secondary" : "outline"}
-            className={cn(
-              "fixed bottom-6 right-24 h-14 w-14 rounded-full shadow-lg z-50",
-              "hover:scale-105 transition-transform",
-              isUserPreview && "bg-blue-100 hover:bg-blue-200 border-blue-300 dark:bg-blue-950 dark:hover:bg-blue-900 dark:border-blue-800"
-            )}
-            onClick={toggleViewMode}
-          >
-            {isUserPreview ? (
-              <EyeOff className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-            ) : (
-              <Eye className="h-6 w-6" />
-            )}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="left">
-          {isUserPreview ? 'Back to Admin View' : 'Preview as User'}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          className={cn(
+            "w-full justify-start gap-3 px-3 py-2.5 h-auto text-sm font-medium transition-base",
+            isUserPreview 
+              ? "bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:hover:bg-blue-900"
+              : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
+          )}
+        >
+          <Eye className="h-4 w-4" />
+          <span className="flex-1 text-left">
+            View as: {isUserPreview ? 'User' : 'Admin'}
+          </span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-48">
+        <DropdownMenuItem 
+          onClick={() => setViewMode('admin')}
+          className={cn(
+            "gap-2",
+            viewMode === 'admin' && "bg-accent"
+          )}
+        >
+          <Shield className="h-4 w-4" />
+          Admin View
+          {viewMode === 'admin' && <span className="ml-auto text-xs">✓</span>}
+        </DropdownMenuItem>
+        <DropdownMenuItem 
+          onClick={() => setViewMode('user')}
+          className={cn(
+            "gap-2",
+            viewMode === 'user' && "bg-accent"
+          )}
+        >
+          <Users className="h-4 w-4" />
+          User View
+          {viewMode === 'user' && <span className="ml-auto text-xs">✓</span>}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
 /**
- * User preview mode indicator badge that shows at the top of the screen
+ * User preview mode banner that shows at the top of the main content area
  * when an admin is viewing the app as a regular user.
  */
-export function UserPreviewBadge() {
-  const { isActualAdmin, isUserPreview, toggleViewMode } = useViewMode();
+export function UserPreviewBanner() {
+  const { isActualAdmin, isUserPreview, setViewMode } = useViewMode();
 
   // Only show when admin is in user preview mode
   if (!isActualAdmin || !isUserPreview) {
@@ -64,21 +80,21 @@ export function UserPreviewBadge() {
   }
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-50 flex justify-center pointer-events-none">
-      <Badge 
-        variant="secondary"
-        className={cn(
-          "mt-2 px-4 py-1.5 pointer-events-auto cursor-pointer",
-          "bg-blue-100 text-blue-700 border border-blue-300",
-          "dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800",
-          "hover:bg-blue-200 dark:hover:bg-blue-900 transition-colors",
-          "shadow-md"
-        )}
-        onClick={toggleViewMode}
-      >
-        <Eye className="h-3.5 w-3.5 mr-1.5" />
-        User Preview Mode
-      </Badge>
+    <div className="bg-blue-100 dark:bg-blue-950 border-b border-blue-200 dark:border-blue-800 px-4 py-2">
+      <div className="flex items-center justify-center gap-4">
+        <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300">
+          <Eye className="h-4 w-4" />
+          <span className="text-sm font-medium">PREVIEWING AS USER</span>
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setViewMode('admin')}
+          className="h-7 text-xs border-blue-300 text-blue-700 hover:bg-blue-200 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-900"
+        >
+          Switch to Admin
+        </Button>
+      </div>
     </div>
   );
 }
