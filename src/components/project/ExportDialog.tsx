@@ -27,6 +27,7 @@ interface ExportDialogProps {
   project: Project;
   items: CostItem[];
   selectedItemIds?: string[];
+  isAdmin?: boolean;
 }
 
 interface ExportOptions {
@@ -69,10 +70,12 @@ export function ExportDialog({
   project, 
   items,
   selectedItemIds,
+  isAdmin = false,
 }: ExportDialogProps) {
   const [options, setOptions] = useState<ExportOptions>(DEFAULT_OPTIONS);
   const [isExporting, setIsExporting] = useState(false);
-  const [exportType, setExportType] = useState<'excel' | 'pdf'>('excel');
+  // Default to PDF for non-admin users
+  const [exportType, setExportType] = useState<'excel' | 'pdf'>(isAdmin ? 'excel' : 'pdf');
 
   const handleExport = async () => {
     setIsExporting(true);
@@ -119,30 +122,37 @@ export function ExportDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs value={exportType} onValueChange={(v) => setExportType(v as 'excel' | 'pdf')}>
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="excel" className="gap-2">
-              <FileSpreadsheet className="h-4 w-4" />
-              Excel
-            </TabsTrigger>
-            <TabsTrigger value="pdf" className="gap-2">
-              <FileText className="h-4 w-4" />
-              PDF
-            </TabsTrigger>
-          </TabsList>
+        {/* Only show tabs for admin, regular users only get PDF */}
+        {isAdmin ? (
+          <Tabs value={exportType} onValueChange={(v) => setExportType(v as 'excel' | 'pdf')}>
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="excel" className="gap-2">
+                <FileSpreadsheet className="h-4 w-4" />
+                Excel
+              </TabsTrigger>
+              <TabsTrigger value="pdf" className="gap-2">
+                <FileText className="h-4 w-4" />
+                PDF
+              </TabsTrigger>
+            </TabsList>
 
-          <TabsContent value="excel" className="space-y-4 mt-4">
-            <div className="text-sm text-muted-foreground">
-              Export to Excel with multiple sheets including Executive Summary, Cost Items, and Variance Analysis.
-            </div>
-          </TabsContent>
+            <TabsContent value="excel" className="space-y-4 mt-4">
+              <div className="text-sm text-muted-foreground">
+                Export to Excel with multiple sheets including Executive Summary, Cost Items, and Variance Analysis.
+              </div>
+            </TabsContent>
 
-          <TabsContent value="pdf" className="space-y-4 mt-4">
-            <div className="text-sm text-muted-foreground">
-              Generate a professional PDF report suitable for client presentations with branded headers and formatted tables.
-            </div>
-          </TabsContent>
-        </Tabs>
+            <TabsContent value="pdf" className="space-y-4 mt-4">
+              <div className="text-sm text-muted-foreground">
+                Generate a professional PDF report suitable for client presentations with branded headers and formatted tables.
+              </div>
+            </TabsContent>
+          </Tabs>
+        ) : (
+          <div className="text-sm text-muted-foreground mt-4">
+            Generate a professional PDF report suitable for client presentations with branded headers and formatted tables.
+          </div>
+        )}
 
         <div className="space-y-4 py-2 max-h-[300px] overflow-y-auto">
           {/* Columns to Include */}

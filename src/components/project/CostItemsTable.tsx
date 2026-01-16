@@ -1048,11 +1048,17 @@ export function CostItemsTable({
                                 </span>
                               </TooltipTrigger>
                               <TooltipContent className="max-w-xs">
-                                <p className="text-xs font-medium">{item.priceSource}</p>
-                                {item.matchConfidence && (
-                                  <p className="text-xs text-muted-foreground">
-                                    Match confidence: {item.matchConfidence}%
-                                  </p>
+                                {isAdmin ? (
+                                  <>
+                                    <p className="text-xs font-medium">{item.priceSource}</p>
+                                    {item.matchConfidence && (
+                                      <p className="text-xs text-muted-foreground">
+                                        Match confidence: {item.matchConfidence}%
+                                      </p>
+                                    )}
+                                  </>
+                                ) : (
+                                  <p className="text-xs">Based on market data analysis</p>
                                 )}
                               </TooltipContent>
                             </Tooltip>

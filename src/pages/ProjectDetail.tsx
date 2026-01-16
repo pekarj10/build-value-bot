@@ -18,6 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CostItem, PROJECT_TYPE_LABELS, SUPPORTED_COUNTRIES, Project } from '@/types/project';
 import { useProject } from '@/hooks/useProject';
 import { useCostAnalysis } from '@/hooks/useCostAnalysis';
+import { useAuth } from '@/hooks/useAuth';
 import { 
   FileSpreadsheet, 
   FileText,
@@ -28,7 +29,8 @@ import {
   Table,
   Bot,
   Trash2,
-  Download
+  Download,
+  FileDown
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -36,6 +38,7 @@ import { toast } from 'sonner';
 export default function ProjectDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { isAdmin } = useAuth();
   const { getProject, getCostItems, updateCostItem, deleteCostItem, addCostItem, deleteProject } = useProject();
   const { processClarification, analyzeItems, isAnalyzing } = useCostAnalysis();
 
@@ -453,8 +456,8 @@ export default function ProjectDetail() {
               Delete
             </Button>
             <Button variant="outline" onClick={() => setShowExportDialog(true)}>
-              <Download className="h-4 w-4 mr-2" />
-              Export
+              <FileDown className="h-4 w-4 mr-2" />
+              {isAdmin ? 'Export' : 'Export PDF'}
             </Button>
           </div>
         }
@@ -592,6 +595,8 @@ export default function ProjectDetail() {
         onOverride={handleOverride}
         onClarify={handleClarify}
         isProcessingClarification={isProcessingClarification}
+        isAdmin={isAdmin}
+        projectCountry={project.country}
       />
 
       {/* Floating AI Button */}
@@ -607,6 +612,7 @@ export default function ProjectDetail() {
         onClose={() => setShowExportDialog(false)}
         project={project}
         items={items}
+        isAdmin={isAdmin}
       />
 
       {/* Delete Dialog */}
