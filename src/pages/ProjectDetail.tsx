@@ -10,7 +10,7 @@ import { AIFloatingButton } from '@/components/project/AIFloatingButton';
 import { ExportDialog } from '@/components/project/ExportDialog';
 import { DeleteProjectDialog } from '@/components/project/DeleteProjectDialog';
 import { AddCostItemDialog } from '@/components/project/AddCostItemDialog';
-import { ViewModeToggle, UserPreviewBadge } from '@/components/project/ViewModeToggle';
+
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -613,9 +613,7 @@ export default function ProjectDetail() {
         projectCountry={project.country}
       />
 
-      {/* View Mode Toggle and Badge for Admins */}
-      <ViewModeToggle />
-      <UserPreviewBadge />
+      {/* View Mode Toggle is now in sidebar, Banner is in AppLayout */}
 
       {/* Floating AI Button */}
       <AIFloatingButton 

@@ -2,6 +2,8 @@ import { ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
+import { useViewMode } from '@/hooks/useViewMode';
+import { SidebarViewModeToggle, UserPreviewBanner } from '@/components/project/ViewModeToggle';
 import { 
   LayoutDashboard, 
   FolderOpen, 
@@ -43,6 +45,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, isAdmin, signOut } = useAuth();
+  const { showAsAdmin, isUserPreview } = useViewMode();
 
   const handleSignOut = async () => {
     await signOut();
@@ -88,10 +91,17 @@ export function AppLayout({ children }: AppLayoutProps) {
             );
           })}
           
-          {/* Admin navigation */}
+          {/* View Mode Toggle - only visible to admins */}
           {isAdmin && (
             <>
               <div className="my-2 border-t border-sidebar-border" />
+              <SidebarViewModeToggle />
+            </>
+          )}
+          
+          {/* Admin navigation - only show when in admin view mode */}
+          {showAsAdmin && (
+            <>
               {adminNavigation.map((item) => {
                 const isActive = location.pathname === item.href;
                 
@@ -177,6 +187,8 @@ export function AppLayout({ children }: AppLayoutProps) {
 
       {/* Main content */}
       <main className="pl-64">
+        {/* User Preview Banner - shows when admin is in user view mode */}
+        <UserPreviewBanner />
         <div className="min-h-screen">
           {children}
         </div>
