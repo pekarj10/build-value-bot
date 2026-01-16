@@ -42,10 +42,12 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
     }).format(value);
   };
 
-  // Calculate metrics - now using Recommended Totals as main value
-  const totalRecommendedValue = items.reduce((sum, item) => {
-    const price = item.userOverridePrice || item.recommendedUnitPrice;
-    return sum + (price ? price * item.quantity : 0);
+  // Calculate metrics
+  // IMPORTANT: This total must match the value shown in the Projects dashboard (projects.total_value)
+  // so we fall back to original prices when a recommendation/override doesn't exist yet.
+  const totalEstimatedValue = items.reduce((sum, item) => {
+    const price = item.userOverridePrice ?? item.recommendedUnitPrice ?? item.originalUnitPrice;
+    return sum + (price != null ? price * item.quantity : 0);
   }, 0);
 
   const totalOriginalValue = items.reduce((sum, item) => {
@@ -81,8 +83,8 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
       }, 0) / itemsWithVariance.length
     : 0;
 
-  // Difference between original and recommended
-  const valueDifference = totalOriginalValue - totalRecommendedValue;
+  // Difference between original and estimated (matches dashboard vs detail)
+  const valueDifference = totalOriginalValue - totalEstimatedValue;
 
   return (
     <Card className="p-5 lg:p-6 bg-gradient-to-br from-card via-card to-primary/5 border-2 shadow-sm">
@@ -130,7 +132,7 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
               Total Project Estimate
             </span>
           </div>
-          <p className="text-3xl sm:text-4xl font-bold font-mono text-primary">{formatCurrency(totalRecommendedValue)}</p>
+          <p className="text-3xl sm:text-4xl font-bold font-mono text-primary">{formatCurrency(totalEstimatedValue)}</p>
           {totalOriginalValue > 0 && valueDifference !== 0 && (
             <p className={cn(
               "text-sm mt-2 font-medium",
@@ -227,7 +229,7 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
                 Project Estimate
               </span>
             </div>
-            <p className="text-2xl font-bold font-mono text-primary">{formatCurrency(totalRecommendedValue)}</p>
+            <p className="text-2xl font-bold font-mono text-primary">{formatCurrency(totalEstimatedValue)}</p>
             {totalOriginalValue > 0 && (
               <p className="text-xs text-muted-foreground mt-1">
                 Original: {formatCurrency(totalOriginalValue)}
