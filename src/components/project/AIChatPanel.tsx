@@ -42,7 +42,7 @@ interface AIChatPanelProps {
 }
 
 const QUICK_PROMPTS = [
-  { icon: Zap, label: "Analyze All", prompt: "Analyze all items that need clarification and give me a summary" },
+  { icon: Zap, label: "Analyze All", prompt: "Analyze all items that need analysis and give me a summary" },
   { icon: HelpCircle, label: "Why flagged?", prompt: "Explain why items are flagged for review or clarification" },
   { icon: TrendingUp, label: "Market rates", prompt: "What are the current market rates for the main cost categories?" },
   { icon: BarChart3, label: "Compare", prompt: "Compare this project's costs to typical projects of this type" },
@@ -97,12 +97,9 @@ export function AIChatPanel({ project, items, onItemsUpdate, className }: AIChat
 
       if (isAnalyzeAll) {
         // Use the analyze-cost-items function
-        // Include items that need clarification OR review OR haven't been analyzed yet
-        const itemsNeedingAnalysis = items.filter(i => 
-          i.status === 'clarification' || 
-          i.status === 'review' ||
-          !i.matchedBenchmarkId // Not yet matched to a benchmark
-        );
+        // Include ALL items - either for initial analysis or re-analysis
+        // This ensures every item gets processed when "Analyze All" is clicked
+        const itemsNeedingAnalysis = items; // Analyze ALL items
         
         if (itemsNeedingAnalysis.length === 0) {
           response = "All items have already been analyzed. There are no items currently needing analysis.";
@@ -278,7 +275,7 @@ export function AIChatPanel({ project, items, onItemsUpdate, className }: AIChat
           <div>
             <h3 className="font-semibold text-sm">AI Cost Analyst</h3>
             <p className="text-xs text-muted-foreground">
-              {items.filter(i => i.status === 'clarification').length} items need analysis
+              {items.filter(i => i.status === 'clarification' || i.status === 'review' || !i.matchedBenchmarkId).length} items need attention • {items.length} total
             </p>
           </div>
         </div>
