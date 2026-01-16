@@ -10,7 +10,8 @@ import {
   ChevronRight,
   LogOut,
   User,
-  Shield
+  Shield,
+  TrendingUp
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -57,11 +58,11 @@ export function AppLayout({ children }: AppLayoutProps) {
       {/* Sidebar */}
       <aside className="fixed inset-y-0 left-0 z-50 w-64 bg-sidebar border-r border-sidebar-border">
         <div className="flex h-16 items-center px-6 border-b border-sidebar-border">
-          <Link to="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-sidebar-primary flex items-center justify-center">
-              <span className="text-sidebar-primary-foreground font-bold text-sm">PC</span>
+          <Link to="/" className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-sidebar-primary flex items-center justify-center">
+              <TrendingUp className="h-5 w-5 text-sidebar-primary-foreground" />
             </div>
-            <span className="font-semibold text-sidebar-foreground">Cost Intelligence</span>
+            <span className="font-semibold text-lg text-sidebar-foreground tracking-tight">Unit Rate</span>
           </Link>
         </div>
         
@@ -75,7 +76,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 key={item.name}
                 to={item.href}
                 className={cn(
-                  'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-base',
+                  'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-base',
                   isActive
                     ? 'bg-sidebar-accent text-sidebar-accent-foreground'
                     : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50'
@@ -99,7 +100,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                     key={item.name}
                     to={item.href}
                     className={cn(
-                      'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-base',
+                      'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-base',
                       isActive
                         ? 'bg-warning/20 text-warning'
                         : 'text-warning/70 hover:text-warning hover:bg-warning/10'
@@ -169,7 +170,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           </DropdownMenu>
           
           <div className="mt-3 rounded-lg bg-sidebar-accent/50 p-3">
-            <p className="text-xs text-sidebar-foreground/70">Version 0.1.0 ALFA</p>
+            <p className="text-xs text-sidebar-foreground/70">Version 1.0.0</p>
           </div>
         </div>
       </aside>

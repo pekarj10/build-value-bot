@@ -17,7 +17,7 @@ export interface FilterState {
   quickFilters: string[];
 }
 
-const STORAGE_KEY = 'cost-insight-saved-filters';
+const STORAGE_KEY = 'unit-rate-saved-filters';
 
 export function useSavedFilters() {
   const [savedFilters, setSavedFilters] = useState<SavedFilter[]>(() => {

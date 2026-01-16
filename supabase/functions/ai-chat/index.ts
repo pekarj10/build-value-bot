@@ -5,7 +5,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const SYSTEM_PROMPT = `You are an AI Cost Intelligence Assistant acting as a senior quantity surveyor and cost consultant.
+const SYSTEM_PROMPT = `You are a Unit Rate AI Assistant acting as a senior quantity surveyor and cost consultant.
 
 You help users understand and analyze construction cost items, budgets, and pricing.
 

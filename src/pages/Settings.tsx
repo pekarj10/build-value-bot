@@ -175,7 +175,7 @@ const Settings = () => {
               <CardTitle>Appearance</CardTitle>
             </div>
             <CardDescription>
-              Customize how Cost Intelligence looks for you
+              Customize how Unit Rate looks for you
             </CardDescription>
           </CardHeader>
           <CardContent>

@@ -23,7 +23,7 @@ const faqs = [
   },
   {
     question: "What file formats are supported?",
-    answer: "Cost Intelligence supports Excel files (.xlsx, .xls) containing bill of quantities or cost estimates. The system uses AI to parse and analyze the cost items automatically."
+    answer: "Unit Rate supports Excel files (.xlsx, .xls) containing bill of quantities or cost estimates. The system uses AI to parse and analyze the cost items automatically."
   },
   {
     question: "How does the AI analysis work?",
@@ -31,7 +31,7 @@ const faqs = [
   },
   {
     question: "What do the different status colors mean?",
-    answer: "Green (Reviewed) - Item has been verified. Yellow (Pending) - Item needs attention. Orange (Flagged) - Potential issue detected. Red (Critical) - Significant pricing concern that requires review."
+    answer: "Green (OK) - Item has been verified and is within benchmark range. Yellow (Review) - Item needs attention due to pricing variance. Red (Clarification) - Significant pricing concern that requires review or additional information."
   },
   {
     question: "Can I manually edit cost items?",
@@ -39,7 +39,7 @@ const faqs = [
   },
   {
     question: "How do I export my analysis?",
-    answer: "Use the Export button on the project detail page. You can export to Excel or PDF format with options to include AI comments, benchmark comparisons, and executive summaries."
+    answer: "Use the Export buttons on the project detail page. You can export to Excel for detailed data analysis or PDF for professional reports suitable for client presentation."
   },
   {
     question: "What is the AI Chat feature?",
@@ -54,7 +54,7 @@ const faqs = [
 const guides = [
   {
     title: "Getting Started",
-    description: "Learn the basics of Cost Intelligence",
+    description: "Learn the basics of Unit Rate",
     icon: BookOpen,
   },
   {
@@ -87,7 +87,7 @@ const Help = () => {
     <AppLayout>
       <PageHeader
         title="Help Center"
-        description="Find answers and learn how to use Cost Intelligence"
+        description="Find answers and learn how to use Unit Rate"
         breadcrumbs={[
           { label: "Dashboard", href: "/" },
           { label: "Help" },
@@ -142,7 +142,7 @@ const Help = () => {
               <CardTitle>Frequently Asked Questions</CardTitle>
             </div>
             <CardDescription>
-              Common questions about using Cost Intelligence
+              Common questions about using Unit Rate
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -201,9 +201,9 @@ const Help = () => {
             </CardHeader>
             <CardContent>
               <Button variant="outline" className="w-full" asChild>
-                <a href="mailto:support@costintelligence.app">
+                <a href="mailto:support@unitrate.app">
                   <Mail className="mr-2 h-4 w-4" />
-                  support@costintelligence.app
+                  support@unitrate.app
                   <ExternalLink className="ml-2 h-3 w-3" />
                 </a>
               </Button>
