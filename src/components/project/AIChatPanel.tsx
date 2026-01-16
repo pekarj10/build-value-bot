@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -7,7 +7,6 @@ import { Badge } from '@/components/ui/badge';
 import { 
   Bot, 
   Send, 
-  X, 
   Loader2, 
   Sparkles,
   MessageCircle,
@@ -61,14 +60,17 @@ export function AIChatPanel({ project, items, onItemsUpdate, className }: AIChat
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [selectedItemContext, setSelectedItemContext] = useState<CostItem | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Scroll to bottom when messages change
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, []);
+
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages]);
+    scrollToBottom();
+  }, [messages, isLoading, scrollToBottom]);
 
   const handleSend = async (prompt?: string) => {
     const messageText = prompt || input.trim();
@@ -95,14 +97,27 @@ export function AIChatPanel({ project, items, onItemsUpdate, className }: AIChat
 
       if (isAnalyzeAll) {
         // Use the analyze-cost-items function
-        const clarificationItems = items.filter(i => i.status === 'clarification');
+        // Include items that need clarification OR review OR haven't been analyzed yet
+        const itemsNeedingAnalysis = items.filter(i => 
+          i.status === 'clarification' || 
+          i.status === 'review' ||
+          !i.matchedBenchmarkId // Not yet matched to a benchmark
+        );
         
-        if (clarificationItems.length === 0) {
-          response = "All items have already been analyzed. There are no items currently needing clarification.";
+        if (itemsNeedingAnalysis.length === 0) {
+          response = "All items have already been analyzed. There are no items currently needing analysis.";
         } else {
+          // Show progress message
+          setMessages(prev => [...prev, {
+            id: 'analyzing-progress',
+            role: 'assistant',
+            content: `Analyzing **${itemsNeedingAnalysis.length} items**... This may take a moment.`,
+            timestamp: new Date(),
+          }]);
+
           const { data, error } = await supabase.functions.invoke('analyze-cost-items', {
             body: {
-              items: clarificationItems.map(item => ({
+              items: itemsNeedingAnalysis.map(item => ({
                 id: item.id,
                 originalDescription: item.originalDescription,
                 quantity: item.quantity,
@@ -156,11 +171,14 @@ export function AIChatPanel({ project, items, onItemsUpdate, className }: AIChat
 
             onItemsUpdate(updates);
 
+            // Remove progress message
+            setMessages(prev => prev.filter(m => m.id !== 'analyzing-progress'));
+
             const okCount = data.items.filter((i: any) => i.status === 'ok').length;
             const reviewCount = data.items.filter((i: any) => i.status === 'review').length;
             const clarifyCount = data.items.filter((i: any) => i.status === 'clarification').length;
 
-            response = `## Analysis Complete ✓\n\nI've analyzed **${clarificationItems.length} items**:\n\n`;
+            response = `## Analysis Complete ✓\n\nI've analyzed **${itemsNeedingAnalysis.length} items**:\n\n`;
             response += `- ✅ **${okCount}** items are OK (within market range)\n`;
             response += `- ⚠️ **${reviewCount}** items need review (pricing deviations)\n`;
             response += `- ❓ **${clarifyCount}** items still need clarification\n\n`;
@@ -288,7 +306,7 @@ export function AIChatPanel({ project, items, onItemsUpdate, className }: AIChat
       </div>
 
       {/* Messages */}
-      <ScrollArea className="flex-1 p-4" ref={scrollRef}>
+      <ScrollArea className="flex-1 p-4">
         <div className="space-y-4">
           {messages.map((message) => (
             <div
@@ -369,6 +387,8 @@ export function AIChatPanel({ project, items, onItemsUpdate, className }: AIChat
               </div>
             </div>
           )}
+          {/* Scroll anchor */}
+          <div ref={messagesEndRef} />
         </div>
       </ScrollArea>
 

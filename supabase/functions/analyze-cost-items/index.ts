@@ -23,9 +23,15 @@ const corsHeaders = {
 const UNIFIED_MATCH_PROMPT = `You are a senior construction cost expert matching cost items to a benchmark database.
 
 YOUR TASK:
-1. TRANSLATE the cost item to the target language construction terminology
+1. TRANSLATE the cost item to the target language construction terminology (for internal matching only)
 2. IDENTIFY the best matching benchmark from the provided candidates
-3. PROVIDE confidence score and reasoning
+3. PROVIDE confidence score and reasoning IN ENGLISH
+
+CRITICAL LANGUAGE RULES:
+- ALL OUTPUT FIELDS MUST BE IN ENGLISH, except "translatedTerm" which is for internal matching
+- The "reasoning" field MUST be written in clear English
+- Never include Swedish, German, or other non-English text in the "reasoning" field
+- The "translatedTerm" is only used internally for matching - it can be in the target language
 
 MATCHING RULES:
 - Match based on scope of work, materials, and activity type
@@ -42,10 +48,10 @@ CONFIDENCE SCORING:
 
 CRITICAL: Return EXACTLY this JSON format:
 {
-  "translatedTerm": "the term in target language",
+  "translatedTerm": "the term in target language (for matching)",
   "matchedBenchmarkId": "exact-uuid-from-list-or-null",
   "confidence": 85,
-  "reasoning": "Why this benchmark was selected or why no match"
+  "reasoning": "ENGLISH explanation of why this benchmark was selected or why no match"
 }`;
 
 interface CostItemInput {
@@ -611,19 +617,22 @@ async function processCostItem(
 
     console.log(`[${item.originalDescription}] → MATCHED: ${benchmark.avg_price} (${confidence}% confidence)`);
 
+    // Generate English description for the interpreted scope
+    const englishScope = item.originalDescription;
+
     return {
       id: item.id,
       matchedBenchmarkId: benchmark.id,
       matchConfidence: confidence,
       matchReasoning: reasoning,
-      interpretedScope: `${translatedTerm} → ${benchmark.description}`,
+      interpretedScope: englishScope, // Keep original English description, not Swedish
       recommendedUnitPrice: benchmark.avg_price,
       benchmarkMin: benchmark.min_price || benchmark.avg_price * 0.85,
       benchmarkTypical: benchmark.avg_price,
       benchmarkMax: benchmark.max_price || benchmark.avg_price * 1.15,
       priceSource: priceSource,
       status: status,
-      aiComment: `Matched to ${benchmark.description} (${confidence}% confidence). ${reasoning}`,
+      aiComment: `Matched with ${confidence}% confidence. ${reasoning}`, // English comment without Swedish terms
     };
 
   } catch (error) {
