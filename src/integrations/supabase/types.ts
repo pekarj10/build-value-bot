@@ -191,6 +191,7 @@ export type Database = {
           issues_count: number | null
           name: string
           notes: string | null
+          project_notes: string | null
           project_type: string
           status: string
           total_items: number | null
@@ -206,6 +207,7 @@ export type Database = {
           issues_count?: number | null
           name: string
           notes?: string | null
+          project_notes?: string | null
           project_type: string
           status?: string
           total_items?: number | null
@@ -221,6 +223,7 @@ export type Database = {
           issues_count?: number | null
           name?: string
           notes?: string | null
+          project_notes?: string | null
           project_type?: string
           status?: string
           total_items?: number | null

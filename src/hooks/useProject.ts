@@ -18,6 +18,7 @@ interface DbProject {
   currency: string;
   project_type: string;
   notes: string | null;
+  project_notes: string | null;
   status: string;
   total_items: number | null;
   total_value: number | null;
@@ -165,6 +166,7 @@ export function useProject() {
         currency: project.currency,
         projectType: project.project_type as ProjectType,
         notes: project.notes || undefined,
+        projectNotes: project.project_notes || '',
         status: project.status as 'draft' | 'processing' | 'ready' | 'exported',
         totalItems: project.total_items || 0,
         totalValue: project.total_value || 0,
@@ -194,6 +196,7 @@ export function useProject() {
         currency: project.currency,
         projectType: project.project_type as ProjectType,
         notes: project.notes || undefined,
+        projectNotes: project.project_notes || '',
         status: project.status as 'draft' | 'processing' | 'ready' | 'exported',
         totalItems: project.total_items || 0,
         totalValue: project.total_value || 0,
@@ -356,6 +359,24 @@ export function useProject() {
     }
   }, []);
 
+  const updateProjectNotes = useCallback(async (
+    projectId: string,
+    projectNotes: string
+  ): Promise<boolean> => {
+    try {
+      const { error } = await supabase
+        .from('projects')
+        .update({ project_notes: projectNotes })
+        .eq('id', projectId);
+
+      if (error) throw error;
+      return true;
+    } catch (error) {
+      console.error('Update project notes error:', error);
+      return false;
+    }
+  }, []);
+
   const deleteProject = useCallback(async (projectId: string): Promise<boolean> => {
     try {
       // Delete cost items first (cascade)
@@ -411,6 +432,7 @@ export function useProject() {
     deleteCostItem,
     addCostItem,
     updateProjectStatus,
+    updateProjectNotes,
     deleteProject,
   };
 }

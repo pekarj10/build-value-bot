@@ -19,6 +19,7 @@ export interface Project {
   currency: string;
   projectType: ProjectType;
   notes?: string;
+  projectNotes?: string;
   status: ProjectStatus;
   createdAt: Date;
   updatedAt: Date;
