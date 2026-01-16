@@ -10,7 +10,8 @@ import {
   DollarSign,
   BarChart3,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Calculator
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -23,8 +24,6 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [forceCompactLayout, setForceCompactLayout] = useState(false);
 
-  // iPad can render at desktop widths; force the compact summary on touch devices
-  // so "Total Estimated" is always readable regardless of sidebar/panel layout.
   useEffect(() => {
     const mql = window.matchMedia('(pointer: coarse)');
     const onChange = (e: MediaQueryListEvent) => setForceCompactLayout(e.matches);
@@ -33,6 +32,7 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
     mql.addEventListener('change', onChange);
     return () => mql.removeEventListener('change', onChange);
   }, []);
+
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -42,15 +42,23 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
     }).format(value);
   };
 
-  // Calculate metrics
-  const totalValue = items.reduce((sum, i) => sum + (i.totalPrice || 0), 0);
+  // Calculate metrics - now using Recommended Totals as main value
+  const totalRecommendedValue = items.reduce((sum, item) => {
+    const price = item.userOverridePrice || item.recommendedUnitPrice;
+    return sum + (price ? price * item.quantity : 0);
+  }, 0);
+
+  const totalOriginalValue = items.reduce((sum, item) => {
+    return sum + (item.originalUnitPrice ? item.originalUnitPrice * item.quantity : 0);
+  }, 0);
+
   const reviewCount = items.filter(i => i.status === 'review' || i.status === 'clarification').length;
   
-  // Potential savings - items priced above benchmark max
+  // Potential savings - difference between original and recommended (when original is higher)
   const potentialSavings = items.reduce((sum, item) => {
-    if (item.originalUnitPrice && item.benchmarkTypical && item.originalUnitPrice > item.benchmarkTypical) {
-      const savings = (item.originalUnitPrice - item.benchmarkTypical) * item.quantity;
-      return sum + savings;
+    const recPrice = item.userOverridePrice || item.recommendedUnitPrice;
+    if (item.originalUnitPrice && recPrice && item.originalUnitPrice > recPrice) {
+      return sum + (item.originalUnitPrice - recPrice) * item.quantity;
     }
     return sum;
   }, 0);
@@ -73,21 +81,23 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
       }, 0) / itemsWithVariance.length
     : 0;
 
+  // Difference between original and recommended
+  const valueDifference = totalOriginalValue - totalRecommendedValue;
+
   return (
-    <Card className="p-4 lg:p-6 bg-gradient-to-br from-card to-muted/20 border-2">
-      {/* Header with toggle for tablet/mobile */}
-      <div className="flex items-center justify-between gap-3 mb-4 lg:mb-6">
+    <Card className="p-5 lg:p-6 bg-gradient-to-br from-card via-card to-primary/5 border-2 shadow-sm">
+      {/* Header with toggle */}
+      <div className="flex items-center justify-between gap-3 mb-5">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
             <BarChart3 className="h-5 w-5 text-primary" />
           </div>
           <div className="min-w-0">
             <h2 className="font-semibold text-lg">Executive Summary</h2>
-            <p className="text-sm text-muted-foreground hidden sm:block">Key cost analysis metrics</p>
+            <p className="text-sm text-muted-foreground hidden sm:block">Key project metrics</p>
           </div>
         </div>
         
-        {/* Expand/Collapse button - visible on tablet/mobile OR touch devices */}
         {(forceCompactLayout) && (
           <Button
             variant="ghost"
@@ -95,17 +105,7 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
             className="flex-shrink-0"
             onClick={() => setIsExpanded(!isExpanded)}
           >
-            {isExpanded ? (
-              <>
-                <ChevronUp className="h-4 w-4 mr-1" />
-                <span className="hidden sm:inline">Less</span>
-              </>
-            ) : (
-              <>
-                <ChevronDown className="h-4 w-4 mr-1" />
-                <span className="hidden sm:inline">More</span>
-              </>
-            )}
+            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </Button>
         )}
         {!forceCompactLayout && (
@@ -115,83 +115,69 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
             className="xl:hidden flex-shrink-0"
             onClick={() => setIsExpanded(!isExpanded)}
           >
-            {isExpanded ? (
-              <>
-                <ChevronUp className="h-4 w-4 mr-1" />
-                <span className="hidden sm:inline">Less</span>
-              </>
-            ) : (
-              <>
-                <ChevronDown className="h-4 w-4 mr-1" />
-                <span className="hidden sm:inline">More</span>
-              </>
-            )}
+            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </Button>
         )}
       </div>
 
-      {/* Compact view for tablet/mobile/touch - always shows total */}
+      {/* Compact view for tablet/mobile/touch */}
       <div className={forceCompactLayout ? '' : 'xl:hidden'}>
-        {/* Always visible: Total Estimated - full width for prominence */}
-        <div className="p-4 bg-card rounded-lg border mb-4">
+        {/* Main metric: Total Recommended Value */}
+        <div className="p-5 bg-gradient-to-br from-primary/5 to-primary/10 rounded-xl border-2 border-primary/20 mb-4">
           <div className="flex items-center gap-2 mb-2">
-            <DollarSign className="h-4 w-4 text-primary flex-shrink-0" />
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Total Estimated
+            <Calculator className="h-4 w-4 text-primary flex-shrink-0" />
+            <span className="text-xs font-semibold text-primary uppercase tracking-wider">
+              Total Project Estimate
             </span>
           </div>
-          <p className="text-2xl sm:text-3xl font-bold font-mono text-primary">{formatCurrency(totalValue)}</p>
+          <p className="text-3xl sm:text-4xl font-bold font-mono text-primary">{formatCurrency(totalRecommendedValue)}</p>
+          {totalOriginalValue > 0 && valueDifference !== 0 && (
+            <p className={cn(
+              "text-sm mt-2 font-medium",
+              valueDifference > 0 ? "text-success" : "text-warning"
+            )}>
+              {valueDifference > 0 ? '↓ ' : '↑ '}{formatCurrency(Math.abs(valueDifference))} vs original
+            </p>
+          )}
         </div>
 
         {/* Expandable metrics */}
         {isExpanded && (
           <div className="grid grid-cols-2 gap-3 animate-fade-in">
-            {/* Review Count */}
-            <div className="p-3 bg-card rounded-lg border">
+            <div className="p-3 bg-card rounded-xl border">
               <div className="flex items-center gap-2 mb-1">
                 <AlertTriangle className="h-3 w-3 text-warning flex-shrink-0" />
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Review
-                </span>
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Review</span>
               </div>
               <p className="text-lg font-bold">
                 {reviewCount} <span className="text-xs font-normal text-muted-foreground">items</span>
               </p>
             </div>
 
-            {/* Potential Savings */}
-            <div className="p-3 bg-card rounded-lg border">
+            <div className="p-3 bg-card rounded-xl border">
               <div className="flex items-center gap-2 mb-1">
                 <TrendingDown className="h-3 w-3 text-success flex-shrink-0" />
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Savings
-                </span>
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Savings</span>
               </div>
               <p className={cn("text-lg font-bold font-mono", potentialSavings > 0 && "text-success")}>
                 {formatCurrency(potentialSavings)}
               </p>
             </div>
 
-            {/* Underpriced Risk */}
-            <div className="p-3 bg-card rounded-lg border">
+            <div className="p-3 bg-card rounded-xl border">
               <div className="flex items-center gap-2 mb-1">
                 <TrendingUp className="h-3 w-3 text-destructive flex-shrink-0" />
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Risk
-                </span>
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Risk</span>
               </div>
               <p className={cn("text-lg font-bold font-mono", underpricedRisk > 0 && "text-destructive")}>
                 {formatCurrency(underpricedRisk)}
               </p>
             </div>
 
-            {/* Average Variance */}
-            <div className="p-3 bg-card rounded-lg border">
+            <div className="p-3 bg-card rounded-xl border">
               <div className="flex items-center gap-2 mb-1">
                 <CheckCircle className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Variance
-                </span>
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Variance</span>
               </div>
               <p className={cn(
                 "text-lg font-bold",
@@ -205,7 +191,7 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
           </div>
         )}
 
-        {/* Collapsed summary - quick stats inline */}
+        {/* Collapsed summary */}
         {!isExpanded && (
           <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
             <span className="flex items-center gap-1">
@@ -230,77 +216,82 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
         )}
       </div>
 
-      {/* Full grid view for desktop (hidden on touch devices) */}
+      {/* Full grid view for desktop */}
       {!forceCompactLayout && (
         <div className="hidden xl:grid xl:grid-cols-5 gap-4">
-        {/* Total Value */}
-        <div className="p-4 bg-card rounded-lg border">
-          <div className="flex items-center gap-2 mb-2">
-            <DollarSign className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Total Estimated
-            </span>
+          {/* Total Recommended Value - highlighted */}
+          <div className="p-4 bg-gradient-to-br from-primary/5 to-primary/10 rounded-xl border-2 border-primary/20">
+            <div className="flex items-center gap-2 mb-2">
+              <Calculator className="h-4 w-4 text-primary flex-shrink-0" />
+              <span className="text-xs font-semibold text-primary uppercase tracking-wider">
+                Project Estimate
+              </span>
+            </div>
+            <p className="text-2xl font-bold font-mono text-primary">{formatCurrency(totalRecommendedValue)}</p>
+            {totalOriginalValue > 0 && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Original: {formatCurrency(totalOriginalValue)}
+              </p>
+            )}
           </div>
-          <p className="text-2xl font-bold font-mono">{formatCurrency(totalValue)}</p>
-        </div>
 
-        {/* Review Count */}
-        <div className="p-4 bg-card rounded-lg border">
-          <div className="flex items-center gap-2 mb-2">
-            <AlertTriangle className="h-4 w-4 text-warning flex-shrink-0" />
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Need Review
-            </span>
+          {/* Review Count */}
+          <div className="p-4 bg-card rounded-xl border">
+            <div className="flex items-center gap-2 mb-2">
+              <AlertTriangle className="h-4 w-4 text-warning flex-shrink-0" />
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Need Review
+              </span>
+            </div>
+            <p className="text-2xl font-bold">
+              {reviewCount} <span className="text-sm font-normal text-muted-foreground">items</span>
+            </p>
           </div>
-          <p className="text-2xl font-bold">
-            {reviewCount} <span className="text-sm font-normal text-muted-foreground">items</span>
-          </p>
-        </div>
 
-        {/* Potential Savings */}
-        <div className="p-4 bg-card rounded-lg border">
-          <div className="flex items-center gap-2 mb-2">
-            <TrendingDown className="h-4 w-4 text-success flex-shrink-0" />
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Potential Savings
-            </span>
+          {/* Potential Savings */}
+          <div className="p-4 bg-card rounded-xl border">
+            <div className="flex items-center gap-2 mb-2">
+              <TrendingDown className="h-4 w-4 text-success flex-shrink-0" />
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Potential Savings
+              </span>
+            </div>
+            <p className={cn("text-2xl font-bold font-mono", potentialSavings > 0 && "text-success")}>
+              {formatCurrency(potentialSavings)}
+            </p>
           </div>
-          <p className={cn("text-2xl font-bold font-mono", potentialSavings > 0 && "text-success")}>
-            {formatCurrency(potentialSavings)}
-          </p>
-        </div>
 
-        {/* Underpriced Risk */}
-        <div className="p-4 bg-card rounded-lg border">
-          <div className="flex items-center gap-2 mb-2">
-            <TrendingUp className="h-4 w-4 text-destructive flex-shrink-0" />
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Underpriced Risk
-            </span>
+          {/* Underpriced Risk */}
+          <div className="p-4 bg-card rounded-xl border">
+            <div className="flex items-center gap-2 mb-2">
+              <TrendingUp className="h-4 w-4 text-destructive flex-shrink-0" />
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Underpriced Risk
+              </span>
+            </div>
+            <p className={cn("text-2xl font-bold font-mono", underpricedRisk > 0 && "text-destructive")}>
+              {formatCurrency(underpricedRisk)}
+            </p>
           </div>
-          <p className={cn("text-2xl font-bold font-mono", underpricedRisk > 0 && "text-destructive")}>
-            {formatCurrency(underpricedRisk)}
-          </p>
-        </div>
 
-        {/* Average Variance */}
-        <div className="p-4 bg-card rounded-lg border">
-          <div className="flex items-center gap-2 mb-2">
-            <CheckCircle className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Avg Variance
-            </span>
+          {/* Average Variance */}
+          <div className="p-4 bg-card rounded-xl border">
+            <div className="flex items-center gap-2 mb-2">
+              <CheckCircle className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Avg Variance
+              </span>
+            </div>
+            <p className={cn(
+              "text-2xl font-bold",
+              Math.abs(avgVariance) <= 10 && "text-success",
+              Math.abs(avgVariance) > 10 && Math.abs(avgVariance) <= 25 && "text-warning",
+              Math.abs(avgVariance) > 25 && "text-destructive"
+            )}>
+              {avgVariance >= 0 ? '+' : ''}{avgVariance.toFixed(1)}%
+            </p>
           </div>
-          <p className={cn(
-            "text-2xl font-bold",
-            Math.abs(avgVariance) <= 10 && "text-success",
-            Math.abs(avgVariance) > 10 && Math.abs(avgVariance) <= 25 && "text-warning",
-            Math.abs(avgVariance) > 25 && "text-destructive"
-          )}>
-            {avgVariance >= 0 ? '+' : ''}{avgVariance.toFixed(1)}%
-          </p>
         </div>
-      </div>
       )}
     </Card>
   );
