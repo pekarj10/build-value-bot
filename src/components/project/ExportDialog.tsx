@@ -617,20 +617,20 @@ async function exportToPDF(items: CostItem[], project: Project, options: ExportO
   
   // Project Title
   doc.setTextColor(...primaryColor);
-  doc.setFontSize(24);
+  doc.setFontSize(22);
   doc.setFont('helvetica', 'bold');
   doc.text('Cost Analysis Report', margin, yPos + 10);
   
-  doc.setFontSize(16);
+  doc.setFontSize(14);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(80, 80, 80);
   doc.text(project.name, margin, yPos + 20);
   
-  yPos += 35;
+  yPos += 30;
 
   // Project Info Box
   doc.setFillColor(...headerBg);
-  doc.roundedRect(margin, yPos, pageWidth - 2 * margin, 25, 3, 3, 'F');
+  doc.roundedRect(margin, yPos, pageWidth - 2 * margin, 22, 3, 3, 'F');
   doc.setTextColor(60, 60, 60);
   doc.setFontSize(10);
   
@@ -647,7 +647,7 @@ async function exportToPDF(items: CostItem[], project: Project, options: ExportO
   doc.text(project.projectType, margin + 135, infoY + 8);
   doc.text(String(items.length), margin + 200, infoY + 8);
   
-  yPos += 35;
+  yPos += 30;
 
   // Calculate metrics (match in-app dashboard/detail estimate logic)
   const getEstimatedUnitPrice = (item: CostItem) => item.userOverridePrice ?? item.recommendedUnitPrice ?? item.originalUnitPrice;
@@ -673,10 +673,10 @@ async function exportToPDF(items: CostItem[], project: Project, options: ExportO
   yPos += 10;
 
   // KPI cards (2x2 grid)
-  const kpiGap = 8;
+  const kpiGap = 6;
   const kpiW = (pageWidth - 2 * margin - kpiGap) / 2;
-  const kpiH = 26;
-  const kpiRowGap = 6;
+  const kpiH = 22;
+  const kpiRowGap = 5;
   const kpiBgBlue: [number, number, number] = [30, 58, 95];
   const kpiBgOrange: [number, number, number] = [245, 158, 11];
   const kpiBgGreen: [number, number, number] = [22, 163, 74];
@@ -692,16 +692,16 @@ async function exportToPDF(items: CostItem[], project: Project, options: ExportO
 
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
-    doc.text(title.toUpperCase(), x + 6, y + 8);
+    doc.setFontSize(8);
+    doc.text(title.toUpperCase(), x + 5, y + 7);
 
-    doc.setFontSize(16);
-    doc.text(value, x + 6, y + 18);
+    doc.setFontSize(14);
+    doc.text(value, x + 5, y + 16);
 
     if (subtitle) {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
-      doc.text(subtitle, x + 6, y + 24);
+      doc.text(subtitle, x + 5, y + 20);
     }
   };
 
@@ -710,13 +710,13 @@ async function exportToPDF(items: CostItem[], project: Project, options: ExportO
   drawKpi(margin, yPos + kpiH + kpiRowGap, kpiBgGreen, 'Potential savings', formatCurrency(Math.max(0, potentialSavings), project.currency), 'Compared to original total');
   drawKpi(margin + kpiW + kpiGap, yPos + kpiH + kpiRowGap, kpiBgGray, 'Avg variance', varianceTrend, 'Original vs typical benchmark');
 
-  yPos += (kpiH * 2) + kpiRowGap + 14;
+  yPos += (kpiH * 2) + kpiRowGap + 10;
 
   // Charts row
   const chartGap = 10;
-  const chartH = 45;
-  const chartW1 = 70; // donut
-  const chartW3 = 58; // pie
+  const chartH = 38;
+  const chartW1 = 64; // donut
+  const chartW3 = 54; // pie
   const chartW2 = pageWidth - 2 * margin - chartW1 - chartW3 - 2 * chartGap; // bar
   const chartY = yPos;
 
@@ -760,7 +760,7 @@ async function exportToPDF(items: CostItem[], project: Project, options: ExportO
       plugins: { legend: { display: false } },
       cutout: '65%',
     },
-  }, 280, 180);
+  }, 240, 160);
 
   const barUrl = await renderChartToDataUrl({
     type: 'bar',
@@ -781,7 +781,7 @@ async function exportToPDF(items: CostItem[], project: Project, options: ExportO
         y: { ticks: { font: { size: 9 } }, grid: { display: false } },
       },
     },
-  }, 520, 200);
+  }, 460, 170);
 
   const pieUrl = await renderChartToDataUrl({
     type: 'pie',
@@ -797,7 +797,7 @@ async function exportToPDF(items: CostItem[], project: Project, options: ExportO
       responsive: false,
       plugins: { legend: { display: false } },
     },
-  }, 220, 180);
+  }, 200, 160);
 
   // Chart titles + cards
   const drawChartCard = (title: string, x: number, y: number, w: number, h: number, dataUrl: string) => {
@@ -810,7 +810,7 @@ async function exportToPDF(items: CostItem[], project: Project, options: ExportO
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.text(title, x + 5, y + 6);
-    doc.addImage(dataUrl, 'PNG', x + 5, y + 9, w - 10, h - 14);
+    doc.addImage(dataUrl, 'PNG', x + 5, y + 9, w - 10, h - 13);
   };
 
   drawChartCard('Cost Breakdown (Top Trades)', margin, chartY, chartW1, chartH, donutUrl);
@@ -830,7 +830,7 @@ async function exportToPDF(items: CostItem[], project: Project, options: ExportO
   doc.text('Cost Items Detail', margin, yPos);
   yPos += 8;
 
-  // Build table data
+  // Build table data (grouped by trade)
   const tableHeaders: string[] = [];
   if (options.includeDescription) tableHeaders.push('Description');
   if (options.includeTrade) tableHeaders.push('Trade');
@@ -843,20 +843,23 @@ async function exportToPDF(items: CostItem[], project: Project, options: ExportO
   if (options.includeVariance) tableHeaders.push('Var %');
   if (options.includeStatus) tableHeaders.push('Status');
 
-  const tableData = items.map(item => {
+  const labelColIndex = 0;
+  const blankRow = () => new Array(tableHeaders.length).fill('');
+
+  const buildItemRow = (item: CostItem) => {
     const row: string[] = [];
-    const recPrice = item.userOverridePrice || item.recommendedUnitPrice;
+    const recPrice = getEstimatedUnitPrice(item);
     const origTotal = item.originalUnitPrice ? item.originalUnitPrice * item.quantity : null;
-    const recTotal = recPrice ? recPrice * item.quantity : null;
-    
+    const recTotal = recPrice != null ? recPrice * item.quantity : null;
+
     if (options.includeDescription) row.push(item.originalDescription.substring(0, 50) + (item.originalDescription.length > 50 ? '...' : ''));
     if (options.includeTrade) row.push(item.trade || '—');
     if (options.includeQuantity) row.push(item.quantity.toLocaleString());
     if (options.includeUnit) row.push(item.unit);
-    if (options.includeOriginalPrice) row.push(item.originalUnitPrice ? item.originalUnitPrice.toLocaleString() : '—');
-    if (options.includeOriginalTotal) row.push(origTotal ? origTotal.toLocaleString() : '—');
-    if (options.includeRecommendedPrice) row.push(recPrice ? recPrice.toLocaleString() : '—');
-    if (options.includeRecommendedTotal) row.push(recTotal ? recTotal.toLocaleString() : '—');
+    if (options.includeOriginalPrice) row.push(item.originalUnitPrice != null ? item.originalUnitPrice.toLocaleString() : '—');
+    if (options.includeOriginalTotal) row.push(origTotal != null ? origTotal.toLocaleString() : '—');
+    if (options.includeRecommendedPrice) row.push(recPrice != null ? recPrice.toLocaleString() : '—');
+    if (options.includeRecommendedTotal) row.push(recTotal != null ? recTotal.toLocaleString() : '—');
     if (options.includeVariance) {
       if (item.originalUnitPrice && item.benchmarkTypical) {
         const variance = ((item.originalUnitPrice - item.benchmarkTypical) / item.benchmarkTypical) * 100;
@@ -866,9 +869,61 @@ async function exportToPDF(items: CostItem[], project: Project, options: ExportO
       }
     }
     if (options.includeStatus) row.push(item.status.toUpperCase());
-    
+
     return row;
+  };
+
+  const rowTypes: Array<'group' | 'item' | 'subtotal' | 'totals'> = [];
+  const tableData: string[][] = [];
+
+  const sorted = [...items].sort((a, b) => {
+    const ta = (a.trade || 'Uncategorized').localeCompare(b.trade || 'Uncategorized');
+    if (ta !== 0) return ta;
+    return (b.originalDescription || '').localeCompare(a.originalDescription || '');
   });
+
+  const groups = new Map<string, CostItem[]>();
+  for (const it of sorted) {
+    const key = it.trade?.trim() || 'Uncategorized';
+    groups.set(key, [...(groups.get(key) || []), it]);
+  }
+
+  for (const [trade, groupItems] of groups.entries()) {
+    const groupRow = blankRow();
+    groupRow[labelColIndex] = `TRADE: ${trade}`;
+    tableData.push(groupRow);
+    rowTypes.push('group');
+
+    for (const item of groupItems) {
+      tableData.push(buildItemRow(item));
+      rowTypes.push('item');
+    }
+
+    // Subtotal row
+    const subOrig = groupItems.reduce((sum, i) => sum + (i.originalUnitPrice ? i.originalUnitPrice * i.quantity : 0), 0);
+    const subEst = groupItems.reduce((sum, i) => {
+      const p = getEstimatedUnitPrice(i);
+      return sum + (p != null ? p * i.quantity : 0);
+    }, 0);
+
+    const subRow = blankRow();
+    subRow[labelColIndex] = `Subtotal (${trade})`;
+
+    // Attempt to place totals into the correct columns if they exist
+    let colCursor = 0;
+    if (options.includeDescription) colCursor++;
+    if (options.includeTrade) colCursor++;
+    if (options.includeQuantity) colCursor++;
+    if (options.includeUnit) colCursor++;
+    if (options.includeOriginalPrice) colCursor++;
+    if (options.includeOriginalTotal) subRow[colCursor] = subOrig.toLocaleString();
+    if (options.includeOriginalTotal) colCursor++;
+    if (options.includeRecommendedPrice) colCursor++;
+    if (options.includeRecommendedTotal) subRow[colCursor] = subEst.toLocaleString();
+
+    tableData.push(subRow);
+    rowTypes.push('subtotal');
+  }
 
   // Add totals row
   const totalsRow: string[] = [];
@@ -883,6 +938,7 @@ async function exportToPDF(items: CostItem[], project: Project, options: ExportO
   if (options.includeVariance) totalsRow.push('');
   if (options.includeStatus) totalsRow.push('');
   tableData.push(totalsRow);
+  rowTypes.push('totals');
 
   autoTable(doc, {
     head: [tableHeaders],
@@ -890,8 +946,9 @@ async function exportToPDF(items: CostItem[], project: Project, options: ExportO
     startY: yPos,
     margin: { left: margin, right: margin },
     styles: {
-      fontSize: 8,
-      cellPadding: 2,
+      fontSize: 7,
+      cellPadding: 1.5,
+      valign: 'middle',
     },
     headStyles: {
       fillColor: primaryColor,
@@ -901,8 +958,24 @@ async function exportToPDF(items: CostItem[], project: Project, options: ExportO
     alternateRowStyles: {
       fillColor: [248, 250, 252],
     },
-    columnStyles: {
-      0: { cellWidth: 'auto' },
+    didParseCell: (data) => {
+      const t = rowTypes[data.row.index];
+      if (!t) return;
+
+      if (t === 'group') {
+        data.cell.styles.fillColor = headerBg;
+        data.cell.styles.textColor = primaryColor;
+        data.cell.styles.fontStyle = 'bold';
+        if (data.column.index !== labelColIndex) data.cell.text = [''];
+      }
+
+      if (t === 'subtotal' || t === 'totals') {
+        data.cell.styles.fillColor = [240, 244, 248];
+        data.cell.styles.fontStyle = 'bold';
+        if (data.column.index !== labelColIndex && data.cell.text?.[0] === '') {
+          data.cell.styles.textColor = [60, 60, 60];
+        }
+      }
     },
     didDrawPage: (data) => {
       addPageFooter(doc.getNumberOfPages());
