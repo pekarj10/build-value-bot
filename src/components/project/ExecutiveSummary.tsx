@@ -5,13 +5,13 @@ import { Button } from '@/components/ui/button';
 import {
   TrendingUp,
   TrendingDown,
-  AlertTriangle,
+  AlertCircle,
   CheckCircle,
-  DollarSign,
   BarChart3,
   ChevronDown,
   ChevronUp,
-  Calculator
+  Calculator,
+  Percent
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -86,6 +86,12 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
   // Difference between original and estimated (matches dashboard vs detail)
   const valueDifference = totalOriginalValue - totalEstimatedValue;
 
+  const estimateTrend = valueDifference > 0 ? '▼' : valueDifference < 0 ? '▲' : '';
+  const varianceTrend = avgVariance > 0 ? '▲' : avgVariance < 0 ? '▼' : '';
+
+  const cardBase = "rounded-xl border transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg";
+  const numberBase = "font-mono tabular-nums";
+
   return (
     <Card className="p-5 lg:p-6 bg-gradient-to-br from-card via-card to-primary/5 border-2 shadow-sm">
       {/* Header with toggle */}
@@ -125,20 +131,20 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
       {/* Compact view for tablet/mobile/touch */}
       <div className={forceCompactLayout ? '' : 'xl:hidden'}>
         {/* Main metric: Total Recommended Value */}
-        <div className="p-5 bg-gradient-to-br from-primary/5 to-primary/10 rounded-xl border-2 border-primary/20 mb-4">
+          <div className={cn("p-5 bg-gradient-to-br from-primary/10 to-primary/5 border-2 border-primary/20 mb-4", cardBase)}>
           <div className="flex items-center gap-2 mb-2">
             <Calculator className="h-4 w-4 text-primary flex-shrink-0" />
             <span className="text-xs font-semibold text-primary uppercase tracking-wider">
               Total Project Estimate
             </span>
           </div>
-          <p className="text-3xl sm:text-4xl font-bold font-mono text-primary">{formatCurrency(totalEstimatedValue)}</p>
+            <p className={cn("text-4xl font-bold text-primary", numberBase)}>{formatCurrency(totalEstimatedValue)}</p>
           {totalOriginalValue > 0 && valueDifference !== 0 && (
             <p className={cn(
               "text-sm mt-2 font-medium",
               valueDifference > 0 ? "text-success" : "text-warning"
             )}>
-              {valueDifference > 0 ? '↓ ' : '↑ '}{formatCurrency(Math.abs(valueDifference))} vs original
+                {estimateTrend} {formatCurrency(Math.abs(valueDifference))} vs original
             </p>
           )}
         </div>
@@ -146,9 +152,9 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
         {/* Expandable metrics */}
         {isExpanded && (
           <div className="grid grid-cols-2 gap-3 animate-fade-in">
-            <div className="p-3 bg-card rounded-xl border">
+              <div className={cn("p-3 bg-gradient-to-br from-warning/10 to-card", cardBase)}>
               <div className="flex items-center gap-2 mb-1">
-                <AlertTriangle className="h-3 w-3 text-warning flex-shrink-0" />
+                  <AlertCircle className="h-3 w-3 text-warning flex-shrink-0" />
                 <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Review</span>
               </div>
               <p className="text-lg font-bold">
@@ -156,29 +162,29 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
               </p>
             </div>
 
-            <div className="p-3 bg-card rounded-xl border">
+              <div className={cn("p-3 bg-gradient-to-br from-success/10 to-card", cardBase)}>
               <div className="flex items-center gap-2 mb-1">
                 <TrendingDown className="h-3 w-3 text-success flex-shrink-0" />
                 <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Savings</span>
               </div>
-              <p className={cn("text-lg font-bold font-mono", potentialSavings > 0 && "text-success")}>
+                <p className={cn("text-lg font-bold", numberBase, potentialSavings > 0 && "text-success")}>
                 {formatCurrency(potentialSavings)}
               </p>
             </div>
 
-            <div className="p-3 bg-card rounded-xl border">
+              <div className={cn("p-3 bg-gradient-to-br from-destructive/10 to-card", cardBase)}>
               <div className="flex items-center gap-2 mb-1">
                 <TrendingUp className="h-3 w-3 text-destructive flex-shrink-0" />
                 <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Risk</span>
               </div>
-              <p className={cn("text-lg font-bold font-mono", underpricedRisk > 0 && "text-destructive")}>
+                <p className={cn("text-lg font-bold", numberBase, underpricedRisk > 0 && "text-destructive")}>
                 {formatCurrency(underpricedRisk)}
               </p>
             </div>
 
-            <div className="p-3 bg-card rounded-xl border">
+              <div className={cn("p-3 bg-gradient-to-br from-muted/60 to-card", cardBase)}>
               <div className="flex items-center gap-2 mb-1">
-                <CheckCircle className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                  <Percent className="h-3 w-3 text-muted-foreground flex-shrink-0" />
                 <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Variance</span>
               </div>
               <p className={cn(
@@ -187,7 +193,7 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
                 Math.abs(avgVariance) > 10 && Math.abs(avgVariance) <= 25 && "text-warning",
                 Math.abs(avgVariance) > 25 && "text-destructive"
               )}>
-                {avgVariance >= 0 ? '+' : ''}{avgVariance.toFixed(1)}%
+                  {varianceTrend} {avgVariance >= 0 ? '+' : ''}{avgVariance.toFixed(1)}%
               </p>
             </div>
           </div>
@@ -197,7 +203,7 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
         {!isExpanded && (
           <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
             <span className="flex items-center gap-1">
-              <AlertTriangle className="h-3 w-3 text-warning" />
+                <AlertCircle className="h-3 w-3 text-warning" />
               <span className="font-medium">{reviewCount}</span> review
             </span>
             {potentialSavings > 0 && (
@@ -222,14 +228,14 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
       {!forceCompactLayout && (
         <div className="hidden xl:grid xl:grid-cols-5 gap-4">
           {/* Total Recommended Value - highlighted */}
-          <div className="p-4 bg-gradient-to-br from-primary/5 to-primary/10 rounded-xl border-2 border-primary/20">
+          <div className={cn("p-4 bg-gradient-to-br from-primary/10 to-primary/5 border-2 border-primary/20", cardBase)}>
             <div className="flex items-center gap-2 mb-2">
               <Calculator className="h-4 w-4 text-primary flex-shrink-0" />
               <span className="text-xs font-semibold text-primary uppercase tracking-wider">
                 Project Estimate
               </span>
             </div>
-            <p className="text-2xl font-bold font-mono text-primary">{formatCurrency(totalEstimatedValue)}</p>
+            <p className={cn("text-4xl font-bold text-primary", numberBase)}>{formatCurrency(totalEstimatedValue)}</p>
             {totalOriginalValue > 0 && (
               <p className="text-xs text-muted-foreground mt-1">
                 Original: {formatCurrency(totalOriginalValue)}
@@ -238,59 +244,59 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
           </div>
 
           {/* Review Count */}
-          <div className="p-4 bg-card rounded-xl border">
+          <div className={cn("p-4 bg-gradient-to-br from-warning/10 to-card", cardBase)}>
             <div className="flex items-center gap-2 mb-2">
-              <AlertTriangle className="h-4 w-4 text-warning flex-shrink-0" />
+              <AlertCircle className="h-4 w-4 text-warning flex-shrink-0" />
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Need Review
               </span>
             </div>
-            <p className="text-2xl font-bold">
+            <p className="text-4xl font-bold">
               {reviewCount} <span className="text-sm font-normal text-muted-foreground">items</span>
             </p>
           </div>
 
           {/* Potential Savings */}
-          <div className="p-4 bg-card rounded-xl border">
+          <div className={cn("p-4 bg-gradient-to-br from-success/10 to-card", cardBase)}>
             <div className="flex items-center gap-2 mb-2">
               <TrendingDown className="h-4 w-4 text-success flex-shrink-0" />
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Potential Savings
               </span>
             </div>
-            <p className={cn("text-2xl font-bold font-mono", potentialSavings > 0 && "text-success")}>
+            <p className={cn("text-4xl font-bold", numberBase, potentialSavings > 0 && "text-success")}>
               {formatCurrency(potentialSavings)}
             </p>
           </div>
 
           {/* Underpriced Risk */}
-          <div className="p-4 bg-card rounded-xl border">
+          <div className={cn("p-4 bg-gradient-to-br from-destructive/10 to-card", cardBase)}>
             <div className="flex items-center gap-2 mb-2">
               <TrendingUp className="h-4 w-4 text-destructive flex-shrink-0" />
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Underpriced Risk
               </span>
             </div>
-            <p className={cn("text-2xl font-bold font-mono", underpricedRisk > 0 && "text-destructive")}>
+            <p className={cn("text-4xl font-bold", numberBase, underpricedRisk > 0 && "text-destructive")}>
               {formatCurrency(underpricedRisk)}
             </p>
           </div>
 
           {/* Average Variance */}
-          <div className="p-4 bg-card rounded-xl border">
+          <div className={cn("p-4 bg-gradient-to-br from-muted/60 to-card", cardBase)}>
             <div className="flex items-center gap-2 mb-2">
-              <CheckCircle className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              <Percent className="h-4 w-4 text-muted-foreground flex-shrink-0" />
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Avg Variance
               </span>
             </div>
             <p className={cn(
-              "text-2xl font-bold",
+              "text-4xl font-bold",
               Math.abs(avgVariance) <= 10 && "text-success",
               Math.abs(avgVariance) > 10 && Math.abs(avgVariance) <= 25 && "text-warning",
               Math.abs(avgVariance) > 25 && "text-destructive"
             )}>
-              {avgVariance >= 0 ? '+' : ''}{avgVariance.toFixed(1)}%
+              {varianceTrend} {avgVariance >= 0 ? '+' : ''}{avgVariance.toFixed(1)}%
             </p>
           </div>
         </div>
