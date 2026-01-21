@@ -21,6 +21,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { formatCurrency } from '@/lib/formatters';
 import { useViewMode } from '@/hooks/useViewMode';
+import { renderChartToDataUrl } from '@/lib/pdfCharts';
 
 interface ExportDialogProps {
   open: boolean;
@@ -648,15 +649,21 @@ async function exportToPDF(items: CostItem[], project: Project, options: ExportO
   
   yPos += 35;
 
-  // Calculate metrics
+  // Calculate metrics (match in-app dashboard/detail estimate logic)
+  const getEstimatedUnitPrice = (item: CostItem) => item.userOverridePrice ?? item.recommendedUnitPrice ?? item.originalUnitPrice;
   const totalOriginal = items.reduce((sum, i) => sum + (i.originalUnitPrice ? i.originalUnitPrice * i.quantity : 0), 0);
-  const totalRecommended = items.reduce((sum, i) => {
-    const price = i.userOverridePrice || i.recommendedUnitPrice;
-    return sum + (price ? price * i.quantity : 0);
+  const totalEstimated = items.reduce((sum, i) => {
+    const price = getEstimatedUnitPrice(i);
+    return sum + (price != null ? price * i.quantity : 0);
   }, 0);
-  const reviewCount = items.filter(i => i.status === 'review' || i.status === 'clarification').length;
+  const reviewCount = items.filter(i => i.status === 'review' || i.status === 'clarification' || i.status === 'underpriced').length;
   const okCount = items.filter(i => i.status === 'ok').length;
-  const potentialSavings = totalOriginal - totalRecommended;
+  const potentialSavings = totalOriginal - totalEstimated;
+
+  const itemsWithVariance = items.filter(i => i.originalUnitPrice != null && i.benchmarkTypical != null && i.benchmarkTypical !== 0);
+  const avgVariance = itemsWithVariance.length > 0
+    ? itemsWithVariance.reduce((sum, i) => sum + ((i.originalUnitPrice! - i.benchmarkTypical!) / i.benchmarkTypical!) * 100, 0) / itemsWithVariance.length
+    : 0;
   
   // Executive Summary Section
   doc.setTextColor(...primaryColor);
@@ -665,37 +672,152 @@ async function exportToPDF(items: CostItem[], project: Project, options: ExportO
   doc.text('Executive Summary', margin, yPos);
   yPos += 10;
 
-  // Metrics cards
-  const cardWidth = (pageWidth - 2 * margin - 30) / 4;
-  const cardHeight = 30;
-  const cards = [
-    { label: 'Total Recommended', value: formatCurrency(totalRecommended, project.currency), highlight: true },
-    { label: 'Original Value', value: formatCurrency(totalOriginal, project.currency), highlight: false },
-    { label: 'Potential Savings', value: formatCurrency(Math.max(0, potentialSavings), project.currency), highlight: false },
-    { label: 'Items OK / Review', value: `${okCount} / ${reviewCount}`, highlight: false },
-  ];
+  // KPI cards (2x2 grid)
+  const kpiGap = 8;
+  const kpiW = (pageWidth - 2 * margin - kpiGap) / 2;
+  const kpiH = 26;
+  const kpiRowGap = 6;
+  const kpiBgBlue: [number, number, number] = [30, 58, 95];
+  const kpiBgOrange: [number, number, number] = [245, 158, 11];
+  const kpiBgGreen: [number, number, number] = [22, 163, 74];
+  const kpiBgGray: [number, number, number] = [100, 116, 139];
 
-  cards.forEach((card, idx) => {
-    const x = margin + idx * (cardWidth + 10);
-    if (card.highlight) {
-      doc.setFillColor(...primaryColor);
-      doc.roundedRect(x, yPos, cardWidth, cardHeight, 2, 2, 'F');
-      doc.setTextColor(255, 255, 255);
-    } else {
-      doc.setFillColor(...headerBg);
-      doc.roundedRect(x, yPos, cardWidth, cardHeight, 2, 2, 'F');
-      doc.setTextColor(60, 60, 60);
-    }
-    
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'normal');
-    doc.text(card.label, x + 5, yPos + 8);
-    doc.setFontSize(12);
+  const estimateDelta = totalEstimated - totalOriginal;
+  const estimateDeltaLabel = estimateDelta >= 0 ? `(+${formatCurrency(Math.abs(estimateDelta), project.currency)} vs original)` : `(-${formatCurrency(Math.abs(estimateDelta), project.currency)} vs original)`;
+  const varianceTrend = avgVariance >= 0 ? `▲ ${avgVariance.toFixed(1)}%` : `▼ ${Math.abs(avgVariance).toFixed(1)}%`;
+
+  const drawKpi = (x: number, y: number, bg: [number, number, number], title: string, value: string, subtitle?: string) => {
+    doc.setFillColor(...bg);
+    doc.roundedRect(x, y, kpiW, kpiH, 3, 3, 'F');
+
+    doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
-    doc.text(card.value, x + 5, yPos + 20);
-  });
+    doc.setFontSize(9);
+    doc.text(title.toUpperCase(), x + 6, y + 8);
 
-  yPos += cardHeight + 15;
+    doc.setFontSize(16);
+    doc.text(value, x + 6, y + 18);
+
+    if (subtitle) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.text(subtitle, x + 6, y + 24);
+    }
+  };
+
+  drawKpi(margin, yPos, kpiBgBlue, 'Project estimate', formatCurrency(totalEstimated, project.currency), estimateDeltaLabel);
+  drawKpi(margin + kpiW + kpiGap, yPos, kpiBgOrange, 'Need review', `${reviewCount}`, '⚠ Review + Clarification');
+  drawKpi(margin, yPos + kpiH + kpiRowGap, kpiBgGreen, 'Potential savings', formatCurrency(Math.max(0, potentialSavings), project.currency), 'Compared to original total');
+  drawKpi(margin + kpiW + kpiGap, yPos + kpiH + kpiRowGap, kpiBgGray, 'Avg variance', varianceTrend, 'Original vs typical benchmark');
+
+  yPos += (kpiH * 2) + kpiRowGap + 14;
+
+  // Charts row
+  const chartGap = 10;
+  const chartH = 45;
+  const chartW1 = 70; // donut
+  const chartW3 = 58; // pie
+  const chartW2 = pageWidth - 2 * margin - chartW1 - chartW3 - 2 * chartGap; // bar
+  const chartY = yPos;
+
+  // Data prep
+  const tradeTotals = new Map<string, number>();
+  for (const item of items) {
+    const trade = item.trade?.trim() || 'Uncategorized';
+    const unit = getEstimatedUnitPrice(item);
+    const total = unit != null ? unit * item.quantity : 0;
+    tradeTotals.set(trade, (tradeTotals.get(trade) || 0) + total);
+  }
+  const topTrades = [...tradeTotals.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+  const topDrivers = [...items]
+    .map((i) => ({
+      label: i.originalDescription.length > 28 ? `${i.originalDescription.slice(0, 28)}…` : i.originalDescription,
+      total: (getEstimatedUnitPrice(i) != null ? getEstimatedUnitPrice(i)! * i.quantity : 0),
+    }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 5);
+
+  const statusCounts = {
+    ok: items.filter(i => i.status === 'ok').length,
+    review: items.filter(i => i.status === 'review' || i.status === 'underpriced').length,
+    clarification: items.filter(i => i.status === 'clarification').length,
+  };
+
+  // Render charts to images
+  const donutUrl = await renderChartToDataUrl({
+    type: 'doughnut',
+    data: {
+      labels: topTrades.map(([t]) => t),
+      datasets: [{
+        data: topTrades.map(([, v]) => Math.round(v)),
+        backgroundColor: ['#1e3a5f', '#2563eb', '#0ea5e9', '#22c55e', '#f59e0b'],
+        borderWidth: 0,
+      }],
+    },
+    options: {
+      responsive: false,
+      plugins: { legend: { display: false } },
+      cutout: '65%',
+    },
+  }, 280, 180);
+
+  const barUrl = await renderChartToDataUrl({
+    type: 'bar',
+    data: {
+      labels: topDrivers.map(d => d.label),
+      datasets: [{
+        data: topDrivers.map(d => Math.round(d.total)),
+        backgroundColor: '#1e3a5f',
+        borderRadius: 6,
+      }],
+    },
+    options: {
+      responsive: false,
+      indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { display: false }, grid: { display: false } },
+        y: { ticks: { font: { size: 9 } }, grid: { display: false } },
+      },
+    },
+  }, 520, 200);
+
+  const pieUrl = await renderChartToDataUrl({
+    type: 'pie',
+    data: {
+      labels: ['OK', 'Review', 'Clarification'],
+      datasets: [{
+        data: [statusCounts.ok, statusCounts.review, statusCounts.clarification],
+        backgroundColor: ['#22c55e', '#f59e0b', '#0ea5e9'],
+        borderWidth: 0,
+      }],
+    },
+    options: {
+      responsive: false,
+      plugins: { legend: { display: false } },
+    },
+  }, 220, 180);
+
+  // Chart titles + cards
+  const drawChartCard = (title: string, x: number, y: number, w: number, h: number, dataUrl: string) => {
+    doc.setFillColor(...headerBg);
+    doc.roundedRect(x, y, w, h, 3, 3, 'F');
+    doc.setDrawColor(...borderColor);
+    doc.roundedRect(x, y, w, h, 3, 3, 'S');
+
+    doc.setTextColor(...primaryColor);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.text(title, x + 5, y + 6);
+    doc.addImage(dataUrl, 'PNG', x + 5, y + 9, w - 10, h - 14);
+  };
+
+  drawChartCard('Cost Breakdown (Top Trades)', margin, chartY, chartW1, chartH, donutUrl);
+  drawChartCard('Top Cost Drivers', margin + chartW1 + chartGap, chartY, chartW2, chartH, barUrl);
+  drawChartCard('Status Distribution', pageWidth - margin - chartW3, chartY, chartW3, chartH, pieUrl);
+
+  yPos += chartH + 8;
   addPageFooter(1);
 
   // Page 2+: Cost Items Table
@@ -757,7 +879,7 @@ async function exportToPDF(items: CostItem[], project: Project, options: ExportO
   if (options.includeOriginalPrice) totalsRow.push('');
   if (options.includeOriginalTotal) totalsRow.push(totalOriginal.toLocaleString());
   if (options.includeRecommendedPrice) totalsRow.push('');
-  if (options.includeRecommendedTotal) totalsRow.push(totalRecommended.toLocaleString());
+  if (options.includeRecommendedTotal) totalsRow.push(totalEstimated.toLocaleString());
   if (options.includeVariance) totalsRow.push('');
   if (options.includeStatus) totalsRow.push('');
   tableData.push(totalsRow);
