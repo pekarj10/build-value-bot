@@ -55,8 +55,8 @@ export function formatCompactNumber(
     maximumFractionDigits: 0,
   }).format(value);
 
-  // For values >= 1,000,000 abbreviate to keep the UI stable.
-  // Target: display length ~<= 5 chars including suffix (ex: 1.67M)
+  // Compact format for KPI cards.
+  // Target: short strings like 86k, 1.67M, 2.1B.
   const formatAbbrev = (n: number, suffix: string) => {
     let decimals = 0;
     if (n < 10) decimals = 2;
@@ -71,6 +71,8 @@ export function formatCompactNumber(
     display = formatAbbrev(abs / 1_000_000_000, 'B');
   } else if (abs >= 1_000_000) {
     display = formatAbbrev(abs / 1_000_000, 'M');
+  } else if (abs >= 1_000) {
+    display = formatAbbrev(abs / 1_000, 'k');
   }
 
   return {
