@@ -2,6 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
 /* Unit Rate - Enterprise Design System */
 /* All colors in HSL format */
 
@@ -35,12 +37,12 @@
     --accent: 220 14% 93%;
     --accent-foreground: 220 30% 11%;
     
-    /* Status colors */
-    --success: 152 69% 40%;
+    /* Status colors (muted for a consulting/B2B look) */
+    --success: 152 45% 34%;
     --success-foreground: 0 0% 100%;
-    --warning: 38 92% 50%;
+    --warning: 38 65% 42%;
     --warning-foreground: 0 0% 100%;
-    --destructive: 0 72% 51%;
+    --destructive: 0 55% 44%;
     --destructive-foreground: 0 0% 100%;
     
     /* Form elements */
@@ -206,7 +208,7 @@
   }
 
   .kpi-number {
-    font-size: clamp(1.25rem, 3.5vw, 2rem);
+    font-size: clamp(1.125rem, 2.6vw, 1.75rem);
     line-height: 1.2;
     letter-spacing: -0.02em;
     font-weight: 600;
