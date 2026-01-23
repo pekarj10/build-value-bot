@@ -122,7 +122,7 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
 
         {children}
 
-        <div className="min-h-[16px] text-xs text-muted-foreground">
+        <div className="min-h-[18px] pb-0.5 text-xs leading-snug text-muted-foreground">
           {footer ?? <span className="opacity-0">—</span>}
         </div>
       </div>
