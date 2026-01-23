@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { CostItem } from '@/types/project';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -122,7 +122,7 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
 
         {children}
 
-        <div className="min-h-[18px] pb-0.5 text-xs leading-snug text-muted-foreground">
+        <div className="min-h-[22px] pt-0.5 pb-2 text-xs leading-snug text-muted-foreground">
           {footer ?? <span className="opacity-0">—</span>}
         </div>
       </div>
@@ -136,9 +136,6 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
     value: number;
     label: string;
   }) {
-    const ref = useRef<HTMLParagraphElement | null>(null);
-    const [shouldCompact, setShouldCompact] = useState(false);
-
     const full = useMemo(() => formatCurrencyFull(value), [value]);
     const compact = useMemo(() => {
       const c = formatCompactNumber(value, 'sv-SE');
@@ -147,31 +144,14 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
 
     const tooltip = `${label}: ${full}`;
 
-    useLayoutEffect(() => {
-      const el = ref.current;
-      if (!el) return;
-
-      const compute = () => {
-        // We render the chosen string in the element; overflow means it won't fit.
-        const overflow = el.scrollWidth > el.clientWidth;
-        setShouldCompact(overflow);
-      };
-
-      compute();
-      const ro = new ResizeObserver(() => compute());
-      ro.observe(el);
-      return () => ro.disconnect();
-    }, [full, compact]);
-
     return (
       <div className="kpi-number-wrap">
         <p
-          ref={ref}
           className={cn("kpi-number text-foreground", numberBase)}
           title={tooltip}
           aria-label={tooltip}
         >
-          {shouldCompact ? compact : full}
+          {compact}
         </p>
       </div>
     );
