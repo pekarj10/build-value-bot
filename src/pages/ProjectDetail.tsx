@@ -364,6 +364,23 @@ export default function ProjectDetail() {
           price_source: analyzed.priceSource || null,
         });
       }
+
+      // Single-item UX: show a detailed toast with what changed.
+      if (itemIds.length === 1 && analyzedItems.length === 1) {
+        const a = analyzedItems[0];
+        const price = a.recommendedUnitPrice;
+        if (price != null) {
+          const formatted = new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: project.currency,
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0,
+          }).format(price);
+          toast.success(`${a.originalDescription} - Updated: ${formatted}/${a.unit}`);
+        } else {
+          toast.success(`${a.originalDescription} - Updated`);
+        }
+      }
       
       const underpricedCount = analyzedItems.filter(i => i.status === 'underpriced').length;
       const reviewCount = analyzedItems.filter(i => i.status === 'review').length;

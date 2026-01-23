@@ -138,6 +138,9 @@ export function CostItemsTable({
   
   // Save filter dialog
   const [showSaveDialog, setShowSaveDialog] = useState(false);
+
+  // Single-item re-analysis UI state
+  const [reanalyzingId, setReanalyzingId] = useState<string | null>(null);
   
   // Search input ref for keyboard shortcut
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -449,6 +452,16 @@ export function CostItemsTable({
     if (onReanalyzeItems) {
       const allIds = items.map(i => i.id);
       await onReanalyzeItems(allIds);
+    }
+  };
+
+  const handleReanalyzeSingle = async (itemId: string) => {
+    if (!onReanalyzeItems) return;
+    try {
+      setReanalyzingId(itemId);
+      await onReanalyzeItems([itemId]);
+    } finally {
+      setReanalyzingId(null);
     }
   };
 
@@ -939,7 +952,7 @@ export function CostItemsTable({
                     <TooltipContent>Item review status</TooltipContent>
                   </Tooltip>
                 </th>
-                <th className="w-[50px]"></th>
+                <th className="w-[84px]"></th>
               </tr>
             </thead>
             <tbody>
@@ -949,6 +962,7 @@ export function CostItemsTable({
                 const hasOverride = item.userOverridePrice !== undefined;
                 const displayPrice = item.userOverridePrice || item.recommendedUnitPrice;
                 const isSelected = selectedIds.has(item.id);
+                const isRowReanalyzing = reanalyzingId === item.id;
                 
                 return (
                   <tr
@@ -1127,6 +1141,35 @@ export function CostItemsTable({
                     </td>
                     <td>
                       <div className="flex items-center gap-0.5">
+                        {onReanalyzeItems && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className={cn(
+                                  "h-6 px-2 w-auto gap-1 opacity-0 group-hover:opacity-100 transition-opacity",
+                                  item.status === 'clarification' && "opacity-100",
+                                )}
+                                disabled={isReanalyzing || isRowReanalyzing}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleReanalyzeSingle(item.id);
+                                }}
+                              >
+                                <RotateCcw className={cn(
+                                  "h-4 w-4",
+                                  item.status === 'clarification' ? "text-warning" : "text-muted-foreground",
+                                  (isReanalyzing || isRowReanalyzing) && "animate-spin"
+                                )} />
+                                {isRowReanalyzing && (
+                                  <span className="text-xs text-muted-foreground">Analyzing…</span>
+                                )}
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Re-analyze this item</TooltipContent>
+                          </Tooltip>
+                        )}
                         {item.userClarification && (
                           <Tooltip>
                             <TooltipTrigger>
