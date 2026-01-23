@@ -178,7 +178,7 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
   }
 
   return (
-    <Card className="p-5 lg:p-6 bg-card border shadow-sm">
+    <Card className="p-5 lg:p-6 bg-card border shadow-sm animate-enter wow-elevated">
       {/* Header with toggle */}
       <div className="flex items-center justify-between gap-3 mb-5">
         <div className="flex items-center gap-3 min-w-0">
@@ -345,7 +345,7 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
                 title={`Need review: ${reviewCount} items`}
                 aria-label={`Need review: ${reviewCount} items`}
               >
-                {reviewCount} <span className="text-sm font-normal text-muted-foreground">items</span>
+                {reviewCount} <span className="text-xs font-normal text-muted-foreground">items</span>
               </p>
             </div>
           </KpiCard>
