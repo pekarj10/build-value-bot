@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { CostItem } from '@/types/project';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,7 +14,7 @@ import {
   Percent
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { formatCompactNumber } from '@/lib/formatters';
+import { formatCompactNumber, formatCurrency } from '@/lib/formatters';
 
 interface ExecutiveSummaryProps {
   items: CostItem[];
@@ -34,14 +34,7 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
     return () => mql.removeEventListener('change', onChange);
   }, []);
 
-  const formatCurrencyFull = (value: number) => {
-    return new Intl.NumberFormat('sv-SE', {
-      style: 'currency',
-      currency,
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value);
-  };
+  const formatCurrencyFull = (value: number) => `${formatCurrency(value, currency)} ${currency}`;
 
   // Calculate metrics
   // IMPORTANT: This total must match the value shown in the Projects dashboard (projects.total_value)
@@ -97,13 +90,53 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
   const cardBase = "rounded-xl border bg-card shadow-sm transition-all duration-200 hover:shadow-md";
   const numberBase = "font-mono tabular-nums";
 
-  const moneyDisplay = (value: number, label: string) => {
-    const { display, full } = formatCompactNumber(value, 'sv-SE');
-    return {
-      display,
-      tooltip: `${label}: ${full} ${currency}`,
-    };
-  };
+  function KpiMoneyValue({
+    value,
+    label,
+  }: {
+    value: number;
+    label: string;
+  }) {
+    const ref = useRef<HTMLParagraphElement | null>(null);
+    const [shouldCompact, setShouldCompact] = useState(false);
+
+    const full = useMemo(() => formatCurrencyFull(value), [value]);
+    const compact = useMemo(() => {
+      const c = formatCompactNumber(value, 'sv-SE');
+      return c.display === '–' ? '–' : `${c.display} ${currency}`;
+    }, [value]);
+
+    const tooltip = `${label}: ${full}`;
+
+    useLayoutEffect(() => {
+      const el = ref.current;
+      if (!el) return;
+
+      const compute = () => {
+        // We render the chosen string in the element; overflow means it won't fit.
+        const overflow = el.scrollWidth > el.clientWidth;
+        setShouldCompact(overflow);
+      };
+
+      compute();
+      const ro = new ResizeObserver(() => compute());
+      ro.observe(el);
+      return () => ro.disconnect();
+    }, [full, compact]);
+
+    return (
+      <div className="kpi-number-wrap">
+        <p
+          ref={ref}
+          className={cn("kpi-number text-foreground", numberBase)}
+          title={tooltip}
+          aria-label={tooltip}
+        >
+          {shouldCompact ? compact : full}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <Card className="p-5 lg:p-6 bg-card border shadow-sm">
@@ -146,30 +179,17 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
         {/* Main metric: Total Recommended Value */}
         <div
           className={cn(
-              "p-5 mb-4 border-l-4 border-primary h-[140px] flex flex-col justify-between kpi-card",
+              "p-5 mb-4 border-l-4 border-primary/30 h-[140px] flex flex-col justify-between kpi-card",
             cardBase
           )}
         >
             <div className="flex items-center gap-2">
-              <Calculator className="h-6 w-6 text-primary flex-shrink-0" />
+              <Calculator className="h-6 w-6 text-muted-foreground flex-shrink-0" />
               <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
                 Total Project Estimate ({currency})
             </span>
           </div>
-            {(() => {
-              const v = moneyDisplay(totalEstimatedValue, 'Project estimate');
-              return (
-                <div className="kpi-number-wrap">
-                  <p
-                    className={cn("kpi-number text-primary", numberBase)}
-                    title={v.tooltip}
-                    aria-label={v.tooltip}
-                  >
-                    {v.display}
-                  </p>
-                </div>
-              );
-            })()}
+            <KpiMoneyValue value={totalEstimatedValue} label="Project estimate" />
           {totalOriginalValue > 0 && valueDifference !== 0 && (
             <p className={cn(
               "text-xs font-medium text-muted-foreground",
@@ -183,53 +203,35 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
         {/* Expandable metrics */}
         {isExpanded && (
           <div className="grid grid-cols-2 gap-3 animate-fade-in">
-              <div className={cn("p-5 border-l-4 border-warning h-[140px] flex flex-col justify-between kpi-card", cardBase)}>
+              <div className={cn("p-5 border-l-4 border-border h-[140px] flex flex-col justify-between kpi-card", cardBase)}>
                 <div className="flex items-center gap-2">
-                  <AlertCircle className="h-6 w-6 text-warning flex-shrink-0" />
+                  <AlertCircle className="h-6 w-6 text-muted-foreground flex-shrink-0" />
                   <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Review</span>
               </div>
                 <div className="kpi-number-wrap">
-                  <p className={cn("kpi-number text-warning", numberBase)} title={`Need review: ${reviewCount} items`} aria-label={`Need review: ${reviewCount} items`}>
+                  <p className={cn("kpi-number text-foreground", numberBase)} title={`Need review: ${reviewCount} items`} aria-label={`Need review: ${reviewCount} items`}>
                     {reviewCount} <span className="text-xs font-normal text-muted-foreground">items</span>
                   </p>
                 </div>
             </div>
 
-              <div className={cn("p-5 border-l-4 border-success h-[140px] flex flex-col justify-between kpi-card", cardBase)}>
+              <div className={cn("p-5 border-l-4 border-border h-[140px] flex flex-col justify-between kpi-card", cardBase)}>
                 <div className="flex items-center gap-2">
-                  <TrendingDown className="h-6 w-6 text-success flex-shrink-0" />
+                  <TrendingDown className="h-6 w-6 text-muted-foreground flex-shrink-0" />
                   <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Savings ({currency})</span>
               </div>
-                {(() => {
-                  const v = moneyDisplay(potentialSavings, 'Potential savings');
-                  return (
-                    <div className="kpi-number-wrap">
-                      <p className={cn("kpi-number text-success", numberBase)} title={v.tooltip} aria-label={v.tooltip}>
-                        {v.display}
-                      </p>
-                    </div>
-                  );
-                })()}
+                <KpiMoneyValue value={potentialSavings} label="Potential savings" />
             </div>
 
-              <div className={cn("p-5 border-l-4 border-destructive h-[140px] flex flex-col justify-between kpi-card", cardBase)}>
+              <div className={cn("p-5 border-l-4 border-border h-[140px] flex flex-col justify-between kpi-card", cardBase)}>
                 <div className="flex items-center gap-2">
-                  <TrendingUp className="h-6 w-6 text-destructive flex-shrink-0" />
+                  <TrendingUp className="h-6 w-6 text-muted-foreground flex-shrink-0" />
                   <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Risk ({currency})</span>
               </div>
-                {(() => {
-                  const v = moneyDisplay(underpricedRisk, 'Underpriced risk');
-                  return (
-                    <div className="kpi-number-wrap">
-                      <p className={cn("kpi-number text-destructive", numberBase)} title={v.tooltip} aria-label={v.tooltip}>
-                        {v.display}
-                      </p>
-                    </div>
-                  );
-                })()}
+                <KpiMoneyValue value={underpricedRisk} label="Underpriced risk" />
             </div>
 
-              <div className={cn("p-5 border-l-4 border-muted-foreground/30 h-[140px] flex flex-col justify-between kpi-card", cardBase)}>
+              <div className={cn("p-5 border-l-4 border-border h-[140px] flex flex-col justify-between kpi-card", cardBase)}>
                 <div className="flex items-center gap-2">
                   <Percent className="h-6 w-6 text-muted-foreground flex-shrink-0" />
                   <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Variance</span>
@@ -281,23 +283,14 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
       {!forceCompactLayout && (
         <div className="hidden xl:grid xl:grid-cols-5 gap-4">
           {/* Total Recommended Value - highlighted */}
-          <div className={cn("p-5 border-l-4 border-primary h-[140px] flex flex-col justify-between kpi-card", cardBase)}>
+          <div className={cn("p-5 border-l-4 border-primary/30 h-[140px] flex flex-col justify-between kpi-card", cardBase)}>
             <div className="flex items-center gap-2">
-              <Calculator className="h-6 w-6 text-primary flex-shrink-0" />
+              <Calculator className="h-6 w-6 text-muted-foreground flex-shrink-0" />
               <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
                 Project Estimate ({currency})
               </span>
             </div>
-            {(() => {
-              const v = moneyDisplay(totalEstimatedValue, 'Project estimate');
-              return (
-                <div className="kpi-number-wrap">
-                  <p className={cn("kpi-number text-primary", numberBase)} title={v.tooltip} aria-label={v.tooltip}>
-                    {v.display}
-                  </p>
-                </div>
-              );
-            })()}
+            <KpiMoneyValue value={totalEstimatedValue} label="Project estimate" />
             {totalOriginalValue > 0 && (
               <p className="text-xs text-muted-foreground mt-1">
                 Original: {formatCurrencyFull(totalOriginalValue)}
@@ -306,62 +299,44 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
           </div>
 
           {/* Review Count */}
-          <div className={cn("p-5 border-l-4 border-warning h-[140px] flex flex-col justify-between kpi-card", cardBase)}>
+          <div className={cn("p-5 border-l-4 border-border h-[140px] flex flex-col justify-between kpi-card", cardBase)}>
             <div className="flex items-center gap-2">
-              <AlertCircle className="h-6 w-6 text-warning flex-shrink-0" />
+              <AlertCircle className="h-6 w-6 text-muted-foreground flex-shrink-0" />
               <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
                 Need Review
               </span>
             </div>
             <div className="kpi-number-wrap">
-              <p className={cn("kpi-number text-warning", numberBase)} title={`Need review: ${reviewCount} items`} aria-label={`Need review: ${reviewCount} items`}>
+              <p className={cn("kpi-number text-foreground", numberBase)} title={`Need review: ${reviewCount} items`} aria-label={`Need review: ${reviewCount} items`}>
                 {reviewCount} <span className="text-sm font-normal text-muted-foreground">items</span>
               </p>
             </div>
           </div>
 
           {/* Potential Savings */}
-          <div className={cn("p-5 border-l-4 border-success h-[140px] flex flex-col justify-between kpi-card", cardBase)}>
+          <div className={cn("p-5 border-l-4 border-border h-[140px] flex flex-col justify-between kpi-card", cardBase)}>
             <div className="flex items-center gap-2">
-              <TrendingDown className="h-6 w-6 text-success flex-shrink-0" />
+              <TrendingDown className="h-6 w-6 text-muted-foreground flex-shrink-0" />
               <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
                 Potential Savings ({currency})
               </span>
             </div>
-            {(() => {
-              const v = moneyDisplay(potentialSavings, 'Potential savings');
-              return (
-                <div className="kpi-number-wrap">
-                  <p className={cn("kpi-number text-success", numberBase)} title={v.tooltip} aria-label={v.tooltip}>
-                    {v.display}
-                  </p>
-                </div>
-              );
-            })()}
+            <KpiMoneyValue value={potentialSavings} label="Potential savings" />
           </div>
 
           {/* Underpriced Risk */}
-          <div className={cn("p-5 border-l-4 border-destructive h-[140px] flex flex-col justify-between kpi-card", cardBase)}>
+          <div className={cn("p-5 border-l-4 border-border h-[140px] flex flex-col justify-between kpi-card", cardBase)}>
             <div className="flex items-center gap-2">
-              <TrendingUp className="h-6 w-6 text-destructive flex-shrink-0" />
+              <TrendingUp className="h-6 w-6 text-muted-foreground flex-shrink-0" />
               <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
                 Underpriced Risk ({currency})
               </span>
             </div>
-            {(() => {
-              const v = moneyDisplay(underpricedRisk, 'Underpriced risk');
-              return (
-                <div className="kpi-number-wrap">
-                  <p className={cn("kpi-number text-destructive", numberBase)} title={v.tooltip} aria-label={v.tooltip}>
-                    {v.display}
-                  </p>
-                </div>
-              );
-            })()}
+            <KpiMoneyValue value={underpricedRisk} label="Underpriced risk" />
           </div>
 
           {/* Average Variance */}
-          <div className={cn("p-5 border-l-4 border-muted-foreground/30 h-[140px] flex flex-col justify-between kpi-card", cardBase)}>
+          <div className={cn("p-5 border-l-4 border-border h-[140px] flex flex-col justify-between kpi-card", cardBase)}>
             <div className="flex items-center gap-2">
               <Percent className="h-6 w-6 text-muted-foreground flex-shrink-0" />
               <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
