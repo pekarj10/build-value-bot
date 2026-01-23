@@ -42,6 +42,26 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
     }).format(value);
   };
 
+  const formatCurrencyCompact = (value: number) => {
+    const abs = Math.abs(value);
+    const sign = value < 0 ? '-' : '';
+
+    // Abbreviate large values to keep the string short and prevent wrapping.
+    // Target: <= ~15 chars total incl. currency.
+    let num: string;
+    if (abs >= 1_000_000_000) {
+      num = `${(abs / 1_000_000_000).toFixed(1).replace(/\.0$/, '')}B`;
+    } else if (abs >= 1_000_000) {
+      num = `${(abs / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+    } else if (abs >= 1_000) {
+      num = `${Math.round(abs / 1_000)}k`;
+    } else {
+      num = abs.toLocaleString('en-US', { maximumFractionDigits: 0 });
+    }
+
+    return `${currency} ${sign}${num}`;
+  };
+
   // Calculate metrics
   // IMPORTANT: This total must match the value shown in the Projects dashboard (projects.total_value)
   // so we fall back to original prices when a recommendation/override doesn't exist yet.
@@ -94,7 +114,7 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
   // - smaller numbers
   // - subtle hover (optional)
   const cardBase = "rounded-xl border bg-card shadow-sm transition-all duration-200 hover:shadow-md";
-  const numberBase = "font-mono tabular-nums";
+  const numberBase = "font-mono tabular-nums whitespace-nowrap leading-none tracking-tight";
 
   return (
     <Card className="p-5 lg:p-6 bg-card border shadow-sm">
@@ -137,22 +157,22 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
         {/* Main metric: Total Recommended Value */}
         <div
           className={cn(
-            "p-4 mb-4 border-l-4 border-primary",
+              "p-5 mb-4 border-l-4 border-primary h-[140px] flex flex-col justify-between",
             cardBase
           )}
         >
-          <div className="flex items-center gap-2 mb-2">
-            <Calculator className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-            <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
+            <div className="flex items-center gap-2">
+              <Calculator className="h-6 w-6 text-primary flex-shrink-0" />
+              <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
               Total Project Estimate
             </span>
           </div>
-          <p className={cn("text-3xl font-bold text-foreground", numberBase)}>
-            {formatCurrency(totalEstimatedValue)}
+            <p className={cn("text-3xl font-bold text-primary", numberBase)}>
+              {formatCurrencyCompact(totalEstimatedValue)}
           </p>
           {totalOriginalValue > 0 && valueDifference !== 0 && (
             <p className={cn(
-              "text-sm mt-2 font-medium",
+              "text-xs font-medium text-muted-foreground",
               valueDifference > 0 ? "text-success" : "text-warning"
             )}>
                 {estimateTrend} {formatCurrency(Math.abs(valueDifference))} vs original
@@ -163,43 +183,43 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
         {/* Expandable metrics */}
         {isExpanded && (
           <div className="grid grid-cols-2 gap-3 animate-fade-in">
-            <div className={cn("p-3 border-l-4 border-warning", cardBase)}>
-              <div className="flex items-center gap-2 mb-1">
-                <AlertCircle className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Review</span>
+              <div className={cn("p-5 border-l-4 border-warning h-[140px] flex flex-col justify-between", cardBase)}>
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="h-6 w-6 text-warning flex-shrink-0" />
+                  <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Review</span>
               </div>
-              <p className="text-lg font-bold">
+                <p className={cn("text-3xl font-bold text-warning", numberBase)}>
                 {reviewCount} <span className="text-xs font-normal text-muted-foreground">items</span>
               </p>
             </div>
 
-            <div className={cn("p-3 border-l-4 border-success", cardBase)}>
-              <div className="flex items-center gap-2 mb-1">
-                <TrendingDown className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Savings</span>
+              <div className={cn("p-5 border-l-4 border-success h-[140px] flex flex-col justify-between", cardBase)}>
+                <div className="flex items-center gap-2">
+                  <TrendingDown className="h-6 w-6 text-success flex-shrink-0" />
+                  <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Savings</span>
               </div>
-              <p className={cn("text-lg font-bold text-foreground", numberBase)}>
-                {formatCurrency(potentialSavings)}
+                <p className={cn("text-3xl font-bold text-success", numberBase)}>
+                  {formatCurrencyCompact(potentialSavings)}
               </p>
             </div>
 
-            <div className={cn("p-3 border-l-4 border-destructive", cardBase)}>
-              <div className="flex items-center gap-2 mb-1">
-                <TrendingUp className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Risk</span>
+              <div className={cn("p-5 border-l-4 border-destructive h-[140px] flex flex-col justify-between", cardBase)}>
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="h-6 w-6 text-destructive flex-shrink-0" />
+                  <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Risk</span>
               </div>
-              <p className={cn("text-lg font-bold text-foreground", numberBase)}>
-                {formatCurrency(underpricedRisk)}
+                <p className={cn("text-3xl font-bold text-destructive", numberBase)}>
+                  {formatCurrencyCompact(underpricedRisk)}
               </p>
             </div>
 
-            <div className={cn("p-3 border-l-4 border-muted-foreground/30", cardBase)}>
-              <div className="flex items-center gap-2 mb-1">
-                <Percent className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Variance</span>
+              <div className={cn("p-5 border-l-4 border-muted-foreground/30 h-[140px] flex flex-col justify-between", cardBase)}>
+                <div className="flex items-center gap-2">
+                  <Percent className="h-6 w-6 text-muted-foreground flex-shrink-0" />
+                  <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Variance</span>
               </div>
               <p className={cn(
-                "text-lg font-bold text-foreground",
+                  "text-3xl font-bold",
                 Math.abs(avgVariance) <= 10 && "text-success",
                 Math.abs(avgVariance) > 10 && Math.abs(avgVariance) <= 25 && "text-warning",
                 Math.abs(avgVariance) > 25 && "text-destructive"
@@ -239,14 +259,14 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
       {!forceCompactLayout && (
         <div className="hidden xl:grid xl:grid-cols-5 gap-4">
           {/* Total Recommended Value - highlighted */}
-          <div className={cn("p-4 border-l-4 border-primary", cardBase)}>
-            <div className="flex items-center gap-2 mb-2">
-              <Calculator className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-              <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
+          <div className={cn("p-5 border-l-4 border-primary h-[140px] flex flex-col justify-between", cardBase)}>
+            <div className="flex items-center gap-2">
+              <Calculator className="h-6 w-6 text-primary flex-shrink-0" />
+              <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
                 Project Estimate
               </span>
             </div>
-            <p className={cn("text-3xl font-bold text-foreground", numberBase)}>{formatCurrency(totalEstimatedValue)}</p>
+            <p className={cn("text-3xl font-bold text-primary", numberBase)}>{formatCurrencyCompact(totalEstimatedValue)}</p>
             {totalOriginalValue > 0 && (
               <p className="text-xs text-muted-foreground mt-1">
                 Original: {formatCurrency(totalOriginalValue)}
@@ -255,49 +275,49 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
           </div>
 
           {/* Review Count */}
-          <div className={cn("p-4 border-l-4 border-warning", cardBase)}>
-            <div className="flex items-center gap-2 mb-2">
-              <AlertCircle className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+          <div className={cn("p-5 border-l-4 border-warning h-[140px] flex flex-col justify-between", cardBase)}>
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-6 w-6 text-warning flex-shrink-0" />
+              <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
                 Need Review
               </span>
             </div>
-            <p className="text-3xl font-bold">
+            <p className={cn("text-3xl font-bold text-warning", numberBase)}>
               {reviewCount} <span className="text-sm font-normal text-muted-foreground">items</span>
             </p>
           </div>
 
           {/* Potential Savings */}
-          <div className={cn("p-4 border-l-4 border-success", cardBase)}>
-            <div className="flex items-center gap-2 mb-2">
-              <TrendingDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+          <div className={cn("p-5 border-l-4 border-success h-[140px] flex flex-col justify-between", cardBase)}>
+            <div className="flex items-center gap-2">
+              <TrendingDown className="h-6 w-6 text-success flex-shrink-0" />
+              <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
                 Potential Savings
               </span>
             </div>
-            <p className={cn("text-3xl font-bold text-foreground", numberBase)}>
-              {formatCurrency(potentialSavings)}
+            <p className={cn("text-3xl font-bold text-success", numberBase)}>
+              {formatCurrencyCompact(potentialSavings)}
             </p>
           </div>
 
           {/* Underpriced Risk */}
-          <div className={cn("p-4 border-l-4 border-destructive", cardBase)}>
-            <div className="flex items-center gap-2 mb-2">
-              <TrendingUp className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+          <div className={cn("p-5 border-l-4 border-destructive h-[140px] flex flex-col justify-between", cardBase)}>
+            <div className="flex items-center gap-2">
+              <TrendingUp className="h-6 w-6 text-destructive flex-shrink-0" />
+              <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
                 Underpriced Risk
               </span>
             </div>
-            <p className={cn("text-3xl font-bold text-foreground", numberBase)}>
-              {formatCurrency(underpricedRisk)}
+            <p className={cn("text-3xl font-bold text-destructive", numberBase)}>
+              {formatCurrencyCompact(underpricedRisk)}
             </p>
           </div>
 
           {/* Average Variance */}
-          <div className={cn("p-4 border-l-4 border-muted-foreground/30", cardBase)}>
-            <div className="flex items-center gap-2 mb-2">
-              <Percent className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+          <div className={cn("p-5 border-l-4 border-muted-foreground/30 h-[140px] flex flex-col justify-between", cardBase)}>
+            <div className="flex items-center gap-2">
+              <Percent className="h-6 w-6 text-muted-foreground flex-shrink-0" />
+              <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
                 Avg Variance
               </span>
             </div>
