@@ -14,6 +14,7 @@ import {
   Percent
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { formatCompactNumber } from '@/lib/formatters';
 
 interface ExecutiveSummaryProps {
   items: CostItem[];
@@ -33,33 +34,13 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
     return () => mql.removeEventListener('change', onChange);
   }, []);
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-US', {
+  const formatCurrencyFull = (value: number) => {
+    return new Intl.NumberFormat('sv-SE', {
       style: 'currency',
-      currency: currency,
+      currency,
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(value);
-  };
-
-  const formatCurrencyCompact = (value: number) => {
-    const abs = Math.abs(value);
-    const sign = value < 0 ? '-' : '';
-
-    // Abbreviate large values to keep the string short and prevent wrapping.
-    // Target: <= ~15 chars total incl. currency.
-    let num: string;
-    if (abs >= 1_000_000_000) {
-      num = `${(abs / 1_000_000_000).toFixed(1).replace(/\.0$/, '')}B`;
-    } else if (abs >= 1_000_000) {
-      num = `${(abs / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
-    } else if (abs >= 1_000) {
-      num = `${Math.round(abs / 1_000)}k`;
-    } else {
-      num = abs.toLocaleString('en-US', { maximumFractionDigits: 0 });
-    }
-
-    return `${currency} ${sign}${num}`;
   };
 
   // Calculate metrics
@@ -114,7 +95,15 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
   // - smaller numbers
   // - subtle hover (optional)
   const cardBase = "rounded-xl border bg-card shadow-sm transition-all duration-200 hover:shadow-md";
-  const numberBase = "font-mono tabular-nums whitespace-nowrap leading-none tracking-tight";
+  const numberBase = "font-mono tabular-nums";
+
+  const moneyDisplay = (value: number, label: string) => {
+    const { display, full } = formatCompactNumber(value, 'sv-SE');
+    return {
+      display,
+      tooltip: `${label}: ${full} ${currency}`,
+    };
+  };
 
   return (
     <Card className="p-5 lg:p-6 bg-card border shadow-sm">
@@ -157,25 +146,36 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
         {/* Main metric: Total Recommended Value */}
         <div
           className={cn(
-              "p-5 mb-4 border-l-4 border-primary h-[140px] flex flex-col justify-between",
+              "p-5 mb-4 border-l-4 border-primary h-[140px] flex flex-col justify-between kpi-card",
             cardBase
           )}
         >
             <div className="flex items-center gap-2">
               <Calculator className="h-6 w-6 text-primary flex-shrink-0" />
               <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-              Total Project Estimate
+                Total Project Estimate ({currency})
             </span>
           </div>
-            <p className={cn("text-3xl font-bold text-primary", numberBase)}>
-              {formatCurrencyCompact(totalEstimatedValue)}
-          </p>
+            {(() => {
+              const v = moneyDisplay(totalEstimatedValue, 'Project estimate');
+              return (
+                <div className="kpi-number-wrap">
+                  <p
+                    className={cn("kpi-number text-primary", numberBase)}
+                    title={v.tooltip}
+                    aria-label={v.tooltip}
+                  >
+                    {v.display}
+                  </p>
+                </div>
+              );
+            })()}
           {totalOriginalValue > 0 && valueDifference !== 0 && (
             <p className={cn(
               "text-xs font-medium text-muted-foreground",
               valueDifference > 0 ? "text-success" : "text-warning"
             )}>
-                {estimateTrend} {formatCurrency(Math.abs(valueDifference))} vs original
+                {estimateTrend} {formatCurrencyFull(Math.abs(valueDifference))} vs original
             </p>
           )}
         </div>
@@ -183,49 +183,71 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
         {/* Expandable metrics */}
         {isExpanded && (
           <div className="grid grid-cols-2 gap-3 animate-fade-in">
-              <div className={cn("p-5 border-l-4 border-warning h-[140px] flex flex-col justify-between", cardBase)}>
+              <div className={cn("p-5 border-l-4 border-warning h-[140px] flex flex-col justify-between kpi-card", cardBase)}>
                 <div className="flex items-center gap-2">
                   <AlertCircle className="h-6 w-6 text-warning flex-shrink-0" />
                   <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Review</span>
               </div>
-                <p className={cn("text-3xl font-bold text-warning", numberBase)}>
-                {reviewCount} <span className="text-xs font-normal text-muted-foreground">items</span>
-              </p>
+                <div className="kpi-number-wrap">
+                  <p className={cn("kpi-number text-warning", numberBase)} title={`Need review: ${reviewCount} items`} aria-label={`Need review: ${reviewCount} items`}>
+                    {reviewCount} <span className="text-xs font-normal text-muted-foreground">items</span>
+                  </p>
+                </div>
             </div>
 
-              <div className={cn("p-5 border-l-4 border-success h-[140px] flex flex-col justify-between", cardBase)}>
+              <div className={cn("p-5 border-l-4 border-success h-[140px] flex flex-col justify-between kpi-card", cardBase)}>
                 <div className="flex items-center gap-2">
                   <TrendingDown className="h-6 w-6 text-success flex-shrink-0" />
-                  <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Savings</span>
+                  <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Savings ({currency})</span>
               </div>
-                <p className={cn("text-3xl font-bold text-success", numberBase)}>
-                  {formatCurrencyCompact(potentialSavings)}
-              </p>
+                {(() => {
+                  const v = moneyDisplay(potentialSavings, 'Potential savings');
+                  return (
+                    <div className="kpi-number-wrap">
+                      <p className={cn("kpi-number text-success", numberBase)} title={v.tooltip} aria-label={v.tooltip}>
+                        {v.display}
+                      </p>
+                    </div>
+                  );
+                })()}
             </div>
 
-              <div className={cn("p-5 border-l-4 border-destructive h-[140px] flex flex-col justify-between", cardBase)}>
+              <div className={cn("p-5 border-l-4 border-destructive h-[140px] flex flex-col justify-between kpi-card", cardBase)}>
                 <div className="flex items-center gap-2">
                   <TrendingUp className="h-6 w-6 text-destructive flex-shrink-0" />
-                  <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Risk</span>
+                  <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Risk ({currency})</span>
               </div>
-                <p className={cn("text-3xl font-bold text-destructive", numberBase)}>
-                  {formatCurrencyCompact(underpricedRisk)}
-              </p>
+                {(() => {
+                  const v = moneyDisplay(underpricedRisk, 'Underpriced risk');
+                  return (
+                    <div className="kpi-number-wrap">
+                      <p className={cn("kpi-number text-destructive", numberBase)} title={v.tooltip} aria-label={v.tooltip}>
+                        {v.display}
+                      </p>
+                    </div>
+                  );
+                })()}
             </div>
 
-              <div className={cn("p-5 border-l-4 border-muted-foreground/30 h-[140px] flex flex-col justify-between", cardBase)}>
+              <div className={cn("p-5 border-l-4 border-muted-foreground/30 h-[140px] flex flex-col justify-between kpi-card", cardBase)}>
                 <div className="flex items-center gap-2">
                   <Percent className="h-6 w-6 text-muted-foreground flex-shrink-0" />
                   <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Variance</span>
               </div>
-              <p className={cn(
-                  "text-3xl font-bold",
-                Math.abs(avgVariance) <= 10 && "text-success",
-                Math.abs(avgVariance) > 10 && Math.abs(avgVariance) <= 25 && "text-warning",
-                Math.abs(avgVariance) > 25 && "text-destructive"
-              )}>
-                  {varianceTrend} {avgVariance >= 0 ? '+' : ''}{avgVariance.toFixed(1)}%
-              </p>
+                <div className="kpi-number-wrap">
+                  <p
+                    className={cn(
+                      "kpi-number",
+                      Math.abs(avgVariance) <= 10 && "text-success",
+                      Math.abs(avgVariance) > 10 && Math.abs(avgVariance) <= 25 && "text-warning",
+                      Math.abs(avgVariance) > 25 && "text-destructive"
+                    )}
+                    title={`Avg variance: ${avgVariance >= 0 ? '+' : ''}${avgVariance.toFixed(1)}%`}
+                    aria-label={`Avg variance: ${avgVariance >= 0 ? '+' : ''}${avgVariance.toFixed(1)}%`}
+                  >
+                    {varianceTrend} {avgVariance >= 0 ? '+' : ''}{avgVariance.toFixed(1)}%
+                  </p>
+                </div>
             </div>
           </div>
         )}
@@ -240,7 +262,7 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
             {potentialSavings > 0 && (
               <span className="flex items-center gap-1 text-success">
                 <TrendingDown className="h-3 w-3" />
-                <span className="font-medium">{formatCurrency(potentialSavings)}</span> savings
+                <span className="font-medium">{formatCurrencyFull(potentialSavings)}</span> savings
               </span>
             )}
             <span className={cn(
@@ -259,76 +281,107 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
       {!forceCompactLayout && (
         <div className="hidden xl:grid xl:grid-cols-5 gap-4">
           {/* Total Recommended Value - highlighted */}
-          <div className={cn("p-5 border-l-4 border-primary h-[140px] flex flex-col justify-between", cardBase)}>
+          <div className={cn("p-5 border-l-4 border-primary h-[140px] flex flex-col justify-between kpi-card", cardBase)}>
             <div className="flex items-center gap-2">
               <Calculator className="h-6 w-6 text-primary flex-shrink-0" />
               <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-                Project Estimate
+                Project Estimate ({currency})
               </span>
             </div>
-            <p className={cn("text-3xl font-bold text-primary", numberBase)}>{formatCurrencyCompact(totalEstimatedValue)}</p>
+            {(() => {
+              const v = moneyDisplay(totalEstimatedValue, 'Project estimate');
+              return (
+                <div className="kpi-number-wrap">
+                  <p className={cn("kpi-number text-primary", numberBase)} title={v.tooltip} aria-label={v.tooltip}>
+                    {v.display}
+                  </p>
+                </div>
+              );
+            })()}
             {totalOriginalValue > 0 && (
               <p className="text-xs text-muted-foreground mt-1">
-                Original: {formatCurrency(totalOriginalValue)}
+                Original: {formatCurrencyFull(totalOriginalValue)}
               </p>
             )}
           </div>
 
           {/* Review Count */}
-          <div className={cn("p-5 border-l-4 border-warning h-[140px] flex flex-col justify-between", cardBase)}>
+          <div className={cn("p-5 border-l-4 border-warning h-[140px] flex flex-col justify-between kpi-card", cardBase)}>
             <div className="flex items-center gap-2">
               <AlertCircle className="h-6 w-6 text-warning flex-shrink-0" />
               <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
                 Need Review
               </span>
             </div>
-            <p className={cn("text-3xl font-bold text-warning", numberBase)}>
-              {reviewCount} <span className="text-sm font-normal text-muted-foreground">items</span>
-            </p>
+            <div className="kpi-number-wrap">
+              <p className={cn("kpi-number text-warning", numberBase)} title={`Need review: ${reviewCount} items`} aria-label={`Need review: ${reviewCount} items`}>
+                {reviewCount} <span className="text-sm font-normal text-muted-foreground">items</span>
+              </p>
+            </div>
           </div>
 
           {/* Potential Savings */}
-          <div className={cn("p-5 border-l-4 border-success h-[140px] flex flex-col justify-between", cardBase)}>
+          <div className={cn("p-5 border-l-4 border-success h-[140px] flex flex-col justify-between kpi-card", cardBase)}>
             <div className="flex items-center gap-2">
               <TrendingDown className="h-6 w-6 text-success flex-shrink-0" />
               <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-                Potential Savings
+                Potential Savings ({currency})
               </span>
             </div>
-            <p className={cn("text-3xl font-bold text-success", numberBase)}>
-              {formatCurrencyCompact(potentialSavings)}
-            </p>
+            {(() => {
+              const v = moneyDisplay(potentialSavings, 'Potential savings');
+              return (
+                <div className="kpi-number-wrap">
+                  <p className={cn("kpi-number text-success", numberBase)} title={v.tooltip} aria-label={v.tooltip}>
+                    {v.display}
+                  </p>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Underpriced Risk */}
-          <div className={cn("p-5 border-l-4 border-destructive h-[140px] flex flex-col justify-between", cardBase)}>
+          <div className={cn("p-5 border-l-4 border-destructive h-[140px] flex flex-col justify-between kpi-card", cardBase)}>
             <div className="flex items-center gap-2">
               <TrendingUp className="h-6 w-6 text-destructive flex-shrink-0" />
               <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-                Underpriced Risk
+                Underpriced Risk ({currency})
               </span>
             </div>
-            <p className={cn("text-3xl font-bold text-destructive", numberBase)}>
-              {formatCurrencyCompact(underpricedRisk)}
-            </p>
+            {(() => {
+              const v = moneyDisplay(underpricedRisk, 'Underpriced risk');
+              return (
+                <div className="kpi-number-wrap">
+                  <p className={cn("kpi-number text-destructive", numberBase)} title={v.tooltip} aria-label={v.tooltip}>
+                    {v.display}
+                  </p>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Average Variance */}
-          <div className={cn("p-5 border-l-4 border-muted-foreground/30 h-[140px] flex flex-col justify-between", cardBase)}>
+          <div className={cn("p-5 border-l-4 border-muted-foreground/30 h-[140px] flex flex-col justify-between kpi-card", cardBase)}>
             <div className="flex items-center gap-2">
               <Percent className="h-6 w-6 text-muted-foreground flex-shrink-0" />
               <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
                 Avg Variance
               </span>
             </div>
-            <p className={cn(
-              "text-3xl font-bold",
-              Math.abs(avgVariance) <= 10 && "text-success",
-              Math.abs(avgVariance) > 10 && Math.abs(avgVariance) <= 25 && "text-warning",
-              Math.abs(avgVariance) > 25 && "text-destructive"
-            )}>
-              {varianceTrend} {avgVariance >= 0 ? '+' : ''}{avgVariance.toFixed(1)}%
-            </p>
+            <div className="kpi-number-wrap">
+              <p
+                className={cn(
+                  "kpi-number",
+                  Math.abs(avgVariance) <= 10 && "text-success",
+                  Math.abs(avgVariance) > 10 && Math.abs(avgVariance) <= 25 && "text-warning",
+                  Math.abs(avgVariance) > 25 && "text-destructive"
+                )}
+                title={`Avg variance: ${avgVariance >= 0 ? '+' : ''}${avgVariance.toFixed(1)}%`}
+                aria-label={`Avg variance: ${avgVariance >= 0 ? '+' : ''}${avgVariance.toFixed(1)}%`}
+              >
+                {varianceTrend} {avgVariance >= 0 ? '+' : ''}{avgVariance.toFixed(1)}%
+              </p>
+            </div>
           </div>
         </div>
       )}
