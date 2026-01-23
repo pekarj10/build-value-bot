@@ -67,6 +67,10 @@
     --chart-review: 38 92% 50%;
     --chart-clarification: 0 72% 51%;
     --chart-neutral: 220 9% 46%;
+
+    /* Premium elevation */
+    --shadow-elevated: 0 14px 34px -24px hsl(var(--foreground) / 0.28);
+    --shadow-elevated-hover: 0 18px 48px -26px hsl(var(--foreground) / 0.34);
   }
 
   .dark {
@@ -122,6 +126,22 @@
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
+
+  /* Modern FinTech surface: subtle grid backdrop (data-first, not decorative) */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.35;
+    background-image:
+      linear-gradient(to right, hsl(var(--border) / 0.35) 1px, transparent 1px),
+      linear-gradient(to bottom, hsl(var(--border) / 0.35) 1px, transparent 1px);
+    background-size: 64px 64px;
+    background-position: 0 0;
+    mask-image: radial-gradient(70% 55% at 50% 20%, black 0%, transparent 70%);
+  }
   
   /* Data table styles */
   .data-table {
@@ -157,7 +177,13 @@
   
   /* Metric cards */
   .metric-card {
-    @apply bg-card rounded-lg border p-6 space-y-2;
+    @apply bg-card rounded-lg border p-6 space-y-2 shadow-sm transition-base;
+    box-shadow: var(--shadow-elevated);
+  }
+
+  .metric-card:hover {
+    box-shadow: var(--shadow-elevated-hover);
+    transform: translateY(-1px);
   }
   
   .metric-value {
@@ -221,6 +247,16 @@
 @layer utilities {
   .transition-base {
     @apply transition-all duration-200 ease-in-out;
+  }
+
+  /* Modern FinTech elevation + motion */
+  .wow-elevated {
+    box-shadow: var(--shadow-elevated);
+  }
+
+  .wow-elevated:hover {
+    box-shadow: var(--shadow-elevated-hover);
+    transform: translateY(-1px);
   }
 }
 

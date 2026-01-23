@@ -57,7 +57,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     : user?.email?.substring(0, 2).toUpperCase() || 'U';
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background relative z-10">
       {/* Sidebar */}
       <aside className="fixed inset-y-0 left-0 z-50 w-64 bg-sidebar border-r border-sidebar-border">
         <div className="flex h-16 items-center px-6 border-b border-sidebar-border">

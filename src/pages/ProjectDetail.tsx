@@ -543,7 +543,7 @@ export default function ProjectDetail() {
 
       <div className="p-8 space-y-6">
         {/* Project Info Bar */}
-        <Card className="p-4">
+        <Card className="p-4 animate-enter wow-elevated">
           <div className="flex flex-wrap items-center gap-6 text-sm">
             <div className="flex items-center gap-2 text-muted-foreground">
               <MapPin className="h-4 w-4" />

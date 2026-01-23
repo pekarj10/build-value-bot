@@ -44,7 +44,7 @@ export function ProjectCard({ project, onDeleted }: ProjectCardProps) {
 
   return (
     <>
-      <Card className="p-5 hover:border-primary/30 transition-base cursor-pointer group relative">
+      <Card className="p-5 hover:border-primary/30 transition-base cursor-pointer group relative animate-enter wow-elevated">
         <div className="absolute top-3 right-3 z-10">
           <DropdownMenu>
             <DropdownMenuTrigger asChild onClick={(e) => e.preventDefault()}>

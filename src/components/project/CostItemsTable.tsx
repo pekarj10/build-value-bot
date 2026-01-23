@@ -37,7 +37,6 @@ import {
   RotateCcw,
   Plus,
   RefreshCw,
-  Database
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -1064,7 +1063,6 @@ export function CostItemsTable({
                                   hasOverride && "text-warning"
                                 )}>
                                   {displayPrice ? formatPrice(displayPrice) : '—'}
-                                  <Database className="inline-block h-2.5 w-2.5 ml-1 text-muted-foreground" />
                                 </span>
                               </TooltipTrigger>
                               <TooltipContent className="max-w-xs">
