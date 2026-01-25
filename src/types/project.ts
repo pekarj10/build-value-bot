@@ -10,7 +10,7 @@ export type ProjectType =
   | 'demolition'
   | 'office_fitout';
 
-export type CostItemStatus = 'ok' | 'review' | 'clarification' | 'underpriced';
+export type CostItemStatus = 'ok' | 'review' | 'clarification' | 'underpriced' | 'actual';
 
 export interface Project {
   id: string;

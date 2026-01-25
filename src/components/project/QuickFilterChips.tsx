@@ -1,6 +1,6 @@
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { AlertTriangle, TrendingUp, TrendingDown, Eye } from 'lucide-react';
+import { AlertTriangle, TrendingUp, TrendingDown, Eye, BadgeCheck } from 'lucide-react';
 
 interface QuickFilterChipsProps {
   activeFilters: string[];
@@ -31,6 +31,12 @@ const quickFilters = [
     label: 'Under-Priced',
     icon: TrendingDown,
     description: 'Items significantly below benchmark (potential scope/quality risk)',
+  },
+  {
+    id: 'verified',
+    label: 'Verified Actuals',
+    icon: BadgeCheck,
+    description: 'Items with verified actual costs from quotes/invoices',
   },
 ];
 

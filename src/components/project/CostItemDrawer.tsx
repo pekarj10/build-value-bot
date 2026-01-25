@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Check, MessageSquare, TrendingUp, Loader2, HelpCircle, RotateCcw, History } from 'lucide-react';
+import { Check, MessageSquare, TrendingUp, Loader2, HelpCircle, RotateCcw, History, CheckCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { 
   sanitizeAnalysisNoteForUser, 
@@ -23,6 +23,7 @@ import {
 import { useViewMode } from '@/hooks/useViewMode';
 import { MutationTimeline } from './MutationTimeline';
 import { LastModifiedBadge } from './LastModifiedBadge';
+import { TrustScoreIndicator } from './TrustScoreIndicator';
 
 interface CostItemDrawerProps {
   item: CostItem | null;
@@ -33,6 +34,7 @@ interface CostItemDrawerProps {
   onOverride: (itemId: string, price: number) => void;
   onClarify: (itemId: string, text: string) => void;
   onResetPrice?: (itemId: string) => void;
+  onMarkActual?: (itemId: string) => void;
   isProcessingClarification?: boolean;
   isAdmin?: boolean;
   projectCountry?: string;
@@ -47,6 +49,7 @@ export function CostItemDrawer({
   onOverride,
   onClarify,
   onResetPrice,
+  onMarkActual,
   isProcessingClarification = false,
   isAdmin = false,
   projectCountry = '',
@@ -329,6 +332,12 @@ export function CostItemDrawer({
 
           <Separator />
 
+          {/* Trust Score Indicator */}
+          <TrustScoreIndicator 
+            costItemId={item.id} 
+            countryCode={projectCountry}
+          />
+
           {/* Analysis Note - sanitized for regular users */}
           <div className="space-y-2">
             <Label className="text-muted-foreground">Analysis Note</Label>
@@ -387,6 +396,20 @@ export function CostItemDrawer({
                   >
                     <MessageSquare className="h-4 w-4 mr-2" />
                     Provide Clarification
+                  </Button>
+                )}
+                {/* Mark as Actual - when user has real quote/invoice */}
+                {onMarkActual && item.status !== 'actual' && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      onMarkActual(item.id);
+                      onClose();
+                    }}
+                    className="w-full justify-start text-success hover:text-success hover:bg-success/10"
+                  >
+                    <CheckCheck className="h-4 w-4 mr-2" />
+                    Mark as Actual (Real Quote/Invoice)
                   </Button>
                 )}
               </div>

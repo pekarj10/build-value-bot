@@ -23,6 +23,7 @@ import { useProject } from '@/hooks/useProject';
 import { useCostAnalysis } from '@/hooks/useCostAnalysis';
 import { useAuth } from '@/hooks/useAuth';
 import { useViewMode } from '@/hooks/useViewMode';
+import { supabase } from '@/integrations/supabase/client';
 import { 
   MapPin,
   Calendar,
@@ -176,6 +177,36 @@ export default function ProjectDetail() {
       status: newStatus as CostItemStatus
     } : i));
     if (id) await syncProjectTotals(id);
+  };
+
+  const handleMarkActual = async (itemId: string) => {
+    const item = items.find(i => i.id === itemId);
+    if (!item) return;
+
+    // Update status to 'actual' 
+    await updateCostItem(itemId, { status: 'actual' });
+    setItems(prev => prev.map(i => 
+      i.id === itemId ? { ...i, status: 'actual' as const } : i
+    ));
+    if (id) await syncProjectTotals(id);
+
+    // Collect actual cost data for learning (call edge function)
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      if (session?.session) {
+        await supabase.functions.invoke('collect-actual-cost', {
+          body: { costItemId: itemId },
+          headers: {
+            Authorization: `Bearer ${session.session.access_token}`,
+          },
+        });
+      }
+    } catch (error) {
+      console.error('Failed to collect actual cost data:', error);
+      // Don't show error to user - data collection is non-critical
+    }
+
+    toast.success('Item marked as actual (verified cost)');
   };
 
   const handleBulkAccept = async (itemIds: string[]) => {
@@ -720,6 +751,7 @@ export default function ProjectDetail() {
         onOverride={handleOverride}
         onClarify={handleClarify}
         onResetPrice={handleResetPrice}
+        onMarkActual={handleMarkActual}
         isProcessingClarification={isProcessingClarification}
         isAdmin={isAdmin}
         projectCountry={project.country}

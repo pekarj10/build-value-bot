@@ -244,6 +244,9 @@ export function CostItemsTable({
         // Item is significantly under-priced (more than 10% below benchmark)
         if (v === null || v >= -10) return false;
       }
+      if (quickFilters.includes('verified')) {
+        if (item.status !== 'actual') return false;
+      }
       
       return true;
     });
