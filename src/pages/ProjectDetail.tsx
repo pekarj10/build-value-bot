@@ -10,6 +10,7 @@ import { AIFloatingButton } from '@/components/project/AIFloatingButton';
 import { ExportDialog } from '@/components/project/ExportDialog';
 import { DeleteProjectDialog } from '@/components/project/DeleteProjectDialog';
 import { AddCostItemDialog } from '@/components/project/AddCostItemDialog';
+import { UploadSpreadsheetDialog } from '@/components/project/UploadSpreadsheetDialog';
 import { ClarificationsList } from '@/components/project/ClarificationsList';
 import { ProjectNotes } from '@/components/project/ProjectNotes';
 
@@ -44,7 +45,7 @@ export default function ProjectDetail() {
   const { isAdmin } = useAuth();
   const { showAsAdmin } = useViewMode();
   const effectiveIsAdmin = isAdmin && showAsAdmin;
-  const { getProject, getCostItems, updateCostItem, deleteCostItem, addCostItem, deleteProject, updateProjectNotes, syncProjectTotals } = useProject();
+  const { getProject, getCostItems, updateCostItem, deleteCostItem, addCostItem, deleteProject, updateProjectNotes, syncProjectTotals, uploadFile, parseExcelFile } = useProject();
   const { processClarification, analyzeItems, isAnalyzing } = useCostAnalysis();
 
   const [project, setProject] = useState<Project | null>(null);
@@ -58,6 +59,8 @@ export default function ProjectDetail() {
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showAddItemDialog, setShowAddItemDialog] = useState(false);
+  const [showUploadDialog, setShowUploadDialog] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [activeTab, setActiveTab] = useState('items');
 
   // Get unique trades for the add item dialog
@@ -359,6 +362,34 @@ export default function ProjectDetail() {
     return success;
   };
 
+  const handleUploadFiles = async (files: File[]) => {
+    if (!id) return;
+    
+    setIsUploading(true);
+    try {
+      let totalParsed = 0;
+      for (const file of files) {
+        const storagePath = await uploadFile(id, file);
+        if (storagePath) {
+          const success = await parseExcelFile(id, storagePath);
+          if (success) totalParsed++;
+        }
+      }
+      
+      if (totalParsed > 0) {
+        // Reload cost items after upload
+        const itemsData = await getCostItems(id);
+        setItems(itemsData);
+        await syncProjectTotals(id);
+      }
+    } catch (error) {
+      console.error('Upload failed:', error);
+      toast.error('Failed to process uploaded files');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const handleReanalyzeItems = async (itemIds: string[]) => {
     if (!project) return;
     
@@ -654,6 +685,7 @@ export default function ProjectDetail() {
               onBulkMarkReviewed={handleBulkMarkReviewed}
               onDeleteItem={handleDeleteItem}
               onAddItem={() => setShowAddItemDialog(true)}
+              onUpload={() => setShowUploadDialog(true)}
               onReanalyzeItems={handleReanalyzeItems}
               isReanalyzing={isReanalyzing || isAnalyzing}
               statusFilter={statusFilter}
@@ -790,6 +822,14 @@ export default function ProjectDetail() {
         onSubmit={handleAddItems}
         trades={trades}
         isAnalyzing={isAnalyzing}
+      />
+
+      {/* Upload Spreadsheet Dialog */}
+      <UploadSpreadsheetDialog
+        open={showUploadDialog}
+        onOpenChange={setShowUploadDialog}
+        onUpload={handleUploadFiles}
+        isUploading={isUploading}
       />
     </AppLayout>
   );

@@ -62,6 +62,7 @@ interface CostItemsTableProps {
   onBulkStatusChange?: (itemIds: string[], status: string) => void;
   onDeleteItem?: (itemId: string) => Promise<boolean>;
   onAddItem?: () => void;
+  onUpload?: () => void;
   onReanalyzeItems?: (itemIds: string[]) => Promise<void>;
   isReanalyzing?: boolean;
   statusFilter?: string;
@@ -98,6 +99,7 @@ export function CostItemsTable({
   onBulkStatusChange,
   onDeleteItem,
   onAddItem,
+  onUpload,
   onReanalyzeItems,
   isReanalyzing = false,
   statusFilter: externalStatusFilter,
@@ -559,7 +561,7 @@ export function CostItemsTable({
 
   // Empty states
   if (items.length === 0) {
-    return <EmptyState type="no-items" />;
+    return <EmptyState type="no-items" onUpload={onUpload} onAddItem={onAddItem} />;
   }
 
   return (
