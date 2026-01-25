@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { CostItem } from '@/types/project';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -136,22 +136,61 @@ export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
     value: number;
     label: string;
   }) {
-    const full = useMemo(() => formatCurrencyFull(value), [value]);
-    const compact = useMemo(() => {
-      const c = formatCompactNumber(value, 'sv-SE');
-      return c.display === '–' ? '–' : `${c.display} ${currency}`;
-    }, [value]);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const textRef = useRef<HTMLParagraphElement>(null);
+    const [fontScale, setFontScale] = useState(1);
 
+    const full = useMemo(() => formatCurrencyFull(value), [value]);
     const tooltip = `${label}: ${full}`;
 
+    // Base font size from CSS (clamp mid-value ~1.4rem = 22.4px)
+    const baseFontSize = 22.4;
+    const minFontSize = 14; // Never go below 14px for readability
+
+    useLayoutEffect(() => {
+      const container = containerRef.current;
+      const text = textRef.current;
+      if (!container || !text) return;
+
+      const computeScale = () => {
+        // Reset to base size to measure natural width
+        text.style.fontSize = `${baseFontSize}px`;
+        
+        const containerWidth = container.clientWidth;
+        const textWidth = text.scrollWidth;
+
+        if (textWidth > containerWidth && containerWidth > 0) {
+          // Calculate scale needed to fit, respecting minimum
+          const idealScale = containerWidth / textWidth;
+          const minScale = minFontSize / baseFontSize;
+          const newScale = Math.max(idealScale, minScale);
+          setFontScale(newScale);
+          text.style.fontSize = `${baseFontSize * newScale}px`;
+        } else {
+          setFontScale(1);
+          text.style.fontSize = `${baseFontSize}px`;
+        }
+      };
+
+      computeScale();
+      const ro = new ResizeObserver(() => computeScale());
+      ro.observe(container);
+      return () => ro.disconnect();
+    }, [full]);
+
     return (
-      <div className="kpi-number-wrap">
+      <div ref={containerRef} className="kpi-number-wrap w-full overflow-hidden">
         <p
-          className={cn("kpi-number text-foreground", numberBase)}
+          ref={textRef}
+          className={cn(
+            "kpi-number text-foreground whitespace-nowrap",
+            numberBase
+          )}
+          style={{ fontSize: `${baseFontSize * fontScale}px` }}
           title={tooltip}
           aria-label={tooltip}
         >
-          {compact}
+          {full}
         </p>
       </div>
     );
