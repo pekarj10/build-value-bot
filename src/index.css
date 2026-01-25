@@ -230,16 +230,15 @@
   }
 
   .kpi-number-wrap {
-    /* Keep KPI values aligned without forcing overflow inside fixed-height cards */
-    @apply flex items-end min-h-0;
+    /* Keep KPI values aligned; allow responsive scaling */
+    @apply flex items-end min-h-0 w-full;
   }
 
   .kpi-number {
-    font-size: clamp(1.125rem, 2.6vw, 1.75rem);
+    /* Base size set via inline style for responsive scaling */
     line-height: 1.2;
     letter-spacing: -0.02em;
     font-weight: 600;
-    white-space: nowrap;
   }
 }
 
