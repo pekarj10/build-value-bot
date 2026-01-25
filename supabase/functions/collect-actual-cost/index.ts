@@ -134,21 +134,28 @@ serve(async (req) => {
     // Determine if admin review is needed
     const needsAdminReview = trustScore < 50 || validation.needsAdminReview;
 
+    // Build the insert object
+    const benchmarkData: Record<string, unknown> = {
+      item_description: costItem.original_description,
+      unit: normalizeUnit(costItem.unit),
+      quantity: costItem.quantity,
+      unit_rate: effectivePrice,
+      total_cost: costItem.total_price || (effectivePrice * costItem.quantity),
+      country_code: countryCode,
+      category: costItem.trade || inferCategory(costItem.original_description),
+      trust_score: trustScore,
+      approved: !needsAdminReview, // Auto-approve if trust score >= 50
+      data_source: "user_actual",
+      flagged_for_review: needsAdminReview, // Flag for admin review if needed
+      flag_reason: needsAdminReview 
+        ? buildFlagReason(trustScore, validation)
+        : null,
+    };
+
     // Insert into benchmark_costs
     const { error: insertError } = await supabase
       .from("benchmark_costs")
-      .insert({
-        item_description: costItem.original_description,
-        unit: normalizeUnit(costItem.unit),
-        quantity: costItem.quantity,
-        unit_rate: effectivePrice,
-        total_cost: costItem.total_price || (effectivePrice * costItem.quantity),
-        country_code: countryCode,
-        category: costItem.trade || inferCategory(costItem.original_description),
-        trust_score: trustScore,
-        approved: !needsAdminReview, // Auto-approve if trust score is high
-        data_source: "user_actual",
-      });
+      .insert(benchmarkData);
 
     if (insertError) {
       console.error("Failed to insert benchmark cost:", insertError);
@@ -313,4 +320,20 @@ function mapCountryToDb(country: string): string {
     'AT': 'AUSTRIA', 'PL': 'POLAND', 'GB': 'UNITED_KINGDOM', 'US': 'UNITED_STATES',
   };
   return mapping[country] || country.toUpperCase().replace(/ /g, '_');
+}
+
+function buildFlagReason(trustScore: number, validation: ValidationResult): string {
+  const reasons: string[] = [];
+  
+  if (trustScore < 50) {
+    reasons.push(`Low trust score: ${trustScore}%`);
+  }
+  
+  if (validation.needsAdminReview && validation.reason) {
+    reasons.push(validation.reason);
+  }
+  
+  return reasons.length > 0 
+    ? reasons.join('; ') 
+    : 'Flagged for manual review';
 }

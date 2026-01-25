@@ -35,6 +35,8 @@ interface PendingBenchmarkCost {
   trust_score: number | null;
   created_at: string;
   data_source: string;
+  flagged_for_review: boolean | null;
+  flag_reason: string | null;
 }
 
 export function DataQualityPanel() {
@@ -45,10 +47,11 @@ export function DataQualityPanel() {
   const fetchPendingItems = async () => {
     setIsLoading(true);
     try {
+      // Fetch items that are either flagged_for_review=true OR approved=false
       const { data, error } = await supabase
         .from('benchmark_costs')
         .select('*')
-        .eq('approved', false)
+        .or('flagged_for_review.eq.true,approved.eq.false')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -72,7 +75,11 @@ export function DataQualityPanel() {
     try {
       const { error } = await supabase
         .from('benchmark_costs')
-        .update({ approved: true })
+        .update({ 
+          approved: true,
+          flagged_for_review: false,
+          flag_reason: null,
+        })
         .eq('id', id);
 
       if (error) throw error;
@@ -211,11 +218,18 @@ export function DataQualityPanel() {
                     <TableCell>
                       <div>
                         <p className="font-medium text-sm line-clamp-2">{item.item_description}</p>
-                        {item.category && (
-                          <Badge variant="outline" className="mt-1 text-xs">
-                            {item.category}
-                          </Badge>
-                        )}
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {item.category && (
+                            <Badge variant="outline" className="text-xs">
+                              {item.category}
+                            </Badge>
+                          )}
+                          {item.flag_reason && (
+                            <Badge variant="destructive" className="text-xs">
+                              {item.flag_reason}
+                            </Badge>
+                          )}
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell className="font-mono text-sm">{item.unit}</TableCell>

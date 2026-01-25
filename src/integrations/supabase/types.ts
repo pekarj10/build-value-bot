@@ -21,6 +21,8 @@ export type Database = {
           country_code: string
           created_at: string | null
           data_source: string | null
+          flag_reason: string | null
+          flagged_for_review: boolean | null
           id: string
           item_description: string
           quantity: number | null
@@ -35,6 +37,8 @@ export type Database = {
           country_code: string
           created_at?: string | null
           data_source?: string | null
+          flag_reason?: string | null
+          flagged_for_review?: boolean | null
           id?: string
           item_description: string
           quantity?: number | null
@@ -49,6 +53,8 @@ export type Database = {
           country_code?: string
           created_at?: string | null
           data_source?: string | null
+          flag_reason?: string | null
+          flagged_for_review?: boolean | null
           id?: string
           item_description?: string
           quantity?: number | null

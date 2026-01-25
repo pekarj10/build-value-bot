@@ -26,6 +26,7 @@ import {
 import { TablePagination } from '@/components/project/TablePagination';
 import { BenchmarkManager } from '@/components/admin/BenchmarkManager';
 import { DataQualityPanel } from '@/components/admin/DataQualityPanel';
+import { BenchmarkCsvImporter } from '@/components/admin/BenchmarkCsvImporter';
 import { 
   Users, 
   FolderOpen, 
@@ -449,7 +450,10 @@ export default function AdminDashboard() {
 
           {activeTab === 'quality' ? (
             <CardContent className="p-0">
-              <DataQualityPanel />
+              <div className="p-4 space-y-4">
+                <DataQualityPanel />
+                <BenchmarkCsvImporter />
+              </div>
             </CardContent>
           ) : activeTab === 'benchmarks' ? (
             <CardContent className="p-0">
