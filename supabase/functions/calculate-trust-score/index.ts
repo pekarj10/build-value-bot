@@ -277,11 +277,16 @@ async function calculateTrustScore(
   }
 
   // Calculate SIMILARITY SCORE (how well does the item match available data?)
-  let similarityScore = 50; // Default
+  // CRITICAL: If no references exist, similarity MUST be 0
+  let similarityScore = 0; // Default to 0 when no data
   let similarityReason = "";
 
-  if (costItem.match_confidence) {
-    // Use AI match confidence if available
+  if (totalReferences === 0) {
+    // No reference data - similarity must be 0
+    similarityScore = 0;
+    similarityReason = "No similar items found in the reference database.";
+  } else if (costItem.match_confidence && totalReferences > 0) {
+    // Use AI match confidence if available AND we have references
     similarityScore = Math.round(costItem.match_confidence);
     similarityReason = `Based on AI matching confidence of ${costItem.match_confidence}%.`;
   } else if (totalReferences >= 50) {
@@ -296,12 +301,10 @@ async function calculateTrustScore(
   } else if (totalReferences >= 5) {
     similarityScore = 65;
     similarityReason = `Limited reference data: ${totalReferences} similar items found.`;
-  } else if (totalReferences > 0) {
-    similarityScore = 50;
-    similarityReason = `Very limited reference data: only ${totalReferences} similar item(s).`;
   } else {
-    similarityScore = 30;
-    similarityReason = "No similar items found in the reference database.";
+    // 1-4 references
+    similarityScore = 40;
+    similarityReason = `Very limited reference data: only ${totalReferences} similar item(s).`;
   }
 
   // Calculate overall trust score
