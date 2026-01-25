@@ -12,7 +12,8 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
-import { Check, MessageSquare, TrendingUp, Loader2, HelpCircle, RotateCcw } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Check, MessageSquare, TrendingUp, Loader2, HelpCircle, RotateCcw, History } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { 
   sanitizeAnalysisNoteForUser, 
@@ -20,6 +21,8 @@ import {
   getUserFriendlyScope 
 } from '@/lib/roleUtils';
 import { useViewMode } from '@/hooks/useViewMode';
+import { MutationTimeline } from './MutationTimeline';
+import { LastModifiedBadge } from './LastModifiedBadge';
 
 interface CostItemDrawerProps {
   item: CostItem | null;
@@ -56,6 +59,7 @@ export function CostItemDrawer({
   const [clarification, setClarification] = useState('');
   const [showOverride, setShowOverride] = useState(false);
   const [showClarify, setShowClarify] = useState(false);
+  const [activeTab, setActiveTab] = useState('details');
 
   // Reset state when item changes
   useEffect(() => {
@@ -64,6 +68,7 @@ export function CostItemDrawer({
       setClarification('');
       setShowOverride(false);
       setShowClarify(false);
+      setActiveTab('details');
     }
   }, [item?.id]);
 
@@ -145,17 +150,40 @@ export function CostItemDrawer({
 
   return (
     <Sheet open={open} onOpenChange={onClose}>
-      <SheetContent className="w-[500px] sm:max-w-[500px] overflow-y-auto">
+      <SheetContent className="w-[520px] sm:max-w-[520px] overflow-y-auto">
         <SheetHeader className="space-y-4">
           <div className="flex items-start justify-between gap-4">
-            <SheetTitle className="text-left leading-normal">
-              {item.originalDescription}
-            </SheetTitle>
+            <div className="flex-1 min-w-0">
+              <SheetTitle className="text-left leading-normal">
+                {item.originalDescription}
+              </SheetTitle>
+              {item.lastModifiedAt && (
+                <LastModifiedBadge
+                  lastModifiedAt={item.lastModifiedAt}
+                  mutationCount={item.mutationCount}
+                  className="mt-2"
+                />
+              )}
+            </div>
             <StatusBadge status={item.status} size="md" />
           </div>
         </SheetHeader>
 
-        <div className="mt-6 space-y-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="details">Details</TabsTrigger>
+            <TabsTrigger value="history" className="flex items-center gap-1.5">
+              <History className="h-3.5 w-3.5" />
+              History
+              {item.mutationCount !== undefined && item.mutationCount > 1 && (
+                <span className="ml-1 text-xs bg-muted rounded-full px-1.5">
+                  {item.mutationCount}
+                </span>
+              )}
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="details" className="mt-4 space-y-6">
           {/* Clarification Question - shown prominently if present */}
           {needsClarification && hasClarificationQuestion && !item.userClarification && (
             <div className="p-4 bg-warning/10 border border-warning/30 rounded-lg space-y-3">
@@ -422,7 +450,20 @@ export function CostItemDrawer({
               </div>
             )}
           </div>
-        </div>
+          </TabsContent>
+
+          <TabsContent value="history" className="mt-4">
+            <MutationTimeline
+              costItemId={item.id}
+              currency={currency}
+              isAdmin={effectiveIsAdmin}
+              onRestore={() => {
+                // Refresh could happen here if needed
+                onClose();
+              }}
+            />
+          </TabsContent>
+        </Tabs>
       </SheetContent>
     </Sheet>
   );

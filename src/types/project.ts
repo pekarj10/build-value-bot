@@ -48,11 +48,15 @@ export interface CostItem {
   clarificationQuestion?: string;
   userClarification?: string;
   userOverridePrice?: number;
-  // New benchmark matching fields
+  // Benchmark matching fields
   matchedBenchmarkId?: string | null;
   matchConfidence?: number | null;
   matchReasoning?: string | null;
   priceSource?: string | null;
+  // Audit trail fields
+  lastModifiedBy?: string | null;
+  lastModifiedAt?: string | null;
+  mutationCount?: number;
 }
 
 export interface ProjectInsight {
