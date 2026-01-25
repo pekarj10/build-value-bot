@@ -1055,44 +1055,43 @@ export function CostItemsTable({
                         </div>
                       ) : (
                         <div className="relative flex items-center justify-end group">
-                          {/* Action buttons positioned absolutely to the left - don't affect layout */}
-                          <div className="absolute right-full mr-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                            {hasOverride && onResetPrice && (item.recommendedUnitPrice || item.originalUnitPrice) && (
+                          {/* Single action icon - reset takes priority over edit when override exists */}
+                          <div className="absolute right-full mr-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {hasOverride && onResetPrice && (item.recommendedUnitPrice || item.originalUnitPrice) ? (
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="h-5 w-5 text-primary hover:text-primary hover:bg-primary/10"
+                                    className="h-4 w-4 text-primary hover:text-primary hover:bg-primary/10"
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       e.preventDefault();
                                       onResetPrice(item.id);
                                     }}
                                   >
-                                    <RotateCcw className="h-3 w-3" />
+                                    <RotateCcw className="h-2.5 w-2.5" />
                                   </Button>
                                 </TooltipTrigger>
                                 <TooltipContent>
                                   Reset to {item.recommendedUnitPrice ? 'recommended' : 'original'} ({formatPrice(item.recommendedUnitPrice ?? item.originalUnitPrice)} {currency})
                                 </TooltipContent>
                               </Tooltip>
-                            )}
-                            {onPriceUpdate && displayPrice && (
+                            ) : onPriceUpdate && displayPrice ? (
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="h-5 w-5 hover:bg-muted"
+                                    className="h-4 w-4 hover:bg-muted"
                                     onClick={(e) => handleEditStart(item, e)}
                                   >
-                                    <Pencil className="h-3 w-3" />
+                                    <Pencil className="h-2.5 w-2.5" />
                                   </Button>
                                 </TooltipTrigger>
                                 <TooltipContent>Edit price</TooltipContent>
                               </Tooltip>
-                            )}
+                            ) : null}
                           </div>
                           {/* Price value - always in same position */}
                           {effectiveIsAdmin && item.priceSource ? (
