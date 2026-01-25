@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.recalculate-all-prices]
 verify_jwt = false
+
+[functions.cost-item-mutations]
+verify_jwt = false

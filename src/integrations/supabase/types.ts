@@ -59,6 +59,53 @@ export type Database = {
         }
         Relationships: []
       }
+      cost_item_mutations: {
+        Row: {
+          change_type: Database["public"]["Enums"]["mutation_change_type"]
+          cost_item_id: string
+          created_at: string
+          field_name: string
+          id: string
+          ip_address: string | null
+          new_value: string | null
+          old_value: string | null
+          reason: string | null
+          user_id: string | null
+        }
+        Insert: {
+          change_type: Database["public"]["Enums"]["mutation_change_type"]
+          cost_item_id: string
+          created_at?: string
+          field_name: string
+          id?: string
+          ip_address?: string | null
+          new_value?: string | null
+          old_value?: string | null
+          reason?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          change_type?: Database["public"]["Enums"]["mutation_change_type"]
+          cost_item_id?: string
+          created_at?: string
+          field_name?: string
+          id?: string
+          ip_address?: string | null
+          new_value?: string | null
+          old_value?: string | null
+          reason?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cost_item_mutations_cost_item_id_fkey"
+            columns: ["cost_item_id"]
+            isOneToOne: false
+            referencedRelation: "cost_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cost_items: {
         Row: {
           ai_comment: string | null
@@ -69,9 +116,12 @@ export type Database = {
           created_at: string
           id: string
           interpreted_scope: string | null
+          last_modified_at: string | null
+          last_modified_by: string | null
           match_confidence: number | null
           match_reasoning: string | null
           matched_benchmark_id: string | null
+          mutation_count: number
           original_description: string
           original_unit_price: number | null
           price_source: string | null
@@ -96,9 +146,12 @@ export type Database = {
           created_at?: string
           id?: string
           interpreted_scope?: string | null
+          last_modified_at?: string | null
+          last_modified_by?: string | null
           match_confidence?: number | null
           match_reasoning?: string | null
           matched_benchmark_id?: string | null
+          mutation_count?: number
           original_description: string
           original_unit_price?: number | null
           price_source?: string | null
@@ -123,9 +176,12 @@ export type Database = {
           created_at?: string
           id?: string
           interpreted_scope?: string | null
+          last_modified_at?: string | null
+          last_modified_by?: string | null
           match_confidence?: number | null
           match_reasoning?: string | null
           matched_benchmark_id?: string | null
+          mutation_count?: number
           original_description?: string
           original_unit_price?: number | null
           price_source?: string | null
@@ -314,6 +370,14 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "user"
+      mutation_change_type:
+        | "create"
+        | "update"
+        | "status_change"
+        | "price_override"
+        | "note_added"
+        | "delete"
+        | "restore"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -442,6 +506,15 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "user"],
+      mutation_change_type: [
+        "create",
+        "update",
+        "status_change",
+        "price_override",
+        "note_added",
+        "delete",
+        "restore",
+      ],
     },
   },
 } as const

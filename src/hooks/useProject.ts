@@ -47,11 +47,15 @@ interface DbCostItem {
   clarification_question: string | null;
   user_clarification: string | null;
   user_override_price: number | null;
-  // New benchmark matching fields
+  // Benchmark matching fields
   matched_benchmark_id: string | null;
   match_confidence: number | null;
   match_reasoning: string | null;
   price_source: string | null;
+  // Audit trail fields
+  last_modified_by: string | null;
+  last_modified_at: string | null;
+  mutation_count: number | null;
 }
 
 export function useProject() {
@@ -240,11 +244,15 @@ export function useProject() {
         clarificationQuestion: item.clarification_question || undefined,
         userClarification: item.user_clarification || undefined,
         userOverridePrice: item.user_override_price ? Number(item.user_override_price) : undefined,
-        // New benchmark matching fields
+        // Benchmark matching fields
         matchedBenchmarkId: item.matched_benchmark_id || null,
         matchConfidence: item.match_confidence ? Number(item.match_confidence) : null,
         matchReasoning: item.match_reasoning || null,
         priceSource: item.price_source || null,
+        // Audit trail fields
+        lastModifiedBy: item.last_modified_by || null,
+        lastModifiedAt: item.last_modified_at || null,
+        mutationCount: item.mutation_count || 0,
       }));
     } catch (error) {
       console.error('Get cost items error:', error);
