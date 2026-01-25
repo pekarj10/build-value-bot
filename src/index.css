@@ -235,7 +235,8 @@
   }
 
   .kpi-number {
-    /* Base size set via inline style for responsive scaling */
+    /* Consistent base size across all KPI metrics (22.4px = 1.4rem) */
+    font-size: 1.4rem;
     line-height: 1.2;
     letter-spacing: -0.02em;
     font-weight: 600;
