@@ -368,15 +368,15 @@ export function CostItemDrawer({
                   <TrendingUp className="h-4 w-4 mr-2" />
                   Override Price
                 </Button>
-                {/* Reset to Recommended - only show when price is overridden */}
-                {hasOverride && onResetPrice && (
+                {/* Reset to Recommended/Original - only show when price is overridden */}
+                {hasOverride && onResetPrice && (item.recommendedUnitPrice || item.originalUnitPrice) && (
                   <Button
                     variant="outline"
                     onClick={handleResetPrice}
                     className="w-full justify-start text-primary hover:text-primary"
                   >
                     <RotateCcw className="h-4 w-4 mr-2" />
-                    Reset to Recommended ({formatPrice(item.recommendedUnitPrice)} {currency})
+                    Reset to {item.recommendedUnitPrice ? 'Recommended' : 'Original'} ({formatPrice(item.recommendedUnitPrice ?? item.originalUnitPrice)} {currency})
                   </Button>
                 )}
                 {needsClarification && !hasClarificationQuestion && (
