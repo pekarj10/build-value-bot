@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CostItem, PROJECT_TYPE_LABELS, SUPPORTED_COUNTRIES, Project } from '@/types/project';
+import { CostItem, CostItemStatus, PROJECT_TYPE_LABELS, SUPPORTED_COUNTRIES, Project } from '@/types/project';
 import { useProject } from '@/hooks/useProject';
 import { useCostAnalysis } from '@/hooks/useCostAnalysis';
 import { useAuth } from '@/hooks/useAuth';
@@ -157,8 +157,25 @@ export default function ProjectDetail() {
     const resetPrice = item.recommendedUnitPrice ?? item.originalUnitPrice ?? 0;
     if (resetPrice === 0) return; // Don't reset if there's no price to reset to
     const totalPrice = item.quantity * resetPrice;
-    await updateCostItem(itemId, { user_override_price: null, total_price: totalPrice });
-    setItems(prev => prev.map(i => i.id === itemId ? { ...i, userOverridePrice: undefined, totalPrice } : i));
+    
+    // Determine the appropriate status after reset:
+    // - If item has a valid recommended price, status stays as-is (ok is fine)
+    // - If item only has original price (no recommendation), set to 'review' since it needs attention
+    const hasRecommendation = item.recommendedUnitPrice !== null && item.recommendedUnitPrice !== undefined;
+    const newStatus = hasRecommendation ? item.status : 'review';
+    
+    await updateCostItem(itemId, { 
+      user_override_price: null, 
+      total_price: totalPrice,
+      status: newStatus
+    });
+    setItems(prev => prev.map(i => i.id === itemId ? { 
+      ...i, 
+      userOverridePrice: undefined, 
+      totalPrice,
+      status: newStatus as CostItemStatus
+    } : i));
+    if (id) await syncProjectTotals(id);
   };
 
   const handleBulkAccept = async (itemIds: string[]) => {
