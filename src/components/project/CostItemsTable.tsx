@@ -46,6 +46,7 @@ import { QuickFilterChips } from './QuickFilterChips';
 import { TablePagination } from './TablePagination';
 import { SaveFilterDialog } from './SaveFilterDialog';
 import { EmptyState } from './EmptyState';
+import { CostItemCard } from './CostItemCard';
 import { useSavedFilters, FilterState } from '@/hooks/useSavedFilters';
 import { useAuth } from '@/hooks/useAuth';
 import { useViewMode } from '@/hooks/useViewMode';
@@ -562,24 +563,25 @@ export function CostItemsTable({
     <TooltipProvider>
       <div className="space-y-4">
         {/* Main Filters Row */}
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Search */}
-          <div className="relative flex-1 min-w-[200px] max-w-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+          {/* Search - full width on mobile */}
+          <div className="relative flex-1 min-w-0 sm:min-w-[200px] sm:max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               ref={searchInputRef}
-              placeholder='Search items... (Press "/" to focus)'
+              placeholder='Search items...'
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
                 setCurrentPage(1);
               }}
-              className="pl-9"
+              className="pl-9 h-11 sm:h-10"
             />
           </div>
           
-          <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-muted-foreground" />
+          {/* Filters - horizontally scrollable on mobile */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1 sm:overflow-visible sm:pb-0 sm:mx-0 sm:px-0">
+            <Filter className="h-4 w-4 text-muted-foreground flex-shrink-0 hidden sm:block" />
             
             {/* Status Multi-Select */}
             <MultiSelect
@@ -590,7 +592,7 @@ export function CostItemsTable({
                 setCurrentPage(1);
               }}
               placeholder="Status"
-              className="w-[140px]"
+              className="w-[120px] sm:w-[140px] flex-shrink-0"
             />
             
             {/* Trade Multi-Select */}
@@ -602,36 +604,38 @@ export function CostItemsTable({
                 setCurrentPage(1);
               }}
               placeholder="Trade"
-              className="w-[160px]"
+              className="w-[130px] sm:w-[160px] flex-shrink-0"
             />
 
-            {/* Variance Range */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Select value={varianceRange} onValueChange={(v) => {
-                  setVarianceRange(v);
-                  setCurrentPage(1);
-                }}>
-                  <SelectTrigger className="w-[130px]">
-                    <SelectValue placeholder="Variance" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {VARIANCE_RANGES.map(range => (
-                      <SelectItem key={range.value} value={range.value}>
-                        {range.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Filter by price variance percentage</p>
-              </TooltipContent>
-            </Tooltip>
+            {/* Variance Range - hide on smallest screens */}
+            <div className="hidden sm:block">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Select value={varianceRange} onValueChange={(v) => {
+                    setVarianceRange(v);
+                    setCurrentPage(1);
+                  }}>
+                    <SelectTrigger className="w-[130px]">
+                      <SelectValue placeholder="Variance" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {VARIANCE_RANGES.map(range => (
+                        <SelectItem key={range.value} value={range.value}>
+                          {range.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Filter by price variance percentage</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
           </div>
 
-          {/* Price Range */}
-          <div className="flex items-center gap-2">
+          {/* Price Range - desktop only */}
+          <div className="hidden lg:flex items-center gap-2">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Input
@@ -836,8 +840,25 @@ export function CostItemsTable({
           </div>
         )}
 
-        {/* Table */}
-        <div className="border rounded-lg overflow-hidden bg-card">
+        {/* Mobile Card View */}
+        <div className="md:hidden space-y-3">
+          {paginatedItems.map((item) => (
+            <CostItemCard
+              key={item.id}
+              item={item}
+              currency={currency}
+              onSelect={onItemSelect}
+              onResetPrice={onResetPrice}
+              formatPrice={formatPrice}
+            />
+          ))}
+          {paginatedItems.length === 0 && (
+            <EmptyState type="no-results" onClearFilters={clearAllFilters} />
+          )}
+        </div>
+
+        {/* Desktop Table */}
+        <div className="hidden md:block border rounded-lg overflow-x-auto bg-card">
           <table className="data-table">
             <thead>
               <tr>
