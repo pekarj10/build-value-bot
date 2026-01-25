@@ -17,3 +17,9 @@ verify_jwt = false
 
 [functions.cost-item-mutations]
 verify_jwt = false
+
+[functions.calculate-trust-score]
+verify_jwt = false
+
+[functions.collect-actual-cost]
+verify_jwt = false

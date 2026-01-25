@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/select';
 import { TablePagination } from '@/components/project/TablePagination';
 import { BenchmarkManager } from '@/components/admin/BenchmarkManager';
+import { DataQualityPanel } from '@/components/admin/DataQualityPanel';
 import { 
   Users, 
   FolderOpen, 
@@ -36,7 +37,8 @@ import {
   CheckCircle2,
   Database,
   RefreshCw,
-  Loader2
+  Loader2,
+  Target
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
@@ -69,7 +71,7 @@ export default function AdminDashboard() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'users' | 'projects' | 'benchmarks'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'projects' | 'benchmarks' | 'quality'>('users');
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [recalculateResults, setRecalculateResults] = useState<{
     processed: number;
@@ -392,6 +394,14 @@ export default function AdminDashboard() {
                   Benchmarks
                 </Button>
                 <Button
+                  variant={activeTab === 'quality' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setActiveTab('quality')}
+                >
+                  <Target className="h-4 w-4 mr-2" />
+                  Data Quality
+                </Button>
+                <Button
                   variant="outline"
                   size="sm"
                   onClick={handleRecalculateAllPrices}
@@ -407,7 +417,7 @@ export default function AdminDashboard() {
                 </Button>
               </div>
 
-              {activeTab !== 'benchmarks' && (
+              {activeTab !== 'benchmarks' && activeTab !== 'quality' && (
                 <div className="flex gap-2">
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -437,7 +447,11 @@ export default function AdminDashboard() {
             </div>
           </CardHeader>
 
-          {activeTab === 'benchmarks' ? (
+          {activeTab === 'quality' ? (
+            <CardContent className="p-0">
+              <DataQualityPanel />
+            </CardContent>
+          ) : activeTab === 'benchmarks' ? (
             <CardContent className="p-0">
               <BenchmarkManager />
             </CardContent>

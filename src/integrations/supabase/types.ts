@@ -14,6 +14,51 @@ export type Database = {
   }
   public: {
     Tables: {
+      benchmark_costs: {
+        Row: {
+          approved: boolean | null
+          category: string | null
+          country_code: string
+          created_at: string | null
+          data_source: string | null
+          id: string
+          item_description: string
+          quantity: number | null
+          total_cost: number
+          trust_score: number | null
+          unit: string
+          unit_rate: number
+        }
+        Insert: {
+          approved?: boolean | null
+          category?: string | null
+          country_code: string
+          created_at?: string | null
+          data_source?: string | null
+          id?: string
+          item_description: string
+          quantity?: number | null
+          total_cost: number
+          trust_score?: number | null
+          unit: string
+          unit_rate: number
+        }
+        Update: {
+          approved?: boolean | null
+          category?: string | null
+          country_code?: string
+          created_at?: string | null
+          data_source?: string | null
+          id?: string
+          item_description?: string
+          quantity?: number | null
+          total_cost?: number
+          trust_score?: number | null
+          unit?: string
+          unit_rate?: number
+        }
+        Relationships: []
+      }
       benchmark_prices: {
         Row: {
           avg_price: number
@@ -210,6 +255,50 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      estimate_trust_scores: {
+        Row: {
+          calculated_at: string | null
+          cost_item_id: string
+          country_code: string | null
+          explanation: string | null
+          id: string
+          overall_trust_score: number
+          plausibility_score: number
+          reference_count: number | null
+          similarity_score: number
+        }
+        Insert: {
+          calculated_at?: string | null
+          cost_item_id: string
+          country_code?: string | null
+          explanation?: string | null
+          id?: string
+          overall_trust_score: number
+          plausibility_score: number
+          reference_count?: number | null
+          similarity_score: number
+        }
+        Update: {
+          calculated_at?: string | null
+          cost_item_id?: string
+          country_code?: string | null
+          explanation?: string | null
+          id?: string
+          overall_trust_score?: number
+          plausibility_score?: number
+          reference_count?: number | null
+          similarity_score?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "estimate_trust_scores_cost_item_id_fkey"
+            columns: ["cost_item_id"]
+            isOneToOne: true
+            referencedRelation: "cost_items"
             referencedColumns: ["id"]
           },
         ]
