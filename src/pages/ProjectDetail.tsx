@@ -152,8 +152,11 @@ export default function ProjectDetail() {
 
   const handleResetPrice = async (itemId: string) => {
     const item = items.find(i => i.id === itemId);
-    if (!item || !item.recommendedUnitPrice) return;
-    const totalPrice = item.quantity * item.recommendedUnitPrice;
+    if (!item) return;
+    // Fall back to original price if no recommended price exists
+    const resetPrice = item.recommendedUnitPrice ?? item.originalUnitPrice ?? 0;
+    if (resetPrice === 0) return; // Don't reset if there's no price to reset to
+    const totalPrice = item.quantity * resetPrice;
     await updateCostItem(itemId, { user_override_price: null, total_price: totalPrice });
     setItems(prev => prev.map(i => i.id === itemId ? { ...i, userOverridePrice: undefined, totalPrice } : i));
   };
