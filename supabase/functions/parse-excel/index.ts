@@ -351,42 +351,80 @@ function detectColumns(headerRow: string[]): {
   quantity?: number;
   unit?: number;
   unitPrice?: number;
+  totalPrice?: number;
 } {
   const result: {
     description?: number;
     quantity?: number;
     unit?: number;
     unitPrice?: number;
+    totalPrice?: number;
   } = {};
 
+  // Expanded patterns for multi-language support (English, Swedish, Czech, German)
   const descPatterns = [
-    /desc|popis|název|name|položka|item|work|práce|činnost|specification/i,
+    /^desc/i, /^popis/i, /^název/i, /^name/i, /^položka/i, /^item/i, 
+    /^work/i, /^práce/i, /^činnost/i, /^specification/i, /^beskrivning/i,
+    /^artikel/i, /^post/i, /^rubrik/i, /^benämning/i, /^arbete/i,
   ];
-  const qtyPatterns = [/qty|quantity|množství|počet|amount|mängd|antal/i];
-  const unitPatterns = [/unit|jednotka|měrná|mj|enhet/i];
+  
+  // CRITICAL: Added "how much" and Swedish "hur mycket"
+  // Using \s* for any whitespace and making patterns more flexible
+  const qtyPatterns = [
+    /^qty/i, /^quantity/i, /^množství/i, /^počet/i, /^amount/i, 
+    /^mängd/i, /^antal/i, /how\s*much/i, /hur\s*mycket/i,
+    /^st$/i, /^stk$/i, /^kpl$/i, /^pcs$/i, /^kvantitet/i, /^menge/i,
+    /^number/i, /^count/i, /^antal$/i, /^no\.?$/i,
+  ];
+  
+  const unitPatterns = [
+    /^unit$/i, /^jednotka/i, /^měrná/i, /^mj$/i, /^enhet/i,
+    /^måttenhet/i, /^einheit/i,
+  ];
+  
   const pricePatterns = [
-    /price|cena|jednotková|unit.*price|j\.c\.|jc|pris|kostnad/i,
+    /^price/i, /^cena/i, /^jednotková/i, /unit.*price/i, /^j\.c\./i, /^jc$/i, 
+    /^pris$/i, /^kostnad/i, /^à-pris/i, /^a-pris/i, /^enhetspris/i, /^preis/i,
+  ];
+  
+  // Total price patterns (to avoid confusing with unit price)
+  const totalPatterns = [
+    /^total/i, /^celkem/i, /^suma/i, /^summa/i, /^belopp/i, /^gesamt/i,
+    /total\s*price/i, /total\s*pris/i,
   ];
 
   headerRow.forEach((header, index) => {
     if (!header) return;
-    const h = header.toString().toLowerCase();
+    const h = header.toString().toLowerCase().trim();
+    
+    console.log(`Checking column ${index}: "${header}" (normalized: "${h}")`);
 
+    // Check total first to avoid matching it as unit price
+    if (!result.totalPrice && totalPatterns.some((p) => p.test(h))) {
+      console.log(`  → Matched as TOTAL`);
+      result.totalPrice = index;
+      return;
+    }
     if (!result.description && descPatterns.some((p) => p.test(h))) {
+      console.log(`  → Matched as DESCRIPTION`);
       result.description = index;
     }
     if (!result.quantity && qtyPatterns.some((p) => p.test(h))) {
+      console.log(`  → Matched as QUANTITY`);
       result.quantity = index;
     }
     if (!result.unit && unitPatterns.some((p) => p.test(h))) {
+      console.log(`  → Matched as UNIT`);
       result.unit = index;
     }
     if (!result.unitPrice && pricePatterns.some((p) => p.test(h))) {
+      console.log(`  → Matched as UNIT PRICE`);
       result.unitPrice = index;
     }
   });
 
-  if (!result.description) {
+  // Fallback: if description not found, use first column with text
+  if (result.description === undefined) {
     for (let i = 0; i < headerRow.length; i++) {
       const h = headerRow[i]?.toString() || "";
       if (h.length > 3 && !/^\d+$/.test(h)) {
@@ -395,6 +433,8 @@ function detectColumns(headerRow: string[]): {
       }
     }
   }
+
+  console.log(`Column detection result: desc=${result.description}, qty=${result.quantity}, unit=${result.unit}, price=${result.unitPrice}, total=${result.totalPrice}`);
 
   return result;
 }

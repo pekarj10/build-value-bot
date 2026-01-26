@@ -377,10 +377,9 @@ export default function ProjectDetail() {
       }
       
       if (totalParsed > 0) {
-        // Reload cost items after upload
-        const itemsData = await getCostItems(id);
-        setItems(itemsData);
-        await syncProjectTotals(id);
+        // Navigate to processing page to run AI analysis on the uploaded items
+        toast.success('Files uploaded. Starting AI analysis...');
+        navigate(`/project/${id}/processing`);
       }
     } catch (error) {
       console.error('Upload failed:', error);
