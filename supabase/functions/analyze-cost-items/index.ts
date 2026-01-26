@@ -256,8 +256,8 @@ function generateSearchTerms(description: string): string[] {
   const terms: string[] = [description.toLowerCase()];
   const desc = description.toLowerCase();
 
-  // COMPREHENSIVE English-Swedish mapping for construction industry
-  // This ensures common terms always find relevant benchmarks
+  // BIDIRECTIONAL mapping: English <-> Swedish for construction industry
+  // Supports BOTH English descriptions matching Swedish benchmarks AND Swedish descriptions
   const translations: Record<string, string[]> = {
     // === FLOORING ===
     'carpet': ['textilgolv', 'nålfilt', 'heltäckningsmatta', 'golvmatta', 'matta', 'textil'],
@@ -270,19 +270,56 @@ function generateSearchTerms(description: string): string[] {
     'vinyl': ['vinyl', 'plastmatta', 'plastgolv'],
     'laminate': ['laminat', 'laminatgolv'],
 
-    // === EXTERIOR / LANDSCAPING ===
-    'grass': ['gräs', 'gräsytor', 'gräsmatta', 'gräsyta', '111'],
+    // === EXTERIOR / LANDSCAPING (CRITICAL for test budget) ===
+    'grass': ['gräs', 'gräsytor', 'gräsmatta', 'gräsyta', '111', 'kompletteringsådd'],
     'lawn': ['gräs', 'gräsytor', 'gräsmatta', 'gräsyta', '111'],
     'turf': ['gräs', 'gräsytor', 'gräsmatta', 'rullgräs'],
     'garden': ['trädgård', 'utemiljö', 'gräsytor', 'plantering'],
     'landscaping': ['markarbeten', 'utemiljö', 'trädgård', 'gräsytor'],
     'whole garden': ['gräsytor', 'gräsmatta', 'omläggning', '111'],
+    // Swedish -> English mappings for bidirectional search
+    'gräsytor': ['gräsytor', 'gräs', 'gräsmatta', '111', 'kompletteringsådd', 'omläggning'],
+    'gräs': ['gräsytor', 'gräsmatta', '111', 'kompletteringsådd'],
+    'kompletteringsådd': ['gräsytor', 'gräs', '111', 'kompletteringsådd'],
+    
+    // Shrubs / bushes (for "Buskar omplantering")
+    'shrubs': ['buskar', 'plantering', 'omplantering', '112'],
+    'bushes': ['buskar', 'plantering', 'omplantering', '112'],
+    'buskar': ['buskar', 'plantering', 'omplantering', '112', 'planteringsytor'],
+    'omplantering': ['omplantering', 'buskar', 'plantering', '112'],
+    
+    // Stone/gravel surfaces (for "Stenmjölsytor omläggning")
+    'gravel': ['grus', 'stenmjöl', 'stenmjölsytor', '122'],
+    'crushed stone': ['grus', 'stenmjöl', 'stenmjölsytor', '122'],
+    'stenmjöl': ['stenmjöl', 'stenmjölsytor', 'grus', '122', 'omläggning'],
+    'stenmjölsytor': ['stenmjöl', 'stenmjölsytor', 'grus', '122', 'omläggning'],
+    
+    // Cobblestones (for "Kullersten justering")
+    'cobblestone': ['kullersten', 'gatsten', 'stenläggning', '123'],
+    'cobblestones': ['kullersten', 'gatsten', 'stenläggning', '123'],
+    'kullersten': ['kullersten', 'gatsten', 'stenläggning', '123', 'justering'],
+    'gatsten': ['kullersten', 'gatsten', 'stenläggning', '123'],
+    
+    // Water pipes (for "Vattenledningar byte")
+    'water pipe': ['vattenledning', 'vattenledningar', 'rör', 'ledningar', '131'],
+    'water pipes': ['vattenledning', 'vattenledningar', 'rör', 'ledningar', '131'],
+    'vattenledning': ['vattenledning', 'vattenledningar', 'rör', 'ledningar', '131', 'byte'],
+    'vattenledningar': ['vattenledning', 'vattenledningar', 'rör', 'ledningar', '131', 'byte'],
+    
+    // Concrete curbs (for "Betongkantstöd justering")
+    'curb': ['kantsten', 'kantstöd', 'betongkantstöd', '121'],
+    'curbs': ['kantsten', 'kantstöd', 'betongkantstöd', '121'],
+    'concrete curb': ['betongkantstöd', 'kantsten', 'kantstöd', '121'],
+    'betongkantstöd': ['betongkantstöd', 'kantsten', 'kantstöd', '121', 'justering'],
+    'kantstöd': ['betongkantstöd', 'kantsten', 'kantstöd', '121'],
+    'kantsten': ['betongkantstöd', 'kantsten', 'kantstöd', '121'],
     
     // === FACADE ===
     'facade': ['fasad', 'puts', 'fasadrenovering', 'fasadisolering', '203'],
     'external wall': ['fasad', 'yttervägg', 'puts'],
     'rendering': ['puts', 'putsning', 'fasadputs'],
     'cladding': ['fasadbeklädnad', 'fasadskivor', 'beklädnad'],
+    'fasad': ['fasad', 'puts', 'fasadrenovering', '203'],
     
     // === INSULATION ===
     'insulation': ['isolering', 'tilläggsisolering', 'fasadisolering', 'isoler'],
@@ -306,6 +343,10 @@ function generateSearchTerms(description: string): string[] {
     'entrance': ['entré', 'entrédörr', 'entréparti', 'ytterdörr', 'huvudentré'],
     'entrance door': ['entrédörr', 'ytterdörr', 'entré', 'dörr'],
     'entrance doors': ['entrédörr', 'ytterdörr', 'entré', 'dörr'],
+    // Swedish window/door terms
+    'fönster': ['fönster', 'fönsterbyte', '204', 'byte', 'fönstermontering'],
+    'dörr': ['dörr', 'dörrmontering', 'dörrbyte', '204', 'byte'],
+    'dörrar': ['dörr', 'dörrmontering', 'dörrbyte', '204', 'byte'],
 
     // === DEMOLITION ===
     'demolition': ['rivning', 'demontering', 'rivningsarbeten', 'riv'],
@@ -334,17 +375,22 @@ function generateSearchTerms(description: string): string[] {
     'plumbing': ['VVS', 'rör', 'rörarbeten', 'rörmokare'],
     'electrical': ['el', 'elinstallation', 'elarbeten', 'elanläggning'],
 
-    // === ACTIONS / VERBS ===
+    // === ACTIONS / VERBS (Swedish support) ===
     'replacement': ['byte', 'utbyte', 'ersättning'],
     'replace': ['byte', 'utbyte', 'byta'],
     'replacing': ['byte', 'utbyte', 'byta'],
+    'byte': ['byte', 'utbyte', 'ersättning', 'byta'],
     'renovation': ['renovering', 'ombyggnad', 'upprustning'],
     'renovate': ['renovering', 'renovera'],
     'installation': ['installation', 'montering', 'montage'],
     'install': ['installation', 'montera', 'installera'],
     'installing': ['installation', 'montering'],
     'repair': ['reparation', 'lagning', 'åtgärd'],
+    'adjustment': ['justering', 'justeras', 'åtgärd'],
+    'justering': ['justering', 'justeras', 'åtgärd', 'justera'],
+    'omläggning': ['omläggning', 'läggning', 'byte', 'renovering'],
     'new': ['ny', 'nytt', 'nyinstallation', 'nybyggnad'],
+    'nya': ['ny', 'nytt', 'nyinstallation', 'nybyggnad', 'byte'],
     'putting': ['läggning', 'montering', 'byte'],
     'old': ['gammal', 'befintlig', 'byte'],
   };
@@ -352,7 +398,8 @@ function generateSearchTerms(description: string): string[] {
   // STEP 1: Check for multi-word phrases first (more specific matches)
   const multiWordPhrases = [
     'entrance door', 'entrance doors', 'heat pump', 'air to water', 'air-to-water',
-    'double glazed', 'triple glazed', 'whole garden', 'external wall', 'mineral wool'
+    'double glazed', 'triple glazed', 'whole garden', 'external wall', 'mineral wool',
+    'water pipe', 'water pipes', 'concrete curb', 'crushed stone', 'fönster och dörrar',
   ];
   for (const phrase of multiWordPhrases) {
     if (desc.includes(phrase) && translations[phrase]) {
@@ -360,37 +407,52 @@ function generateSearchTerms(description: string): string[] {
     }
   }
 
-  // STEP 2: Add translations for single-word matching terms
-  for (const [eng, swe] of Object.entries(translations)) {
+  // STEP 2: Add translations for all matching terms (single words)
+  for (const [key, values] of Object.entries(translations)) {
     // Skip multi-word phrases (already handled)
-    if (eng.includes(' ') || eng.includes('-')) continue;
+    if (key.includes(' ') || key.includes('-')) continue;
     
     // Check if this word appears in the description
-    const wordPattern = new RegExp(`\\b${eng}\\b`, 'i');
+    const wordPattern = new RegExp(`\\b${key}\\b`, 'i');
     if (wordPattern.test(desc)) {
-      terms.push(...swe);
+      terms.push(...values);
     }
   }
 
   // STEP 3: Add Swedish category codes if detected in context
-  // This helps when descriptions clearly map to specific REPAB categories
-  if (desc.includes('grass') || desc.includes('lawn') || desc.includes('garden')) {
+  if (desc.includes('grass') || desc.includes('lawn') || desc.includes('garden') || desc.includes('gräs')) {
     terms.push('111', 'gräsytor');
   }
-  if (desc.includes('window') || desc.includes('door')) {
+  if (desc.includes('window') || desc.includes('door') || desc.includes('fönster') || desc.includes('dörr')) {
     terms.push('204', 'fönster och dörrar');
   }
-  if (desc.includes('facade') || desc.includes('render') || desc.includes('cladding')) {
+  if (desc.includes('facade') || desc.includes('render') || desc.includes('cladding') || desc.includes('fasad')) {
     terms.push('203', 'fasad');
+  }
+  if (desc.includes('bush') || desc.includes('shrub') || desc.includes('busk')) {
+    terms.push('112', 'planteringsytor', 'buskar');
+  }
+  if (desc.includes('gravel') || desc.includes('stenmjöl')) {
+    terms.push('122', 'grus och stenmjöl');
+  }
+  if (desc.includes('curb') || desc.includes('kantsten') || desc.includes('kantstöd')) {
+    terms.push('121', 'kantsten');
+  }
+  if (desc.includes('pipe') || desc.includes('ledning') || desc.includes('vatten')) {
+    terms.push('131', 'ledningar', 'rör');
   }
 
   // STEP 4: Also add individual words from the original description
-  const words = desc.split(/[\s,.\-\/]+/);
+  const words = desc.split(/[\s,.\-\/\(\)]+/);
   for (const word of words) {
     if (word.length >= 3) {
       const cleanWord = word.toLowerCase();
       if (translations[cleanWord]) {
         terms.push(...translations[cleanWord]);
+      }
+      // Also add the word itself if it looks like a Swedish term
+      if (/[åäö]/.test(cleanWord)) {
+        terms.push(cleanWord);
       }
     }
   }
