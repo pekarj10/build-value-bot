@@ -324,7 +324,12 @@ async function parseExcelFile(fileData: Blob): Promise<ParsedItem[]> {
       if (description.length < 2) continue;
       
       const lowerDesc = description.toLowerCase();
-      if (lowerDesc.includes("total") || lowerDesc.includes("celkem") || lowerDesc.includes("suma")) continue;
+      // Only skip if it looks like a summary row (starts with total/sum keywords)
+      // Allow "total" within parentheses as context (e.g., "total längd 3500 m")
+      const isSummaryRow = 
+        /^(total|celkem|suma|summa|subtotal|delsumma)/i.test(lowerDesc) ||
+        (lowerDesc.includes("total") && !lowerDesc.includes("(total"));
+      if (isSummaryRow) continue;
 
       const quantity = columnMap.quantity !== undefined ? parseNumber(row[columnMap.quantity]) : 1;
       const unit = columnMap.unit !== undefined ? (row[columnMap.unit]?.toString() || "pcs") : "pcs";

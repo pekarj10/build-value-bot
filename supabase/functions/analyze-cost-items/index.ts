@@ -466,18 +466,19 @@ function generateSearchTerms(description: string): string[] {
 /**
  * FILTER BENCHMARKS IN MEMORY
  * Search both description AND category for any of the search terms
+ * @param itemUnit - pass null to skip unit filtering (for unit mismatch detection)
  */
 function filterBenchmarkCandidates(
   allBenchmarks: BenchmarkPrice[],
   searchTerms: string[],
-  itemUnit: string
+  itemUnit: string | null
 ): BenchmarkPrice[] {
   const candidates: BenchmarkPrice[] = [];
   const seenIds = new Set<string>();
 
   for (const benchmark of allBenchmarks) {
-    // Skip if wrong unit
-    if (!unitsCompatible(itemUnit, benchmark.unit)) continue;
+    // Skip if wrong unit (unless itemUnit is null for no-filter mode)
+    if (itemUnit !== null && !unitsCompatible(itemUnit, benchmark.unit)) continue;
 
     const descLower = (benchmark.description || '').toLowerCase();
     const catLower = (benchmark.category || '').toLowerCase();
@@ -497,6 +498,39 @@ function filterBenchmarkCandidates(
 
   // Stable baseline ordering (actual relevance ranking is applied later)
   return candidates.sort((a, b) => a.id.localeCompare(b.id));
+}
+
+/**
+ * Build specific clarification message for percentage-based benchmarks
+ */
+function buildPercentageClarification(description: string, benchmarks: BenchmarkPrice[]): string {
+  const percentages = benchmarks
+    .map(b => {
+      const match = b.description.match(/(\d+)%/);
+      return match ? match[1] : null;
+    })
+    .filter(Boolean);
+  
+  const uniquePercentages = [...new Set(percentages)].sort((a, b) => Number(a) - Number(b));
+  
+  const descLower = description.toLowerCase();
+  
+  if (descLower.includes('kantstöd') || descLower.includes('kantsten') || descLower.includes('curb')) {
+    return `Percentage required: Available benchmarks use percentage of total length (${uniquePercentages.join('%, ')}%). Please specify either the total length so we can calculate the percentage, or convert your quantity to a percentage. Example: If total length is 3500 m and adjusting 320 m, that's ~9% → use 10%.`;
+  }
+  
+  return `Percentage required: Available benchmarks use percentage of gross area (bruttoytan): ${uniquePercentages.join('%, ')}%. Please specify either the total gross area so we can calculate the percentage, or convert your quantity to a percentage. Example: If total area is 2500 m² and adjusting 250 m², that's 10%.`;
+}
+
+/**
+ * Detect if all matching benchmarks require percentage-based input
+ */
+function detectPercentageBasedBenchmarks(benchmarks: BenchmarkPrice[]): BenchmarkPrice[] {
+  return benchmarks.filter(b => 
+    b.description.includes('% av bruttoytan') || 
+    b.description.includes('% av total') ||
+    /\d+%/.test(b.description)
+  );
 }
 
 type ScoredBenchmark = BenchmarkPrice & { _score: number };
@@ -625,8 +659,31 @@ async function processCostItem(
     console.log(`[${item.originalDescription}] Candidates: ${candidates.length} (unit: ${item.unit})`);
 
     if (candidates.length === 0) {
-      noMatchResult.matchReasoning = `No benchmarks found with compatible unit (${item.unit})`;
+      // Check if there are candidates WITHOUT unit filtering (unit mismatch detection)
+      const candidatesWithoutUnitFilter = filterBenchmarkCandidates(allBenchmarks, searchTerms, null);
+      
+      if (candidatesWithoutUnitFilter.length > 0) {
+        // Unit mismatch detected - provide specific error
+        const expectedUnits = [...new Set(candidatesWithoutUnitFilter.map(c => c.unit))];
+        noMatchResult.matchReasoning = `Unit mismatch detected`;
+        noMatchResult.aiComment = `Unit mismatch: Your item uses "${item.unit}" but matching benchmarks use "${expectedUnits.join('", "')}". Please convert your quantity to the correct unit (${expectedUnits[0]}).`;
+        console.log(`[${item.originalDescription}] → NO MATCH (unit mismatch: ${item.unit} vs ${expectedUnits.join(', ')})`);
+        return noMatchResult;
+      }
+      
+      noMatchResult.matchReasoning = `No benchmarks found matching description or with compatible unit (${item.unit})`;
       console.log(`[${item.originalDescription}] → NO MATCH (no candidates)`);
+      return noMatchResult;
+    }
+
+    // STEP 2b: Check if all candidates are percentage-based (need clarification)
+    const percentageBenchmarks = detectPercentageBasedBenchmarks(candidates);
+    if (percentageBenchmarks.length > 0 && percentageBenchmarks.length === candidates.length) {
+      // ALL matches require percentage input
+      const clarificationMsg = buildPercentageClarification(item.originalDescription, percentageBenchmarks);
+      noMatchResult.matchReasoning = `Available benchmarks require percentage specification`;
+      noMatchResult.aiComment = clarificationMsg;
+      console.log(`[${item.originalDescription}] → CLARIFICATION NEEDED (percentage-based benchmarks only)`);
       return noMatchResult;
     }
 
