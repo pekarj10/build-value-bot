@@ -533,6 +533,90 @@ function detectPercentageBasedBenchmarks(benchmarks: BenchmarkPrice[]): Benchmar
   );
 }
 
+/**
+ * Build specific clarification message based on AI reasoning and candidate context
+ * This converts generic "no match" into actionable user guidance
+ */
+function buildClarificationFromReasoning(
+  aiReasoning: string, 
+  item: CostItemInput,
+  candidates: ScoredBenchmark[]
+): string {
+  const reasoningLower = aiReasoning.toLowerCase();
+  const descLower = item.originalDescription.toLowerCase();
+  
+  // PATTERN 1: Percentage-based benchmarks detected
+  if (
+    reasoningLower.includes('percentage') || 
+    reasoningLower.includes('%') ||
+    reasoningLower.includes('gross area') ||
+    reasoningLower.includes('bruttoytan')
+  ) {
+    // Find available percentages from candidates
+    const percentages = candidates
+      .map(c => {
+        const match = c.description.match(/(\d+)%/);
+        return match ? match[1] : null;
+      })
+      .filter(Boolean);
+    const uniquePercentages = [...new Set(percentages)].sort((a, b) => Number(a) - Number(b));
+    
+    if (uniquePercentages.length > 0) {
+      if (descLower.includes('kantstöd') || descLower.includes('kantsten') || descLower.includes('curb')) {
+        return `Percentage required: Benchmarks are priced per percentage of total length (${uniquePercentages.join('%, ')}%). Please either: (1) specify the total length so we can calculate the percentage, or (2) convert your quantity to a percentage. Example: If total length is 3500 m and adjusting 320 m, that's ~9% → use 10%.`;
+      }
+      return `Percentage required: Benchmarks are priced per percentage of gross area (${uniquePercentages.join('%, ')}%). Please either: (1) specify the total gross area so we can calculate the percentage, or (2) convert your quantity to a percentage. Example: If total area is 2500 m² and adjusting 250 m², that's 10%.`;
+    }
+  }
+  
+  // PATTERN 2: Unit mismatch or unit issues mentioned
+  if (reasoningLower.includes('unit') || reasoningLower.includes('units')) {
+    // Get unique units from candidates
+    const candidateUnits = [...new Set(candidates.map(c => c.unit))];
+    if (candidateUnits.length > 0 && !candidateUnits.some(u => unitsCompatible(item.unit, u))) {
+      return `Unit mismatch: Your item uses "${item.unit}" but matching benchmarks use "${candidateUnits.slice(0, 3).join('", "')}". Please convert your quantity to the correct unit.`;
+    }
+  }
+  
+  // PATTERN 3: "New" vs "replacement" confusion for windows/doors
+  if (
+    (descLower.includes('nya') || descLower.includes('new')) &&
+    (descLower.includes('fönster') || descLower.includes('dörr') || descLower.includes('window') || descLower.includes('door'))
+  ) {
+    // Check if candidates exist for replacement but not new installation
+    const hasReplacementBenchmark = candidates.some(c => 
+      c.description.toLowerCase().includes('byte') || 
+      c.description.toLowerCase().includes('replacement')
+    );
+    
+    if (hasReplacementBenchmark) {
+      // Check candidate units
+      const candidateUnits = [...new Set(candidates.map(c => c.unit))];
+      const unitMessage = candidateUnits.length > 0 && candidateUnits[0] !== item.unit
+        ? ` Note: Benchmarks use "${candidateUnits[0]}" - please provide area in ${candidateUnits[0]} instead of "${item.unit}".`
+        : '';
+      
+      return `No "new installation" benchmark found. Available benchmarks are for "replacement/byte" of windows and doors.${unitMessage} Please clarify if this is replacement work, or provide a manual price for new installation.`;
+    }
+  }
+  
+  // PATTERN 4: Check if candidates exist but just weren't matched - suggest closest
+  if (candidates.length > 0) {
+    const topCandidate = candidates[0];
+    const topCandidateUnit = topCandidate.unit;
+    
+    // Check for unit mismatch with top candidate
+    if (!unitsCompatible(item.unit, topCandidateUnit)) {
+      return `Closest benchmark found uses "${topCandidateUnit}" instead of "${item.unit}". Please convert your quantity to ${topCandidateUnit} for accurate pricing. Benchmark: "${topCandidate.description}"`;
+    }
+    
+    return `No exact match found. Closest benchmark: "${topCandidate.description}" (${topCandidate.avg_price} ${topCandidate.unit}). Please verify if this work type matches your scope, or provide manual pricing.`;
+  }
+  
+  // DEFAULT: Return the AI reasoning as the comment (it's already in English)
+  return aiReasoning || "No benchmark match found. Manual pricing required.";
+}
+
 type ScoredBenchmark = BenchmarkPrice & { _score: number };
 
 function scoreBenchmarkCandidate(
@@ -719,6 +803,14 @@ async function processCostItem(
       noMatchResult.matchConfidence = confidence;
       noMatchResult.matchReasoning = reasoning || "No confident match found";
       noMatchResult.interpretedScope = translatedTerm;
+      
+      // BUILD SPECIFIC CLARIFICATION MESSAGE based on AI reasoning
+      noMatchResult.aiComment = buildClarificationFromReasoning(
+        reasoning, 
+        item, 
+        top // pass the top candidates for context
+      );
+      
       console.log(`[${item.originalDescription}] → NO MATCH (confidence: ${confidence}%)`);
       return noMatchResult;
     }
