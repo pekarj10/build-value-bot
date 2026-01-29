@@ -9,12 +9,26 @@ const corsHeaders = {
 // STEP 1: AI generates search terms based on clarification
 const SEARCH_TERMS_PROMPT = `You are a construction cost expert. The user has provided a clarification for a cost item. Generate search terms to find matching benchmarks in a Swedish price database.
 
+## CRITICAL: PERCENTAGE-BASED ITEMS
+
+If the user specifies a TOTAL AREA (e.g., "total area is 2500 m2") and the item has an adjustment quantity:
+1. Calculate the percentage: adjustment_quantity ÷ total_area = percentage
+2. Include search terms with the calculated percentage (e.g., "10%", "10% av bruttoytan")
+3. Include the Swedish term "bruttoytan" (gross area)
+
+Example:
+- Item: "Kullersten justering" with quantity 250 m²
+- Clarification: "total area is 2500 m2"
+- Calculation: 250 / 2500 = 10%
+- Search terms should include: "kullersten justering 10%", "10% av bruttoytan", "kullersten", "justering"
+
 Generate 5-10 search terms including:
 - Swedish translations based on the clarification
 - Technical terms related to the clarified scope
+- Percentage terms if applicable
 - Category terms
 
-Return JSON: { "searchTerms": ["term1", "term2", ...] }`;
+Return JSON: { "searchTerms": ["term1", "term2", ...], "calculatedPercentage": 10, "totalArea": 2500 }`;
 
 // STEP 2: AI picks the best benchmark from candidates
 const MATCH_PROMPT = `You are a senior quantity surveyor. Based on the user's clarification, pick the BEST matching benchmark.
@@ -25,11 +39,27 @@ CRITICAL RULES:
 3. Return the EXACT benchmark ID from the list - do NOT make up IDs
 4. If no good match, return null
 
+## CRITICAL: PERCENTAGE-BASED BENCHMARKS
+
+Some benchmarks are priced per percentage of total area (e.g., "Kullersten justering 10% av bruttoytan").
+When the user clarifies the TOTAL AREA (e.g., "total area is 2500 m2") and the item has a quantity to adjust:
+1. Calculate: adjustment_quantity ÷ total_area = percentage
+2. Pick the benchmark matching that percentage (5%, 10%, or 20% - choose closest)
+3. The benchmark price applies to the TOTAL AREA, not the adjustment quantity
+
+Example:
+- Item quantity: 250 m² to adjust
+- Clarification: "total area is 2500 m2"  
+- Calculation: 250 ÷ 2500 = 10%
+- Match: "Kullersten justering 10% av bruttoytan"
+
 Return JSON:
 {
   "matchedBenchmarkId": "exact-uuid-from-list-or-null",
   "confidence": 0-100,
-  "reasoning": "Why this benchmark matches based on clarification"
+  "reasoning": "Why this benchmark matches based on clarification",
+  "calculatedPercentage": 10,
+  "totalAreaForPricing": 2500
 }`;
 
 interface ClarificationRequest {
