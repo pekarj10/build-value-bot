@@ -10,6 +10,8 @@ interface TrustScoreIndicatorProps {
   costItemId: string;
   countryCode?: string;
   className?: string;
+  /** Force recalculation by changing this value (e.g., item.updatedAt or status) */
+  refreshKey?: string | number;
 }
 
 interface TrustScoreData {
@@ -24,7 +26,8 @@ interface TrustScoreData {
 export function TrustScoreIndicator({ 
   costItemId, 
   countryCode = 'SE',
-  className 
+  className,
+  refreshKey
 }: TrustScoreIndicatorProps) {
   const [trustScore, setTrustScore] = useState<TrustScoreData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -41,20 +44,23 @@ export function TrustScoreIndicator({
       setError(null);
 
       try {
-        // First, try to fetch existing trust score
-        const { data: existingScore, error: fetchError } = await supabase
-          .from('estimate_trust_scores')
-          .select('*')
-          .eq('cost_item_id', costItemId)
-          .maybeSingle();
+        // When refreshKey changes, always recalculate (don't use cached)
+        // First, try to fetch existing trust score ONLY if no refresh triggered
+        if (!refreshKey) {
+          const { data: existingScore } = await supabase
+            .from('estimate_trust_scores')
+            .select('*')
+            .eq('cost_item_id', costItemId)
+            .maybeSingle();
 
-        if (existingScore) {
-          setTrustScore(existingScore as unknown as TrustScoreData);
-          setIsLoading(false);
-          return;
+          if (existingScore) {
+            setTrustScore(existingScore as unknown as TrustScoreData);
+            setIsLoading(false);
+            return;
+          }
         }
 
-        // If no existing score, calculate it
+        // Calculate fresh trust score
         const { data: session } = await supabase.auth.getSession();
         if (!session?.session) {
           setError('Not authenticated');
@@ -95,7 +101,7 @@ export function TrustScoreIndicator({
     }
 
     fetchOrCalculateTrustScore();
-  }, [costItemId, countryCode]);
+  }, [costItemId, countryCode, refreshKey]);
 
   if (isLoading) {
     return (

@@ -174,7 +174,12 @@ export function useCostAnalysis() {
         status: data.status,
         aiComment: data.aiComment,
         userClarification: clarification,
-        totalPrice: item.quantity * data.recommendedUnitPrice,
+        totalPrice: data.recommendedUnitPrice ? item.quantity * data.recommendedUnitPrice : 0,
+        // Include benchmark matching fields for trust score recalculation
+        matchedBenchmarkId: data.matchedBenchmarkId || null,
+        matchConfidence: data.matchConfidence || null,
+        matchReasoning: data.matchReasoning || null,
+        priceSource: data.priceSource || null,
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Processing failed';

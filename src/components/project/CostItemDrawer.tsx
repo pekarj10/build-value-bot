@@ -336,6 +336,7 @@ export function CostItemDrawer({
           <TrustScoreIndicator 
             costItemId={item.id} 
             countryCode={projectCountry}
+            refreshKey={`${item.status}-${item.recommendedUnitPrice}-${item.matchedBenchmarkId}`}
           />
 
           {/* Analysis Note - sanitized for regular users */}
