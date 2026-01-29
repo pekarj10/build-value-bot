@@ -256,7 +256,18 @@ export default function ProjectDetail() {
         status: updatedFields.status,
         ai_comment: updatedFields.aiComment,
         user_clarification: text,
+        // Also update benchmark matching fields if returned
+        matched_benchmark_id: updatedFields.matchedBenchmarkId || null,
+        match_confidence: updatedFields.matchConfidence || null,
+        match_reasoning: updatedFields.matchReasoning || null,
+        price_source: updatedFields.priceSource || null,
       });
+
+      // CRITICAL: Invalidate cached trust score so it recalculates
+      await supabase
+        .from('estimate_trust_scores')
+        .delete()
+        .eq('cost_item_id', itemId);
 
       setItems(prev => prev.map(i => 
         i.id === itemId ? { ...i, ...updatedFields, userClarification: text } : i
