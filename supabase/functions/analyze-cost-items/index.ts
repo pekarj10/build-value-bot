@@ -41,6 +41,24 @@ MATCHING RULES:
 - Prefer exact semantic matches over partial matches
 - If multiple benchmarks could work, pick the most specific one
 
+## CRITICAL: PERCENTAGE-BASED BENCHMARKS
+
+Some benchmarks are priced per percentage of total area/length (e.g., "Kullersten justering 10% av bruttoytan").
+When the cost item specifies BOTH:
+- A quantity to be adjusted (e.g., 250 m²)
+- A total area/length (e.g., "total area 2500 m²" or "bruttoytan 2500 m²")
+
+You MUST:
+1. Calculate the percentage: quantity ÷ total = percentage (e.g., 250 ÷ 2500 = 10%)
+2. Match to the appropriate percentage benchmark (5%, 10%, or 20% - pick the closest)
+3. Use the TOTAL AREA as the quantity for pricing (e.g., 2500 m²), NOT the adjustment quantity
+
+Example:
+- Item: "Kullersten justering 250 m2" with clarification "total area is 2500 m2"
+- Calculation: 250 / 2500 = 10%
+- Match: "Kullersten justering 10% av bruttoytan" 
+- Pricing basis: 2500 m² (the gross area)
+
 CONFIDENCE SCORING:
 - 90-100%: Exact match (same work type, same materials)
 - 80-89%: Very close match (same work type, similar scope)
