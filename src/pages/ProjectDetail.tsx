@@ -409,6 +409,10 @@ export default function ProjectDetail() {
     setIsReanalyzing(true);
     
     try {
+      // When doing a bulk re-analysis (e.g. "Re-analyze all"), reset any prior user clarifications
+      // so the next run starts from a clean slate.
+      const clearUserClarifications = itemIds.length > 1;
+
       const itemsToAnalyze = items
         .filter(item => itemIds.includes(item.id))
         .map(item => ({
@@ -436,7 +440,12 @@ export default function ProjectDetail() {
       setItems(prev => prev.map(item => {
         const analyzed = analyzedItems.find(a => a.id === item.id);
         if (analyzed) {
-          return { ...item, ...analyzed, projectId: item.projectId };
+          return {
+            ...item,
+            ...analyzed,
+            projectId: item.projectId,
+            ...(clearUserClarifications ? { userClarification: undefined } : {}),
+          };
         }
         return item;
       }));
@@ -457,6 +466,7 @@ export default function ProjectDetail() {
           match_confidence: analyzed.matchConfidence || null,
           match_reasoning: analyzed.matchReasoning || null,
           price_source: analyzed.priceSource || null,
+          ...(clearUserClarifications ? { user_clarification: null } : {}),
         });
       }
 
