@@ -143,6 +143,7 @@ export function AIChatPanel({ project, items, onItemsUpdate, className }: AIChat
             }));
 
             // Apply updates - INCLUDING all benchmark matching fields
+            // RESET userClarification when re-analyzing to start fresh
             const updates = data.items.map((result: any) => {
               const originalItem = items.find(i => i.id === result.id);
               return {
@@ -162,6 +163,8 @@ export function AIChatPanel({ project, items, onItemsUpdate, className }: AIChat
                   matchConfidence: result.matchConfidence || null,
                   matchReasoning: result.matchReasoning || null,
                   priceSource: result.priceSource || null,
+                  // RESET user clarification when re-analyzing all items
+                  userClarification: undefined,
                 },
               };
             });

@@ -304,6 +304,7 @@ export default function ProjectDetail() {
     }));
 
     // Persist to database - INCLUDING all benchmark matching fields
+    // Also clear user_clarification when re-analyzing
     for (const { id: itemId, updates: itemUpdates } of updates) {
       await updateCostItem(itemId, {
         interpreted_scope: itemUpdates.interpretedScope,
@@ -320,6 +321,8 @@ export default function ProjectDetail() {
         match_confidence: itemUpdates.matchConfidence || null,
         match_reasoning: itemUpdates.matchReasoning || null,
         price_source: itemUpdates.priceSource || null,
+        // Clear user clarification when re-analyzing all items
+        user_clarification: itemUpdates.userClarification === undefined ? null : itemUpdates.userClarification,
       });
     }
 
