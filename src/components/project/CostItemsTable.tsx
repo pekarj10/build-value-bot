@@ -61,6 +61,7 @@ interface CostItemsTableProps {
   onBulkMarkReviewed?: (itemIds: string[]) => void;
   onBulkStatusChange?: (itemIds: string[], status: string) => void;
   onDeleteItem?: (itemId: string) => Promise<boolean>;
+  onClearClarification?: (itemId: string) => Promise<void>;
   onAddItem?: () => void;
   onUpload?: () => void;
   onReanalyzeItems?: (itemIds: string[]) => Promise<void>;
@@ -98,6 +99,7 @@ export function CostItemsTable({
   onBulkMarkReviewed,
   onBulkStatusChange,
   onDeleteItem,
+  onClearClarification,
   onAddItem,
   onUpload,
   onReanalyzeItems,
@@ -1199,12 +1201,33 @@ export function CostItemsTable({
                           </Tooltip>
                         )}
                         {item.userClarification && (
-                          <Tooltip>
-                            <TooltipTrigger>
-                              <MessageSquare className="h-3 w-3 text-muted-foreground" />
-                            </TooltipTrigger>
-                            <TooltipContent>Has clarification notes</TooltipContent>
-                          </Tooltip>
+                          <>
+                            <Tooltip>
+                              <TooltipTrigger>
+                                <MessageSquare className="h-3 w-3 text-muted-foreground" />
+                              </TooltipTrigger>
+                              <TooltipContent>Has clarification notes</TooltipContent>
+                            </Tooltip>
+                            {onClearClarification && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-warning"
+                                    onClick={async (e) => {
+                                      e.stopPropagation();
+                                      await onClearClarification(item.id);
+                                      toast.success('Clarification cleared');
+                                    }}
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Clear clarification</TooltipContent>
+                              </Tooltip>
+                            )}
+                          </>
                         )}
                         <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
                         {onDeleteItem && (
