@@ -366,6 +366,14 @@ export default function ProjectDetail() {
     toast.success('Clarification status removed');
   };
 
+  // Clear only the user clarification text without changing status or re-analyzing
+  const handleClearClarification = async (itemId: string) => {
+    await updateCostItem(itemId, { user_clarification: null });
+    setItems(prev => prev.map(i => 
+      i.id === itemId ? { ...i, userClarification: undefined } : i
+    ));
+  };
+
 
   const handleDeleteItem = async (itemId: string): Promise<boolean> => {
     const success = await deleteCostItem(itemId);
@@ -707,6 +715,7 @@ export default function ProjectDetail() {
               onBulkAccept={handleBulkAccept}
               onBulkMarkReviewed={handleBulkMarkReviewed}
               onDeleteItem={handleDeleteItem}
+              onClearClarification={handleClearClarification}
               onAddItem={() => setShowAddItemDialog(true)}
               onUpload={() => setShowUploadDialog(true)}
               onReanalyzeItems={handleReanalyzeItems}
@@ -720,7 +729,7 @@ export default function ProjectDetail() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Main AI Chat */}
               <div className="lg:col-span-2 h-[600px]">
-                <AIChatPanel 
+                <AIChatPanel
                   project={project}
                   items={items}
                   onItemsUpdate={handleAIItemsUpdate}
