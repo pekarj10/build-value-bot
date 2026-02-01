@@ -271,7 +271,7 @@ export function useProject() {
       ai_comment: string;
       clarification_question: string;
       interpreted_scope: string;
-      user_clarification: string;
+      user_clarification: string | null;
       user_override_price: number | null;
       total_price: number;
       // Benchmark matching fields - MUST persist for consistency
