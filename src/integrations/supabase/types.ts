@@ -311,25 +311,37 @@ export type Database = {
       }
       profiles: {
         Row: {
+          company: string | null
           created_at: string
           email: string | null
+          email_notifications: boolean
           full_name: string | null
           id: string
+          project_alerts: boolean
           updated_at: string
+          weekly_digest: boolean
         }
         Insert: {
+          company?: string | null
           created_at?: string
           email?: string | null
+          email_notifications?: boolean
           full_name?: string | null
           id: string
+          project_alerts?: boolean
           updated_at?: string
+          weekly_digest?: boolean
         }
         Update: {
+          company?: string | null
           created_at?: string
           email?: string | null
+          email_notifications?: boolean
           full_name?: string | null
           id?: string
+          project_alerts?: boolean
           updated_at?: string
+          weekly_digest?: boolean
         }
         Relationships: []
       }
