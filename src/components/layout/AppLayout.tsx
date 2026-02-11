@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import { useViewMode } from '@/hooks/useViewMode';
 import { SidebarViewModeToggle, UserPreviewBanner } from '@/components/project/ViewModeToggle';
+import logoImg from '@/assets/logo.png';
 import { 
   LayoutDashboard, 
   FolderOpen, 
@@ -13,7 +14,6 @@ import {
   LogOut,
   User,
   Shield,
-  TrendingUp,
   Menu,
   X
 } from 'lucide-react';
@@ -230,9 +230,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         </Button>
         
         <Link to="/" className="flex items-center gap-2 ml-3">
-          <div className="w-8 h-8 rounded-lg bg-sidebar-primary flex items-center justify-center">
-            <TrendingUp className="h-4 w-4 text-sidebar-primary-foreground" />
-          </div>
+          <img src={logoImg} alt="Unit Rate" className="h-8 w-8 rounded-lg object-contain" />
           <span className="font-semibold text-sidebar-foreground">Unit Rate</span>
         </Link>
       </header>
@@ -245,9 +243,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         >
           <SheetHeader className="h-16 flex flex-row items-center px-6 border-b border-sidebar-border">
             <Link to="/" className="flex items-center gap-3" onClick={() => setIsMobileMenuOpen(false)}>
-              <div className="w-9 h-9 rounded-lg bg-sidebar-primary flex items-center justify-center">
-                <TrendingUp className="h-5 w-5 text-sidebar-primary-foreground" />
-              </div>
+              <img src={logoImg} alt="Unit Rate" className="h-9 w-9 rounded-lg object-contain" />
               <SheetTitle className="font-semibold text-lg text-sidebar-foreground tracking-tight">
                 Unit Rate
               </SheetTitle>
@@ -261,9 +257,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       <aside className="hidden lg:block fixed inset-y-0 left-0 z-50 w-64 bg-sidebar border-r border-sidebar-border">
         <div className="flex h-16 items-center px-6 border-b border-sidebar-border">
           <Link to="/" className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-sidebar-primary flex items-center justify-center">
-              <TrendingUp className="h-5 w-5 text-sidebar-primary-foreground" />
-            </div>
+            <img src={logoImg} alt="Unit Rate" className="h-9 w-9 rounded-lg object-contain" />
             <span className="font-semibold text-lg text-sidebar-foreground tracking-tight">Unit Rate</span>
           </Link>
         </div>
