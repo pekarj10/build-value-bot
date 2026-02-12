@@ -14,14 +14,12 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { FileSpreadsheet, FileText, Download } from 'lucide-react';
+import { FileSpreadsheet, FileText, Download, BookOpen, FileBarChart } from 'lucide-react';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { formatCurrency } from '@/lib/formatters';
 import { useViewMode } from '@/hooks/useViewMode';
-import { renderChartToDataUrl } from '@/lib/pdfCharts';
+import { generatePdfReport, type ReportFormat } from '@/lib/pdfReport';
 
 interface ExportDialogProps {
   open: boolean;
@@ -47,6 +45,7 @@ interface ExportOptions {
   includeAIComments: boolean;
   onlyFlagged: boolean;
   currencyFormat: 'symbol' | 'code' | 'none';
+  pdfFormat: ReportFormat;
 }
 
 const DEFAULT_OPTIONS: ExportOptions = {
@@ -64,6 +63,7 @@ const DEFAULT_OPTIONS: ExportOptions = {
   includeAIComments: false,
   onlyFlagged: false,
   currencyFormat: 'code',
+  pdfFormat: 'executive',
 };
 
 export function ExportDialog({ 
@@ -99,7 +99,21 @@ export function ExportDialog({
       if (exportType === 'excel') {
         await exportToExcel(exportItems, project, options);
       } else {
-        await exportToPDF(exportItems, project, options);
+        await generatePdfReport(exportItems, project, {
+          format: options.pdfFormat,
+          includeDescription: options.includeDescription,
+          includeTrade: options.includeTrade,
+          includeQuantity: options.includeQuantity,
+          includeUnit: options.includeUnit,
+          includeOriginalPrice: options.includeOriginalPrice,
+          includeOriginalTotal: options.includeOriginalTotal,
+          includeRecommendedPrice: options.includeRecommendedPrice,
+          includeRecommendedTotal: options.includeRecommendedTotal,
+          includeVariance: options.includeVariance,
+          includeStatus: options.includeStatus,
+          onlyFlagged: options.onlyFlagged,
+        });
+        toast.success('PDF report exported successfully');
       }
       
       onClose();
@@ -155,8 +169,45 @@ export function ExportDialog({
             </TabsContent>
           </Tabs>
         ) : (
-          <div className="text-sm text-muted-foreground mt-4">
-            Generate a professional PDF report suitable for client presentations with branded headers and formatted tables.
+          <div className="space-y-3 mt-4">
+            <div className="text-sm text-muted-foreground">
+              Generate a professional PDF report suitable for client presentations.
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Report Format</Label>
+              <RadioGroup
+                value={options.pdfFormat}
+                onValueChange={(v) => updateOption('pdfFormat', v)}
+                className="grid grid-cols-2 gap-3"
+              >
+                <Label
+                  htmlFor="fmt-exec"
+                  className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${options.pdfFormat === 'executive' ? 'border-primary bg-primary/5' : 'border-border'}`}
+                >
+                  <RadioGroupItem value="executive" id="fmt-exec" className="mt-0.5" />
+                  <div>
+                    <div className="flex items-center gap-1.5 font-medium text-sm">
+                      <BookOpen className="h-3.5 w-3.5" />
+                      Executive Summary
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">2-3 pages with KPIs, charts, and risk matrix</p>
+                  </div>
+                </Label>
+                <Label
+                  htmlFor="fmt-full"
+                  className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${options.pdfFormat === 'full' ? 'border-primary bg-primary/5' : 'border-border'}`}
+                >
+                  <RadioGroupItem value="full" id="fmt-full" className="mt-0.5" />
+                  <div>
+                    <div className="flex items-center gap-1.5 font-medium text-sm">
+                      <FileBarChart className="h-3.5 w-3.5" />
+                      Full Report
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">Complete with detailed tables and analysis</p>
+                  </div>
+                </Label>
+              </RadioGroup>
+            </div>
           </div>
         )}
 
@@ -563,496 +614,4 @@ function createVarianceSheet(items: CostItem[], currency: string): (string | num
   }
 
   return rows;
-}
-
-// ==================== PDF EXPORT ====================
-
-async function exportToPDF(items: CostItem[], project: Project, options: ExportOptions) {
-  const doc = new jsPDF('landscape', 'mm', 'a4');
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
-  const margin = 15;
-  let yPos = margin;
-
-  // Colors
-  const primaryColor: [number, number, number] = [30, 58, 95]; // Navy blue
-  const headerBg: [number, number, number] = [240, 244, 248];
-  const borderColor: [number, number, number] = [200, 210, 220];
-
-  // Helper function
-  const addPageHeader = () => {
-    // Header bar
-    doc.setFillColor(...primaryColor);
-    doc.rect(0, 0, pageWidth, 18, 'F');
-    
-    // Logo text
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Unit Rate', margin, 12);
-    
-    // Tagline
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Construction Cost Analysis', margin + 28, 12);
-    
-    // Date
-    doc.text(new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }), pageWidth - margin, 12, { align: 'right' });
-    
-    return 25;
-  };
-
-  const addPageFooter = (pageNum: number) => {
-    doc.setFillColor(...borderColor);
-    doc.rect(0, pageHeight - 10, pageWidth, 10, 'F');
-    doc.setTextColor(100, 100, 100);
-    doc.setFontSize(8);
-    doc.text(`Page ${pageNum}`, pageWidth / 2, pageHeight - 4, { align: 'center' });
-    doc.text(`Generated by Unit Rate`, margin, pageHeight - 4);
-    doc.text(project.name, pageWidth - margin, pageHeight - 4, { align: 'right' });
-  };
-
-  // Page 1: Cover + Executive Summary
-  yPos = addPageHeader();
-  
-  // Project Title
-  doc.setTextColor(...primaryColor);
-  // Keep page 1 compact so the full executive summary fits on one page.
-  doc.setFontSize(18);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Cost Analysis Report', margin, yPos + 10);
-  
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(80, 80, 80);
-  doc.text(project.name, margin, yPos + 20);
-  
-  yPos += 24;
-
-  // Project Info Box
-  doc.setFillColor(...headerBg);
-  doc.roundedRect(margin, yPos, pageWidth - 2 * margin, 18, 3, 3, 'F');
-  doc.setTextColor(60, 60, 60);
-  doc.setFontSize(9);
-  
-  const infoY = yPos + 8;
-  doc.setFont('helvetica', 'bold');
-  doc.text('Country:', margin + 5, infoY);
-  doc.text('Currency:', margin + 70, infoY);
-  doc.text('Type:', margin + 135, infoY);
-  doc.text('Items:', margin + 200, infoY);
-  
-  doc.setFont('helvetica', 'normal');
-  doc.text(project.country, margin + 5, infoY + 7);
-  doc.text(project.currency, margin + 70, infoY + 7);
-  doc.text(project.projectType, margin + 135, infoY + 7);
-  doc.text(String(items.length), margin + 200, infoY + 7);
-  
-  yPos += 24;
-
-  // Calculate metrics (match in-app dashboard/detail estimate logic)
-  const getEstimatedUnitPrice = (item: CostItem) => item.userOverridePrice ?? item.recommendedUnitPrice ?? item.originalUnitPrice;
-  const totalOriginal = items.reduce((sum, i) => sum + (i.originalUnitPrice ? i.originalUnitPrice * i.quantity : 0), 0);
-  const totalEstimated = items.reduce((sum, i) => {
-    const price = getEstimatedUnitPrice(i);
-    return sum + (price != null ? price * i.quantity : 0);
-  }, 0);
-  const reviewCount = items.filter(i => i.status === 'review' || i.status === 'clarification' || i.status === 'underpriced').length;
-  const okCount = items.filter(i => i.status === 'ok').length;
-  const potentialSavings = totalOriginal - totalEstimated;
-
-  const itemsWithVariance = items.filter(i => i.originalUnitPrice != null && i.benchmarkTypical != null && i.benchmarkTypical !== 0);
-  const avgVariance = itemsWithVariance.length > 0
-    ? itemsWithVariance.reduce((sum, i) => sum + ((i.originalUnitPrice! - i.benchmarkTypical!) / i.benchmarkTypical!) * 100, 0) / itemsWithVariance.length
-    : 0;
-  
-  // Executive Summary Section
-  doc.setTextColor(...primaryColor);
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Executive Summary', margin, yPos);
-  yPos += 7;
-
-  // KPI cards (2x2 grid)
-  const kpiGap = 6;
-  const kpiW = (pageWidth - 2 * margin - kpiGap) / 2;
-  const kpiH = 18;
-  const kpiRowGap = 4;
-  const kpiBgBlue: [number, number, number] = [30, 58, 95];
-  const kpiBgOrange: [number, number, number] = [245, 158, 11];
-  const kpiBgGreen: [number, number, number] = [22, 163, 74];
-  const kpiBgGray: [number, number, number] = [100, 116, 139];
-
-  const estimateDelta = totalEstimated - totalOriginal;
-  const estimateDeltaLabel = estimateDelta >= 0 ? `(+${formatCurrency(Math.abs(estimateDelta), project.currency)} vs original)` : `(-${formatCurrency(Math.abs(estimateDelta), project.currency)} vs original)`;
-  const varianceTrend = avgVariance >= 0 ? `▲ ${avgVariance.toFixed(1)}%` : `▼ ${Math.abs(avgVariance).toFixed(1)}%`;
-
-  const drawKpi = (x: number, y: number, bg: [number, number, number], title: string, value: string, subtitle?: string) => {
-    doc.setFillColor(...bg);
-    doc.roundedRect(x, y, kpiW, kpiH, 3, 3, 'F');
-
-    doc.setTextColor(255, 255, 255);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.5);
-    doc.text(title.toUpperCase(), x + 5, y + 6);
-
-    doc.setFontSize(12);
-    doc.text(value, x + 5, y + 14);
-
-    if (subtitle) {
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7);
-      doc.text(subtitle, x + 5, y + 17);
-    }
-  };
-
-  drawKpi(margin, yPos, kpiBgBlue, 'Project estimate', formatCurrency(totalEstimated, project.currency), estimateDeltaLabel);
-  drawKpi(margin + kpiW + kpiGap, yPos, kpiBgOrange, 'Need review', `${reviewCount}`, '⚠ Review + Clarification');
-  drawKpi(margin, yPos + kpiH + kpiRowGap, kpiBgGreen, 'Potential savings', formatCurrency(Math.max(0, potentialSavings), project.currency), 'Compared to original total');
-  drawKpi(margin + kpiW + kpiGap, yPos + kpiH + kpiRowGap, kpiBgGray, 'Avg variance', varianceTrend, 'Original vs typical benchmark');
-
-  yPos += (kpiH * 2) + kpiRowGap + 6;
-
-  // Charts row
-  const chartGap = 6;
-  const chartH = 32;
-  const chartW1 = 60; // donut
-  const chartW3 = 52; // pie
-  const chartW2 = pageWidth - 2 * margin - chartW1 - chartW3 - 2 * chartGap; // bar
-  const chartY = yPos;
-
-  // Data prep
-  const tradeTotals = new Map<string, number>();
-  for (const item of items) {
-    const trade = item.trade?.trim() || 'Uncategorized';
-    const unit = getEstimatedUnitPrice(item);
-    const total = unit != null ? unit * item.quantity : 0;
-    tradeTotals.set(trade, (tradeTotals.get(trade) || 0) + total);
-  }
-  const topTrades = [...tradeTotals.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
-
-  const topDrivers = [...items]
-    .map((i) => ({
-      label: i.originalDescription.length > 28 ? `${i.originalDescription.slice(0, 28)}…` : i.originalDescription,
-      total: (getEstimatedUnitPrice(i) != null ? getEstimatedUnitPrice(i)! * i.quantity : 0),
-    }))
-    .sort((a, b) => b.total - a.total)
-    .slice(0, 5);
-
-  const statusCounts = {
-    ok: items.filter(i => i.status === 'ok').length,
-    review: items.filter(i => i.status === 'review' || i.status === 'underpriced').length,
-    clarification: items.filter(i => i.status === 'clarification').length,
-  };
-
-  // Render charts to images
-  const donutUrl = await renderChartToDataUrl({
-    type: 'doughnut',
-    data: {
-      labels: topTrades.map(([t]) => t),
-      datasets: [{
-        data: topTrades.map(([, v]) => Math.round(v)),
-        backgroundColor: ['#1e3a5f', '#2563eb', '#0ea5e9', '#22c55e', '#f59e0b'],
-        borderWidth: 0,
-      }],
-    },
-    options: {
-      responsive: false,
-      plugins: { legend: { display: false } },
-      cutout: '65%',
-    },
-  }, 210, 140);
-
-  const barUrl = await renderChartToDataUrl({
-    type: 'bar',
-    data: {
-      labels: topDrivers.map(d => d.label),
-      datasets: [{
-        data: topDrivers.map(d => Math.round(d.total)),
-        backgroundColor: '#1e3a5f',
-        borderRadius: 6,
-      }],
-    },
-    options: {
-      responsive: false,
-      indexAxis: 'y',
-      plugins: { legend: { display: false } },
-      scales: {
-        x: { ticks: { display: false }, grid: { display: false } },
-        y: { ticks: { font: { size: 8 } }, grid: { display: false } },
-      },
-    },
-  }, 420, 150);
-
-  const pieUrl = await renderChartToDataUrl({
-    type: 'pie',
-    data: {
-      labels: ['OK', 'Review', 'Clarification'],
-      datasets: [{
-        data: [statusCounts.ok, statusCounts.review, statusCounts.clarification],
-        backgroundColor: ['#22c55e', '#f59e0b', '#0ea5e9'],
-        borderWidth: 0,
-      }],
-    },
-    options: {
-      responsive: false,
-      plugins: { legend: { display: false } },
-    },
-  }, 190, 140);
-
-  // Chart titles + cards
-  const drawChartCard = (title: string, x: number, y: number, w: number, h: number, dataUrl: string) => {
-    doc.setFillColor(...headerBg);
-    doc.roundedRect(x, y, w, h, 3, 3, 'F');
-    doc.setDrawColor(...borderColor);
-    doc.roundedRect(x, y, w, h, 3, 3, 'S');
-
-    doc.setTextColor(...primaryColor);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8.5);
-    doc.text(title, x + 5, y + 6);
-    doc.addImage(dataUrl, 'PNG', x + 5, y + 8.5, w - 10, h - 12);
-  };
-
-  drawChartCard('Cost Breakdown (Top Trades)', margin, chartY, chartW1, chartH, donutUrl);
-  drawChartCard('Top Cost Drivers', margin + chartW1 + chartGap, chartY, chartW2, chartH, barUrl);
-  drawChartCard('Status Distribution', pageWidth - margin - chartW3, chartY, chartW3, chartH, pieUrl);
-
-  yPos += chartH + 6;
-  addPageFooter(1);
-
-  // Page 2+: Cost Items Table
-  doc.addPage();
-  yPos = addPageHeader();
-  
-  doc.setTextColor(...primaryColor);
-  doc.setFontSize(14);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Cost Items Detail', margin, yPos);
-  yPos += 8;
-
-  // Build table data (grouped by trade)
-  // Build headers + keep a column index map for conditional formatting.
-  const colIndex: Record<string, number> = {};
-  const tableHeaders: string[] = [];
-  const pushCol = (key: string, label: string) => {
-    colIndex[key] = tableHeaders.length;
-    tableHeaders.push(label);
-  };
-  if (options.includeDescription) pushCol('description', 'Description');
-  if (options.includeTrade) pushCol('trade', 'Trade');
-  if (options.includeQuantity) pushCol('qty', 'Qty');
-  if (options.includeUnit) pushCol('unit', 'Unit');
-  if (options.includeOriginalPrice) pushCol('origPrice', 'Orig. Price');
-  if (options.includeOriginalTotal) pushCol('origTotal', 'Orig. Total');
-  if (options.includeRecommendedPrice) pushCol('recPrice', 'Rec. Price');
-  if (options.includeRecommendedTotal) pushCol('recTotal', 'Rec. Total');
-  if (options.includeVariance) pushCol('variance', 'Var %');
-  if (options.includeStatus) pushCol('status', 'Status');
-
-  const labelColIndex = 0;
-  const blankRow = () => new Array(tableHeaders.length).fill('');
-
-  const formatStatusLabel = (status: string) => {
-    const s = (status || '').toLowerCase();
-    if (s === 'ok') return '✓ OK';
-    if (s === 'review' || s === 'underpriced') return '⚠ REVIEW';
-    if (s === 'clarification') return '❓ CLARIFY';
-    return status.toUpperCase();
-  };
-
-  const buildItemRow = (item: CostItem) => {
-    const row: string[] = [];
-    const recPrice = getEstimatedUnitPrice(item);
-    const origTotal = item.originalUnitPrice ? item.originalUnitPrice * item.quantity : null;
-    const recTotal = recPrice != null ? recPrice * item.quantity : null;
-
-    if (options.includeDescription) row.push(item.originalDescription.substring(0, 50) + (item.originalDescription.length > 50 ? '...' : ''));
-    if (options.includeTrade) row.push(item.trade || '—');
-    if (options.includeQuantity) row.push(item.quantity.toLocaleString());
-    if (options.includeUnit) row.push(item.unit);
-    if (options.includeOriginalPrice) row.push(item.originalUnitPrice != null ? item.originalUnitPrice.toLocaleString() : '—');
-    if (options.includeOriginalTotal) row.push(origTotal != null ? origTotal.toLocaleString() : '—');
-    if (options.includeRecommendedPrice) row.push(recPrice != null ? recPrice.toLocaleString() : '—');
-    if (options.includeRecommendedTotal) row.push(recTotal != null ? recTotal.toLocaleString() : '—');
-    if (options.includeVariance) {
-      if (item.originalUnitPrice && item.benchmarkTypical) {
-        const variance = ((item.originalUnitPrice - item.benchmarkTypical) / item.benchmarkTypical) * 100;
-        row.push(`${variance > 0 ? '+' : ''}${variance.toFixed(0)}%`);
-      } else {
-        row.push('—');
-      }
-    }
-    if (options.includeStatus) row.push(formatStatusLabel(item.status));
-
-    return row;
-  };
-
-  const rowTypes: Array<'group' | 'item' | 'subtotal' | 'totals'> = [];
-  const tableData: string[][] = [];
-
-  const sorted = [...items].sort((a, b) => {
-    const ta = (a.trade || 'Uncategorized').localeCompare(b.trade || 'Uncategorized');
-    if (ta !== 0) return ta;
-    return (b.originalDescription || '').localeCompare(a.originalDescription || '');
-  });
-
-  const groups = new Map<string, CostItem[]>();
-  for (const it of sorted) {
-    const key = it.trade?.trim() || 'Uncategorized';
-    groups.set(key, [...(groups.get(key) || []), it]);
-  }
-
-  for (const [trade, groupItems] of groups.entries()) {
-    const groupRow = blankRow();
-    groupRow[labelColIndex] = `TRADE: ${trade}`;
-    tableData.push(groupRow);
-    rowTypes.push('group');
-
-    for (const item of groupItems) {
-      tableData.push(buildItemRow(item));
-      rowTypes.push('item');
-    }
-
-    // Subtotal row
-    const subOrig = groupItems.reduce((sum, i) => sum + (i.originalUnitPrice ? i.originalUnitPrice * i.quantity : 0), 0);
-    const subEst = groupItems.reduce((sum, i) => {
-      const p = getEstimatedUnitPrice(i);
-      return sum + (p != null ? p * i.quantity : 0);
-    }, 0);
-
-    const subRow = blankRow();
-    subRow[labelColIndex] = `Subtotal (${trade})`;
-
-    // Attempt to place totals into the correct columns if they exist
-    let colCursor = 0;
-    if (options.includeDescription) colCursor++;
-    if (options.includeTrade) colCursor++;
-    if (options.includeQuantity) colCursor++;
-    if (options.includeUnit) colCursor++;
-    if (options.includeOriginalPrice) colCursor++;
-    if (options.includeOriginalTotal) subRow[colCursor] = subOrig.toLocaleString();
-    if (options.includeOriginalTotal) colCursor++;
-    if (options.includeRecommendedPrice) colCursor++;
-    if (options.includeRecommendedTotal) subRow[colCursor] = subEst.toLocaleString();
-
-    tableData.push(subRow);
-    rowTypes.push('subtotal');
-  }
-
-  // Add totals row
-  const totalsRow: string[] = [];
-  if (options.includeDescription) totalsRow.push('TOTALS');
-  if (options.includeTrade) totalsRow.push('');
-  if (options.includeQuantity) totalsRow.push(items.reduce((s, i) => s + i.quantity, 0).toLocaleString());
-  if (options.includeUnit) totalsRow.push('');
-  if (options.includeOriginalPrice) totalsRow.push('');
-  if (options.includeOriginalTotal) totalsRow.push(totalOriginal.toLocaleString());
-  if (options.includeRecommendedPrice) totalsRow.push('');
-  if (options.includeRecommendedTotal) totalsRow.push(totalEstimated.toLocaleString());
-  if (options.includeVariance) totalsRow.push('');
-  if (options.includeStatus) totalsRow.push('');
-  tableData.push(totalsRow);
-  rowTypes.push('totals');
-
-  autoTable(doc, {
-    head: [tableHeaders],
-    body: tableData,
-    startY: yPos,
-    margin: { left: margin, right: margin },
-    styles: {
-      fontSize: 6.5,
-      cellPadding: 1.5,
-      valign: 'middle',
-    },
-    headStyles: {
-      fillColor: primaryColor,
-      textColor: [255, 255, 255],
-      fontStyle: 'bold',
-    },
-    alternateRowStyles: {
-      fillColor: [248, 250, 252],
-    },
-    columnStyles: {
-      ...(options.includeDescription ? { [colIndex.description]: { cellWidth: 78 } } : {}),
-      ...(options.includeTrade ? { [colIndex.trade]: { cellWidth: 26 } } : {}),
-      ...(options.includeQuantity ? { [colIndex.qty]: { cellWidth: 14, halign: 'right' } } : {}),
-      ...(options.includeUnit ? { [colIndex.unit]: { cellWidth: 12 } } : {}),
-      ...(options.includeOriginalPrice ? { [colIndex.origPrice]: { cellWidth: 20, halign: 'right' } } : {}),
-      ...(options.includeOriginalTotal ? { [colIndex.origTotal]: { cellWidth: 22, halign: 'right' } } : {}),
-      ...(options.includeRecommendedPrice ? { [colIndex.recPrice]: { cellWidth: 20, halign: 'right' } } : {}),
-      ...(options.includeRecommendedTotal ? { [colIndex.recTotal]: { cellWidth: 22, halign: 'right' } } : {}),
-      ...(options.includeVariance ? { [colIndex.variance]: { cellWidth: 14, halign: 'center' } } : {}),
-      ...(options.includeStatus ? { [colIndex.status]: { cellWidth: 18, halign: 'center' } } : {}),
-    },
-    didParseCell: (data) => {
-      const t = rowTypes[data.row.index];
-      if (!t) return;
-
-      if (t === 'group') {
-        data.cell.styles.fillColor = headerBg;
-        data.cell.styles.textColor = primaryColor;
-        data.cell.styles.fontStyle = 'bold';
-        if (data.column.index !== labelColIndex) data.cell.text = [''];
-      }
-
-      if (t === 'subtotal' || t === 'totals') {
-        data.cell.styles.fillColor = [240, 244, 248];
-        data.cell.styles.fontStyle = 'bold';
-        if (data.column.index !== labelColIndex && data.cell.text?.[0] === '') {
-          data.cell.styles.textColor = [60, 60, 60];
-        }
-      }
-
-      // Conditional formatting for item rows.
-      if (t === 'item') {
-        // Emphasize recommended totals.
-        if (options.includeRecommendedTotal && data.column.index === colIndex.recTotal) {
-          data.cell.styles.fontStyle = 'bold';
-          data.cell.styles.textColor = primaryColor;
-        }
-
-        // Variance color scale: green (negative) -> red (positive)
-        if (options.includeVariance && data.column.index === colIndex.variance) {
-          const raw = (data.cell.text?.[0] ?? '').replace('%', '');
-          const v = Number(raw);
-          if (!Number.isNaN(v)) {
-            const clamped = Math.max(-50, Math.min(50, v));
-            const t01 = (clamped + 50) / 100; // -50..50 => 0..1
-            const r = Math.round(34 + (220 - 34) * t01);
-            const g = Math.round(197 + (38 - 197) * t01);
-            const b = Math.round(94 + (38 - 94) * t01);
-            data.cell.styles.textColor = [r, g, b];
-            data.cell.styles.fontStyle = 'bold';
-          }
-        }
-
-        // Status pill styling
-        if (options.includeStatus && data.column.index === colIndex.status) {
-          const s = (data.cell.text?.[0] ?? '').toUpperCase();
-          data.cell.styles.fontStyle = 'bold';
-          if (s.includes('OK')) {
-            data.cell.styles.fillColor = [230, 246, 236];
-            data.cell.styles.textColor = [22, 163, 74];
-          } else if (s.includes('REVIEW')) {
-            data.cell.styles.fillColor = [255, 244, 229];
-            data.cell.styles.textColor = [245, 158, 11];
-          } else if (s.includes('CLARIFY')) {
-            data.cell.styles.fillColor = [231, 245, 255];
-            data.cell.styles.textColor = [14, 165, 233];
-          }
-        }
-      }
-    },
-    didDrawPage: (data) => {
-      addPageFooter(doc.getNumberOfPages());
-    },
-  });
-
-  // Download
-  const timestamp = new Date().toISOString().split('T')[0];
-  const filename = `UnitRate_${project.name.replace(/[^a-zA-Z0-9]/g, '_')}_${timestamp}.pdf`;
-  doc.save(filename);
-  
-  toast.success('PDF report exported successfully');
 }
