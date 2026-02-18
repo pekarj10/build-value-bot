@@ -160,6 +160,86 @@ export function BenchmarkCsvImporter() {
     maxFiles: 1,
   });
 
+  /**
+   * After import, find existing benchmarks whose avg_price changed by >5%
+   * and flag affected projects for re-analysis notification.
+   */
+  const flagProjectsForSignificantChanges = async (
+    importedDescriptions: string[],
+    newPriceByDesc: Map<string, number>
+  ) => {
+    if (importedDescriptions.length === 0) return;
+
+    try {
+      // Fetch existing benchmarks with the same descriptions to compare prices
+      const batchSize = 50;
+      const changedBenchmarkIds: string[] = [];
+
+      for (let i = 0; i < importedDescriptions.length; i += batchSize) {
+        const batch = importedDescriptions.slice(i, i + batchSize);
+        const { data: existing } = await supabase
+          .from('benchmark_prices')
+          .select('id, description, avg_price')
+          .in('description', batch);
+
+        for (const row of existing || []) {
+          const newPrice = newPriceByDesc.get(row.description);
+          if (newPrice !== undefined) {
+            const priceDelta = Math.abs((newPrice - row.avg_price) / row.avg_price);
+            if (priceDelta >= 0.05) {
+              // Price changed by ≥5% — benchmark is significantly different
+              changedBenchmarkIds.push(row.id);
+            }
+          }
+        }
+      }
+
+      if (changedBenchmarkIds.length === 0) return;
+
+      // Find projects with cost items matched to these benchmarks
+      const affectedProjectIds = new Set<string>();
+      const affectedCountPerProject = new Map<string, number>();
+
+      for (let i = 0; i < changedBenchmarkIds.length; i += batchSize) {
+        const batch = changedBenchmarkIds.slice(i, i + batchSize);
+        const { data: costItems } = await supabase
+          .from('cost_items')
+          .select('project_id')
+          .in('matched_benchmark_id', batch);
+
+        for (const ci of costItems || []) {
+          affectedProjectIds.add(ci.project_id);
+          affectedCountPerProject.set(
+            ci.project_id,
+            (affectedCountPerProject.get(ci.project_id) || 0) + 1
+          );
+        }
+      }
+
+      if (affectedProjectIds.size === 0) return;
+
+      const now = new Date().toISOString();
+      for (const projectId of affectedProjectIds) {
+        const count = affectedCountPerProject.get(projectId) || 0;
+        const summary = `${count} cost item${count !== 1 ? 's' : ''} in this project have updated benchmark reference prices (≥5% change). Re-analyse to apply the latest prices.`;
+
+        await supabase
+          .from('projects')
+          .update({
+            pending_benchmark_update: true,
+            pending_update_summary: summary,
+            pending_update_since: now,
+            pending_update_dismissed_at: null,
+          } as any)
+          .eq('id', projectId);
+      }
+
+      console.log(`[Import] Flagged ${affectedProjectIds.size} project(s) for benchmark price changes`);
+    } catch (err) {
+      console.error('[Import] Failed to flag projects for price changes:', err);
+    }
+  };
+
   const handleImport = async () => {
     const file = acceptedFiles[0];
     if (!file) {
@@ -195,6 +275,16 @@ export function BenchmarkCsvImporter() {
           toast.error('No valid rows to import');
           return;
         }
+
+        // Build a map of description → new avg_price for price-change detection
+        const newPriceByDesc = new Map<string, number>();
+        for (const row of validRows) {
+          newPriceByDesc.set(row.description as string, row.avg_price as number);
+        }
+        const importedDescriptions = [...newPriceByDesc.keys()];
+
+        // Check for significant price changes in existing benchmarks BEFORE inserting
+        await flagProjectsForSignificantChanges(importedDescriptions, newPriceByDesc);
 
         // Import in batches of 50
         const batchSize = 50;

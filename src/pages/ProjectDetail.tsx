@@ -13,6 +13,7 @@ import { AddCostItemDialog } from '@/components/project/AddCostItemDialog';
 import { UploadSpreadsheetDialog } from '@/components/project/UploadSpreadsheetDialog';
 import { ClarificationsList } from '@/components/project/ClarificationsList';
 import { ProjectNotes } from '@/components/project/ProjectNotes';
+import { BenchmarkUpdateBanner } from '@/components/project/BenchmarkUpdateBanner';
 
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
@@ -63,6 +64,12 @@ export default function ProjectDetail() {
   const [isUploading, setIsUploading] = useState(false);
   const [activeTab, setActiveTab] = useState('items');
 
+  // Benchmark update notification state
+  const [pendingBenchmarkUpdate, setPendingBenchmarkUpdate] = useState(false);
+  const [pendingUpdateSummary, setPendingUpdateSummary] = useState<string | null>(null);
+  const [pendingUpdateSince, setPendingUpdateSince] = useState<string | null>(null);
+  const [pendingUpdateDismissedAt, setPendingUpdateDismissedAt] = useState<string | null>(null);
+
   // Get unique trades for the add item dialog
   const trades = useMemo(() => 
     [...new Set(items.map(item => item.trade).filter(Boolean))] as string[],
@@ -81,12 +88,24 @@ export default function ProjectDetail() {
     
     const loadData = async () => {
       setIsLoading(true);
-      const [projectData, itemsData] = await Promise.all([
+      const [projectData, itemsData, pendingData] = await Promise.all([
         getProject(id),
         getCostItems(id),
+        supabase
+          .from('projects')
+          .select('pending_benchmark_update, pending_update_summary, pending_update_since, pending_update_dismissed_at')
+          .eq('id', id)
+          .single(),
       ]);
       setProject(projectData);
       setItems(itemsData);
+      if (pendingData.data) {
+        const d = pendingData.data as any;
+        setPendingBenchmarkUpdate(d.pending_benchmark_update ?? false);
+        setPendingUpdateSummary(d.pending_update_summary ?? null);
+        setPendingUpdateSince(d.pending_update_since ?? null);
+        setPendingUpdateDismissedAt(d.pending_update_dismissed_at ?? null);
+      }
       setIsLoading(false);
     };
 
@@ -676,6 +695,22 @@ export default function ProjectDetail() {
             </div>
           </div>
         </Card>
+
+        {/* Benchmark update notification banner */}
+        {pendingBenchmarkUpdate && (
+          <BenchmarkUpdateBanner
+            projectId={project.id}
+            summary={pendingUpdateSummary}
+            since={pendingUpdateSince}
+            dismissedAt={pendingUpdateDismissedAt}
+            onDismiss={() => setPendingUpdateDismissedAt(new Date().toISOString())}
+            onReanalyze={() => {
+              setPendingBenchmarkUpdate(false);
+              handleReanalyzeItems(items.map(i => i.id));
+            }}
+            isReanalyzing={isReanalyzing || isAnalyzing}
+          />
+        )}
 
         {/* Executive Summary */}
         <ExecutiveSummary items={items} currency={project.currency} />

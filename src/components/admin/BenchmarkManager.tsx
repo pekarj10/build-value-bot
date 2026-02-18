@@ -165,14 +165,71 @@ export function BenchmarkManager() {
     return duplicates;
   }, [benchmarks]);
 
+  /**
+   * Finds projects that have cost items matched to the given benchmark IDs,
+   * then flags them with a pending benchmark update notification.
+   */
+  const flagAffectedProjects = async (benchmarkIds: string[], reason: string) => {
+    if (benchmarkIds.length === 0) return;
+
+    try {
+      // Find cost items matched to these benchmarks
+      const batchSize = 100;
+      const affectedProjectIds = new Set<string>();
+      const affectedCountPerProject = new Map<string, number>();
+
+      for (let i = 0; i < benchmarkIds.length; i += batchSize) {
+        const batch = benchmarkIds.slice(i, i + batchSize);
+        const { data: costItems } = await supabase
+          .from('cost_items')
+          .select('project_id')
+          .in('matched_benchmark_id', batch);
+
+        for (const ci of costItems || []) {
+          affectedProjectIds.add(ci.project_id);
+          affectedCountPerProject.set(
+            ci.project_id,
+            (affectedCountPerProject.get(ci.project_id) || 0) + 1
+          );
+        }
+      }
+
+      if (affectedProjectIds.size === 0) return;
+
+      const now = new Date().toISOString();
+
+      // Flag each affected project
+      for (const projectId of affectedProjectIds) {
+        const count = affectedCountPerProject.get(projectId) || 0;
+        const summary = `${count} cost item${count !== 1 ? 's' : ''} in this project ${reason}. You may want to re-analyse to get the latest recommended prices.`;
+
+        await supabase
+          .from('projects')
+          .update({
+            pending_benchmark_update: true,
+            pending_update_summary: summary,
+            pending_update_since: now,
+            pending_update_dismissed_at: null,
+          } as any)
+          .eq('id', projectId);
+      }
+
+      console.log(`Flagged ${affectedProjectIds.size} project(s) for benchmark update`);
+    } catch (err) {
+      console.error('Failed to flag affected projects:', err);
+    }
+  };
+
   const handleDeleteAll = async () => {
     setIsDeleting(true);
     try {
-      // Step 1: Clear matched_benchmark_id on all cost_items to remove FK references
-      // We need to do this in batches using the benchmark IDs we have
+      // Step 1: Flag affected projects BEFORE clearing matched_benchmark_id
       const allIds = benchmarks.map(b => b.id);
+      await flagAffectedProjects(allIds, 'had their benchmark references removed (full database reset)');
+
       const batchSize = 100;
 
+      // Step 2: Clear matched_benchmark_id on all cost_items to remove FK references
       for (let i = 0; i < allIds.length; i += batchSize) {
         const batch = allIds.slice(i, i + batchSize);
         await supabase
@@ -181,7 +238,7 @@ export function BenchmarkManager() {
           .in('matched_benchmark_id', batch);
       }
 
-      // Step 2: Now delete the benchmark prices in batches
+      // Step 3: Now delete the benchmark prices in batches
       for (let i = 0; i < allIds.length; i += batchSize) {
         const batch = allIds.slice(i, i + batchSize);
         const { error } = await supabase
@@ -208,10 +265,12 @@ export function BenchmarkManager() {
     
     setIsDeleting(true);
     try {
-      // Delete in batches to avoid query size limits
       const idsToDelete = Array.from(selectedIds);
+
+      // Flag affected projects BEFORE deletion
+      await flagAffectedProjects(idsToDelete, 'had their matched benchmark prices deleted');
+
       const batchSize = 100;
-      
       for (let i = 0; i < idsToDelete.length; i += batchSize) {
         const batch = idsToDelete.slice(i, i + batchSize);
         const { error } = await supabase
