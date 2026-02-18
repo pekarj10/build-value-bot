@@ -354,6 +354,10 @@ export type Database = {
           issues_count: number | null
           name: string
           notes: string | null
+          pending_benchmark_update: boolean
+          pending_update_dismissed_at: string | null
+          pending_update_since: string | null
+          pending_update_summary: string | null
           project_notes: string | null
           project_type: string
           status: string
@@ -370,6 +374,10 @@ export type Database = {
           issues_count?: number | null
           name: string
           notes?: string | null
+          pending_benchmark_update?: boolean
+          pending_update_dismissed_at?: string | null
+          pending_update_since?: string | null
+          pending_update_summary?: string | null
           project_notes?: string | null
           project_type: string
           status?: string
@@ -386,6 +394,10 @@ export type Database = {
           issues_count?: number | null
           name?: string
           notes?: string | null
+          pending_benchmark_update?: boolean
+          pending_update_dismissed_at?: string | null
+          pending_update_since?: string | null
+          pending_update_summary?: string | null
           project_notes?: string | null
           project_type?: string
           status?: string
