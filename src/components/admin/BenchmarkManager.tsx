@@ -168,10 +168,20 @@ export function BenchmarkManager() {
   const handleDeleteAll = async () => {
     setIsDeleting(true);
     try {
-      // Delete in batches of 100 to avoid RLS/query limits
+      // Step 1: Clear matched_benchmark_id on all cost_items to remove FK references
+      // We need to do this in batches using the benchmark IDs we have
       const allIds = benchmarks.map(b => b.id);
       const batchSize = 100;
 
+      for (let i = 0; i < allIds.length; i += batchSize) {
+        const batch = allIds.slice(i, i + batchSize);
+        await supabase
+          .from('cost_items')
+          .update({ matched_benchmark_id: null })
+          .in('matched_benchmark_id', batch);
+      }
+
+      // Step 2: Now delete the benchmark prices in batches
       for (let i = 0; i < allIds.length; i += batchSize) {
         const batch = allIds.slice(i, i + batchSize);
         const { error } = await supabase
@@ -182,7 +192,7 @@ export function BenchmarkManager() {
         if (error) throw error;
       }
 
-      toast.success(`All ${allIds.length} benchmark records deleted`);
+      toast.success(`All ${allIds.length.toLocaleString()} benchmark records deleted`);
       setBenchmarks([]);
       setSelectedIds(new Set());
     } catch (error) {
