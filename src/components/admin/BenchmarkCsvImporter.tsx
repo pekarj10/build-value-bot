@@ -68,35 +68,39 @@ function normalizeUnit(unit: string): string {
 }
 
 function validateRow(row: CsvRow, rowIndex: number): { valid: boolean; data?: Record<string, unknown>; error?: string } {
-  const description = row.item_description || row.description || '';
+  const rawDescription = row.item_description || row.description || '';
+  const rawCategory = row.category || 'General';
   const unit = row.unit || '';
   // Support both avg_price (benchmark_prices format) and unit_rate/price
   const avgPrice = parseFloat(row.avg_price || row.unit_rate || row.price || '0');
   const minPrice = row.min_price ? parseFloat(row.min_price) : null;
   const maxPrice = row.max_price ? parseFloat(row.max_price) : null;
-  // country can be full name or 2-letter code
   const countryRaw = (row.country_code || row.country || 'SE').toUpperCase().trim();
-  // Accept full country names too (map to first 2 chars if code-like, else keep)
   const countryCode = countryRaw.length === 2 ? countryRaw : countryRaw.slice(0, 2);
-  const category = row.category || 'General';
   const currency = row.currency || 'SEK';
   const source = row.source || 'admin_import';
 
-  // Validate description
-  const words = description.trim().split(/\s+/).filter(w => w.length >= 2);
-  if (words.length < 2) {
-    return { valid: false, error: `Row ${rowIndex + 1}: Description too short ("${description}")` };
+  // Build full description: combine category + description for richer context
+  // e.g. category "3S11 - Rum yta <6 m²" + description "helmålning" → "3S11 - Rum yta <6 m²: helmålning"
+  const descriptionParts = [rawCategory !== 'General' ? rawCategory : '', rawDescription]
+    .map(p => p.trim())
+    .filter(Boolean);
+  const description = descriptionParts.join(' - ');
+
+  // Validate: must have at least 2 characters total (single-word trades like "helmålning" are valid)
+  if (!description || description.trim().length < 3) {
+    return { valid: false, error: `Row ${rowIndex + 1}: Description is empty or too short` };
   }
 
-  // Validate unit
-  const normalizedUnit = normalizeUnit(unit);
-  if (!unit) {
+  // Validate unit — accept any non-empty unit, normalize known ones
+  if (!unit || unit.trim().length === 0) {
     return { valid: false, error: `Row ${rowIndex + 1}: Missing unit` };
   }
+  const normalizedUnit = normalizeUnit(unit);
 
   // Validate price
-  if (avgPrice <= 0 || avgPrice > 10000000) {
-    return { valid: false, error: `Row ${rowIndex + 1}: Invalid avg price ${avgPrice} (must be 0-10,000,000)` };
+  if (isNaN(avgPrice) || avgPrice <= 0 || avgPrice > 10000000) {
+    return { valid: false, error: `Row ${rowIndex + 1}: Invalid avg price ${avgPrice} (must be between 0 and 10,000,000)` };
   }
 
   // Validate country code
@@ -106,15 +110,14 @@ function validateRow(row: CsvRow, rowIndex: number): { valid: boolean; data?: Re
 
   return {
     valid: true,
-    // Insert into benchmark_prices (the main AI pricing reference table)
     data: {
       description,
-      unit: normalizedUnit || unit.toLowerCase(),
+      unit: normalizedUnit || unit.toLowerCase().trim(),
       avg_price: avgPrice,
-      min_price: minPrice,
-      max_price: maxPrice,
+      min_price: isNaN(minPrice!) ? null : minPrice,
+      max_price: isNaN(maxPrice!) ? null : maxPrice,
       country: countryCode,
-      category,
+      category: rawCategory,
       currency,
       source,
     },
