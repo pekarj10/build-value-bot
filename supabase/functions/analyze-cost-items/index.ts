@@ -129,17 +129,18 @@ interface AnalysisResult {
 }
 
 // Map country names to database country format
+// NOTE: benchmark_prices table stores country as ISO 2-letter codes (e.g. 'SE', 'DE')
 function mapCountryToDb(country: string): string {
   const mapping: Record<string, string> = {
-    'SE': 'SWEDEN', 'Sweden': 'SWEDEN', 'SWEDEN': 'SWEDEN',
-    'CZ': 'CZECH_REPUBLIC', 'Czech Republic': 'CZECH_REPUBLIC',
-    'DE': 'GERMANY', 'Germany': 'GERMANY',
-    'AT': 'AUSTRIA', 'Austria': 'AUSTRIA',
-    'PL': 'POLAND', 'Poland': 'POLAND',
-    'GB': 'UNITED_KINGDOM', 'United Kingdom': 'UNITED_KINGDOM',
-    'US': 'UNITED_STATES', 'United States': 'UNITED_STATES',
+    'SE': 'SE', 'Sweden': 'SE', 'SWEDEN': 'SE',
+    'CZ': 'CZ', 'Czech Republic': 'CZ', 'CZECH_REPUBLIC': 'CZ',
+    'DE': 'DE', 'Germany': 'DE', 'GERMANY': 'DE',
+    'AT': 'AT', 'Austria': 'AT', 'AUSTRIA': 'AT',
+    'PL': 'PL', 'Poland': 'PL', 'POLAND': 'PL',
+    'GB': 'GB', 'United Kingdom': 'GB', 'UNITED_KINGDOM': 'GB',
+    'US': 'US', 'United States': 'US', 'UNITED_STATES': 'US',
   };
-  return mapping[country] || country.toUpperCase().replace(/ /g, '_');
+  return mapping[country] || country.toUpperCase().slice(0, 2);
 }
 
 // Get language for country
