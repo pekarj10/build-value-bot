@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { TablePagination } from '@/components/project/TablePagination';
 import { BenchmarkUploader } from './BenchmarkUploader';
+import { BenchmarkCsvImporter } from './BenchmarkCsvImporter';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { 
@@ -44,7 +45,8 @@ import {
   RefreshCw,
   Copy,
   AlertTriangle,
-  Loader2
+  Loader2,
+  FileSpreadsheet
 } from 'lucide-react';
 
 interface BenchmarkPrice {
@@ -76,6 +78,7 @@ export function BenchmarkManager() {
   const [countryFilter, setCountryFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [showUploader, setShowUploader] = useState(false);
+  const [showImporter, setShowImporter] = useState(false);
   const [showDuplicates, setShowDuplicates] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
@@ -163,19 +166,30 @@ export function BenchmarkManager() {
   }, [benchmarks]);
 
   const handleDeleteAll = async () => {
+    setIsDeleting(true);
     try {
-      const { error } = await supabase
-        .from('benchmark_prices')
-        .delete()
-        .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all
+      // Delete in batches of 100 to avoid RLS/query limits
+      const allIds = benchmarks.map(b => b.id);
+      const batchSize = 100;
 
-      if (error) throw error;
-      toast.success('All benchmark data deleted');
+      for (let i = 0; i < allIds.length; i += batchSize) {
+        const batch = allIds.slice(i, i + batchSize);
+        const { error } = await supabase
+          .from('benchmark_prices')
+          .delete()
+          .in('id', batch);
+
+        if (error) throw error;
+      }
+
+      toast.success(`All ${allIds.length} benchmark records deleted`);
       setBenchmarks([]);
       setSelectedIds(new Set());
     } catch (error) {
       console.error('Error deleting benchmarks:', error);
       toast.error('Failed to delete benchmark data');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -307,6 +321,17 @@ export function BenchmarkManager() {
             fetchBenchmarks();
           }}
         />
+      </div>
+    );
+  }
+
+  if (showImporter) {
+    return (
+      <div className="space-y-4">
+        <Button variant="outline" onClick={() => { setShowImporter(false); fetchBenchmarks(); }}>
+          ← Back to Benchmark List
+        </Button>
+        <BenchmarkCsvImporter />
       </div>
     );
   }
@@ -475,8 +500,8 @@ export function BenchmarkManager() {
               <Download className="h-4 w-4 mr-2" />
               Export
             </Button>
-            <Button size="sm" onClick={() => setShowUploader(true)}>
-              <Upload className="h-4 w-4 mr-2" />
+            <Button size="sm" onClick={() => setShowImporter(true)}>
+              <FileSpreadsheet className="h-4 w-4 mr-2" />
               Import CSV
             </Button>
           </div>
@@ -568,23 +593,30 @@ export function BenchmarkManager() {
           {benchmarks.length > 0 && selectedIds.size === 0 && (
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="destructive" size="sm">
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Clear All
+                <Button variant="destructive" size="sm" disabled={isDeleting}>
+                  {isDeleting ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4 mr-2" />
+                  )}
+                  Clear All ({benchmarks.length.toLocaleString()})
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Delete All Benchmarks?</AlertDialogTitle>
+                  <AlertDialogTitle>Clear Entire Benchmark Database?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    This will permanently delete all {benchmarks.length} benchmark prices. 
-                    This action cannot be undone.
+                    This will permanently delete all <strong>{benchmarks.length.toLocaleString()}</strong> benchmark price records. 
+                    This action cannot be undone. Import a new CSV after clearing to repopulate the database.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleDeleteAll}>
-                    Delete All
+                  <AlertDialogAction
+                    onClick={handleDeleteAll}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    Yes, Delete All {benchmarks.length.toLocaleString()} Records
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
@@ -609,8 +641,8 @@ export function BenchmarkManager() {
                 : 'No results match your current filters.'}
             </p>
             {benchmarks.length === 0 && (
-              <Button onClick={() => setShowUploader(true)}>
-                <Upload className="h-4 w-4 mr-2" />
+              <Button onClick={() => setShowImporter(true)}>
+                <FileSpreadsheet className="h-4 w-4 mr-2" />
                 Import CSV
               </Button>
             )}

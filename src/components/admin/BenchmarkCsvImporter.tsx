@@ -29,12 +29,17 @@ interface CsvRow {
   unit?: string;
   quantity?: string;
   unit_rate?: string;
+  avg_price?: string;
   price?: string;
+  min_price?: string;
+  max_price?: string;
   total_cost?: string;
   total?: string;
   country_code?: string;
   country?: string;
   category?: string;
+  source?: string;
+  currency?: string;
 }
 
 const VALID_UNITS = new Set([
@@ -65,47 +70,53 @@ function normalizeUnit(unit: string): string {
 function validateRow(row: CsvRow, rowIndex: number): { valid: boolean; data?: Record<string, unknown>; error?: string } {
   const description = row.item_description || row.description || '';
   const unit = row.unit || '';
-  const quantity = parseFloat(row.quantity || '1');
-  const unitRate = parseFloat(row.unit_rate || row.price || '0');
-  const totalCost = parseFloat(row.total_cost || row.total || '0') || (unitRate * quantity);
-  const countryCode = (row.country_code || row.country || 'SE').toUpperCase();
-  const category = row.category || null;
+  // Support both avg_price (benchmark_prices format) and unit_rate/price
+  const avgPrice = parseFloat(row.avg_price || row.unit_rate || row.price || '0');
+  const minPrice = row.min_price ? parseFloat(row.min_price) : null;
+  const maxPrice = row.max_price ? parseFloat(row.max_price) : null;
+  // country can be full name or 2-letter code
+  const countryRaw = (row.country_code || row.country || 'SE').toUpperCase().trim();
+  // Accept full country names too (map to first 2 chars if code-like, else keep)
+  const countryCode = countryRaw.length === 2 ? countryRaw : countryRaw.slice(0, 2);
+  const category = row.category || 'General';
+  const currency = row.currency || 'SEK';
+  const source = row.source || 'admin_import';
 
   // Validate description
   const words = description.trim().split(/\s+/).filter(w => w.length >= 2);
   if (words.length < 2) {
-    return { valid: false, error: `Row ${rowIndex + 1}: Description too short (${description})` };
+    return { valid: false, error: `Row ${rowIndex + 1}: Description too short ("${description}")` };
   }
 
   // Validate unit
   const normalizedUnit = normalizeUnit(unit);
-  if (!unit || (!VALID_UNITS.has(normalizedUnit) && !VALID_UNITS.has(unit.toLowerCase()))) {
-    return { valid: false, error: `Row ${rowIndex + 1}: Invalid unit "${unit}"` };
+  if (!unit) {
+    return { valid: false, error: `Row ${rowIndex + 1}: Missing unit` };
   }
 
   // Validate price
-  if (unitRate <= 0 || unitRate > 10000000) {
-    return { valid: false, error: `Row ${rowIndex + 1}: Invalid unit rate ${unitRate}` };
+  if (avgPrice <= 0 || avgPrice > 10000000) {
+    return { valid: false, error: `Row ${rowIndex + 1}: Invalid avg price ${avgPrice} (must be 0-10,000,000)` };
   }
 
   // Validate country code
   if (!VALID_COUNTRY_CODES.has(countryCode)) {
-    return { valid: false, error: `Row ${rowIndex + 1}: Invalid country code "${countryCode}"` };
+    return { valid: false, error: `Row ${rowIndex + 1}: Invalid country code "${countryCode}" (accepted: ${[...VALID_COUNTRY_CODES].join(', ')})` };
   }
 
   return {
     valid: true,
+    // Insert into benchmark_prices (the main AI pricing reference table)
     data: {
-      item_description: description,
-      unit: normalizedUnit,
-      quantity: isNaN(quantity) ? 1 : quantity,
-      unit_rate: unitRate,
-      total_cost: totalCost,
-      country_code: countryCode,
+      description,
+      unit: normalizedUnit || unit.toLowerCase(),
+      avg_price: avgPrice,
+      min_price: minPrice,
+      max_price: maxPrice,
+      country: countryCode,
       category,
-      approved: true,
-      data_source: 'admin_import',
-      flagged_for_review: false,
+      currency,
+      source,
     },
   };
 }
@@ -191,7 +202,7 @@ export function BenchmarkCsvImporter() {
           const batch = validRows.slice(i, i + batchSize);
           
           const { error } = await supabase
-            .from('benchmark_costs')
+            .from('benchmark_prices')
             .insert(batch as any);
 
           if (error) {
@@ -366,13 +377,16 @@ export function BenchmarkCsvImporter() {
         )}
 
         {/* Expected format */}
-        <div className="p-3 rounded-lg bg-muted/50 text-xs">
-          <p className="font-medium mb-1">Expected CSV columns:</p>
-          <code className="text-muted-foreground">
-            item_description, unit, quantity, unit_rate, total_cost, country_code, category
+        <div className="p-3 rounded-lg bg-muted/50 text-xs space-y-1">
+          <p className="font-medium mb-1">Expected CSV columns (imports into Benchmark Prices database):</p>
+          <code className="text-muted-foreground block">
+            description, unit, avg_price, min_price, max_price, country, category, currency, source
           </code>
-          <p className="text-muted-foreground mt-2">
-            Alternative column names: description, price, total, country
+          <p className="text-muted-foreground">
+            Alternative names: <code>item_description</code>, <code>unit_rate</code> / <code>price</code> (for avg_price), <code>country_code</code>
+          </p>
+          <p className="text-muted-foreground">
+            Valid countries: SE, CZ, DE, AT, PL, GB, US, SK, NO, DK, FI
           </p>
         </div>
       </CardContent>
