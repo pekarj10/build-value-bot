@@ -8,7 +8,7 @@ import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useProject } from '@/hooks/useProject';
 import { Project } from '@/types/project';
-import { Plus, AlertTriangle, FileText, FolderOpen } from 'lucide-react';
+import { Plus, FolderOpen, LayoutList, HelpCircle } from 'lucide-react';
 
 export default function Dashboard() {
   const { getAllProjects } = useProject();
@@ -155,37 +155,41 @@ export default function Dashboard() {
               </Card>
             </Link>
 
-            <Card className="p-5 hover:border-primary/30 transition-base cursor-pointer group">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-lg bg-warning/10 flex items-center justify-center">
-                  <AlertTriangle className="h-5 w-5 text-warning" />
+            <Link to="/projects">
+              <Card className="p-5 hover:border-primary/30 transition-base cursor-pointer group">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-lg bg-secondary/50 flex items-center justify-center">
+                    <LayoutList className="h-5 w-5 text-foreground" />
+                  </div>
+                  <div>
+                    <p className="font-medium group-hover:text-primary transition-base">
+                      View All Projects
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Browse and manage your projects
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="font-medium group-hover:text-primary transition-base">
-                    Review Flagged Items
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {totalIssues} items need attention
-                  </p>
-                </div>
-              </div>
-            </Card>
+              </Card>
+            </Link>
 
-            <Card className="p-5 hover:border-primary/30 transition-base cursor-pointer group">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-lg bg-success/10 flex items-center justify-center">
-                  <FileText className="h-5 w-5 text-success" />
+            <Link to="/help">
+              <Card className="p-5 hover:border-primary/30 transition-base cursor-pointer group">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-lg bg-secondary/50 flex items-center justify-center">
+                    <HelpCircle className="h-5 w-5 text-foreground" />
+                  </div>
+                  <div>
+                    <p className="font-medium group-hover:text-primary transition-base">
+                      Help & Documentation
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Guides, tips, and legal docs
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="font-medium group-hover:text-primary transition-base">
-                    Export Reports
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    Generate summary documents
-                  </p>
-                </div>
-              </div>
-            </Card>
+              </Card>
+            </Link>
           </div>
         </div>
       </div>
