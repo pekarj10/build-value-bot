@@ -4,9 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Link } from "react-router-dom";
 import { 
   BookOpen, MessageCircle, Mail, FileQuestion, Upload, 
-  BarChart3, AlertTriangle, Search, ExternalLink
+  BarChart3, AlertTriangle, Search, ExternalLink, ScrollText, Shield
 } from "lucide-react";
 import { useState } from "react";
 
@@ -199,6 +200,47 @@ const Help = () => {
               </Button>
             </CardContent>
           </Card>
+        </div>
+
+        {/* Legal */}
+        <div>
+          <h2 className="text-lg font-semibold mb-4">Legal</h2>
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card className="hover:bg-muted/50 transition-colors">
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <ScrollText className="h-5 w-5 text-primary" />
+                  <CardTitle>Terms of Service</CardTitle>
+                </div>
+                <CardDescription>Read our terms and conditions for using Unit Rate</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button variant="outline" className="w-full" asChild>
+                  <Link to="/terms">
+                    <ScrollText className="mr-2 h-4 w-4" />
+                    View Terms of Service
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
+            <Card className="hover:bg-muted/50 transition-colors">
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Shield className="h-5 w-5 text-primary" />
+                  <CardTitle>Privacy Policy</CardTitle>
+                </div>
+                <CardDescription>Learn how we collect, use, and protect your data</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button variant="outline" className="w-full" asChild>
+                  <Link to="/privacy">
+                    <Shield className="mr-2 h-4 w-4" />
+                    View Privacy Policy
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
 
