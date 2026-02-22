@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { AppLayout, PageHeader } from '@/components/layout/AppLayout';
 import { ProjectCard } from '@/components/dashboard/ProjectCard';
 import { MetricCard } from '@/components/dashboard/MetricCard';
-import { RecentActivity } from '@/components/dashboard/RecentActivity';
+import { ProjectHealthOverview } from '@/components/dashboard/ProjectHealthOverview';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -134,11 +134,11 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Recent Activity */}
+        {/* Project Health Overview */}
         <div className="space-y-4">
-          <h2 className="text-lg font-semibold">Recent Activity</h2>
+          <h2 className="text-lg font-semibold">Project Health</h2>
           <Card className="p-5">
-            <RecentActivity />
+            <ProjectHealthOverview projects={projects} />
           </Card>
         </div>
 
