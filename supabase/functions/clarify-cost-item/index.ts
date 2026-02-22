@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 // STEP 1: AI generates search terms based on clarification
@@ -97,15 +97,15 @@ interface BenchmarkPrice {
 // Map country names to database country format
 function mapCountryToDb(country: string): string {
   const mapping: Record<string, string> = {
-    'SE': 'SWEDEN',
-    'Sweden': 'SWEDEN',
-    'SWEDEN': 'SWEDEN',
-    'CZ': 'CZECH_REPUBLIC',
-    'Czech Republic': 'CZECH_REPUBLIC',
-    'DE': 'GERMANY',
-    'Germany': 'GERMANY',
+    'SE': 'SE', 'Sweden': 'SE', 'SWEDEN': 'SE',
+    'CZ': 'CZ', 'Czech Republic': 'CZ', 'CZECH_REPUBLIC': 'CZ',
+    'DE': 'DE', 'Germany': 'DE', 'GERMANY': 'DE',
+    'AT': 'AT', 'Austria': 'AT', 'AUSTRIA': 'AT',
+    'PL': 'PL', 'Poland': 'PL', 'POLAND': 'PL',
+    'GB': 'GB', 'United Kingdom': 'GB', 'UNITED_KINGDOM': 'GB',
+    'US': 'US', 'United States': 'US', 'UNITED_STATES': 'US',
   };
-  return mapping[country] || country.toUpperCase().replace(/ /g, '_');
+  return mapping[country] || country.toUpperCase().slice(0, 2);
 }
 
 // Normalize unit for comparison
