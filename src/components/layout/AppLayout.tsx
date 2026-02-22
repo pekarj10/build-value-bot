@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import { useViewMode } from '@/hooks/useViewMode';
 import { SidebarViewModeToggle, UserPreviewBanner } from '@/components/project/ViewModeToggle';
-import logoImg from '@/assets/logo.png';
+import logoImg from '@/assets/logo-new.png';
 import { 
   LayoutDashboard, 
   FolderOpen, 
