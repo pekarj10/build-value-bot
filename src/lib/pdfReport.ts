@@ -7,7 +7,7 @@ import autoTable from 'jspdf-autotable';
 import { CostItem, Project, PROJECT_TYPE_LABELS, ProjectType } from '@/types/project';
 import { formatCurrency } from '@/lib/formatters';
 import { renderChartToDataUrl } from '@/lib/pdfCharts';
-import logoImg from '@/assets/logo.png';
+import logoImg from '@/assets/logo-new.png';
 
 export type ReportFormat = 'executive' | 'full';
 
