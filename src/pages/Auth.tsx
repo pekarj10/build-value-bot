@@ -113,7 +113,7 @@ export default function Auth() {
         setError(error.message);
       }
     } else {
-      setSuccess('Account created successfully! You can now sign in.');
+      setSuccess('Account created! Please check your email (including spam folder) to verify your account before signing in.');
       setSignupEmail('');
       setSignupPassword('');
       setSignupConfirmPassword('');
