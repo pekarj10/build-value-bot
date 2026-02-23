@@ -9,7 +9,9 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Loader2, AlertCircle, TrendingUp, ArrowLeft } from 'lucide-react';
+import { Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import logoImg from '@/assets/logo-new.png';
 import { z } from 'zod';
 
 const emailSchema = z.string().email('Please enter a valid email address');
@@ -154,9 +156,7 @@ export default function Auth() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary mb-4">
-            <TrendingUp className="h-8 w-8 text-primary-foreground" />
-          </div>
+          <img src={logoImg} alt="Unit Rate" className="h-16 w-16 rounded-2xl object-contain mb-4" />
           <h1 className="text-2xl font-bold text-foreground">Unit Rate</h1>
           <p className="text-muted-foreground mt-1">Construction Cost Analysis Platform</p>
         </div>
@@ -401,7 +401,10 @@ export default function Auth() {
         </Card>
 
         <p className="text-center text-sm text-muted-foreground mt-4">
-          By signing up, you agree to our Terms of Service and Privacy Policy
+          By signing up, you agree to our{' '}
+          <Link to="/terms" className="underline hover:text-foreground transition-colors">Terms of Service</Link>
+          {' '}and{' '}
+          <Link to="/privacy" className="underline hover:text-foreground transition-colors">Privacy Policy</Link>
         </p>
       </div>
     </div>
