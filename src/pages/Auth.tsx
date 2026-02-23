@@ -156,7 +156,7 @@ export default function Auth() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <img src={logoImg} alt="Unit Rate" className="h-16 w-16 rounded-2xl object-contain mb-4" />
+          <img src={logoImg} alt="Unit Rate" className="h-16 w-16 rounded-2xl object-contain mb-4 mx-auto" />
           <h1 className="text-2xl font-bold text-foreground">Unit Rate</h1>
           <p className="text-muted-foreground mt-1">Construction Cost Analysis Platform</p>
         </div>
