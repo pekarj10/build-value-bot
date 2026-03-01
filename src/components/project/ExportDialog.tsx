@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { CostItem, Project } from '@/types/project';
 import {
   Dialog,
@@ -11,15 +11,20 @@ import {
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { FileSpreadsheet, FileText, Download, BookOpen, FileBarChart } from 'lucide-react';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { FileSpreadsheet, FileText, Download, BookOpen, FileBarChart, Eye, RotateCcw, ChevronDown, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import { formatCurrency } from '@/lib/formatters';
 import { useViewMode } from '@/hooks/useViewMode';
 import { generatePdfReport, type ReportFormat } from '@/lib/pdfReport';
+import { useExportPreferences } from '@/hooks/useExportPreferences';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 interface ExportDialogProps {
   open: boolean;
@@ -30,42 +35,6 @@ interface ExportDialogProps {
   isAdmin?: boolean;
 }
 
-interface ExportOptions {
-  includeDescription: boolean;
-  includeTrade: boolean;
-  includeQuantity: boolean;
-  includeUnit: boolean;
-  includeOriginalPrice: boolean;
-  includeOriginalTotal: boolean;
-  includeRecommendedPrice: boolean;
-  includeRecommendedTotal: boolean;
-  includeBenchmarks: boolean;
-  includeVariance: boolean;
-  includeStatus: boolean;
-  includeAIComments: boolean;
-  onlyFlagged: boolean;
-  currencyFormat: 'symbol' | 'code' | 'none';
-  pdfFormat: ReportFormat;
-}
-
-const DEFAULT_OPTIONS: ExportOptions = {
-  includeDescription: true,
-  includeTrade: true,
-  includeQuantity: true,
-  includeUnit: true,
-  includeOriginalPrice: true,
-  includeOriginalTotal: true,
-  includeRecommendedPrice: true,
-  includeRecommendedTotal: true,
-  includeBenchmarks: false,
-  includeVariance: true,
-  includeStatus: true,
-  includeAIComments: false,
-  onlyFlagged: false,
-  currencyFormat: 'code',
-  pdfFormat: 'executive',
-};
-
 export function ExportDialog({ 
   open, 
   onClose, 
@@ -75,43 +44,76 @@ export function ExportDialog({
   isAdmin = false,
 }: ExportDialogProps) {
   const { showAsAdmin } = useViewMode();
-  // Effective admin check: actual admin AND not in user preview mode
   const effectiveIsAdmin = isAdmin && showAsAdmin;
   
-  const [options, setOptions] = useState<ExportOptions>(DEFAULT_OPTIONS);
+  const { preferences, updatePreference, resetPreferences } = useExportPreferences();
   const [isExporting, setIsExporting] = useState(false);
-  // Default to PDF for non-admin users (or admin in user preview mode)
-  const [exportType, setExportType] = useState<'excel' | 'pdf'>(effectiveIsAdmin ? 'excel' : 'pdf');
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [isGeneratingPreview, setIsGeneratingPreview] = useState(false);
+  const [showCoverFields, setShowCoverFields] = useState(false);
+  const [showTradeFilter, setShowTradeFilter] = useState(false);
+  
+  const exportType = effectiveIsAdmin ? preferences.exportType : 'pdf';
+
+  // Get unique trades from items
+  const availableTrades = useMemo(() => {
+    const trades = new Set<string>();
+    items.forEach(item => {
+      trades.add(item.trade?.trim() || 'Uncategorized');
+    });
+    return [...trades].sort();
+  }, [items]);
+
+  // Filter items based on selections
+  const filteredItems = useMemo(() => {
+    let filtered = selectedItemIds 
+      ? items.filter(i => selectedItemIds.includes(i.id))
+      : items;
+    
+    if (preferences.onlyFlagged) {
+      filtered = filtered.filter(i => i.status === 'review' || i.status === 'clarification');
+    }
+
+    if (preferences.excludedTrades.length > 0) {
+      filtered = filtered.filter(i => {
+        const trade = i.trade?.trim() || 'Uncategorized';
+        return !preferences.excludedTrades.includes(trade);
+      });
+    }
+
+    return filtered;
+  }, [items, selectedItemIds, preferences.onlyFlagged, preferences.excludedTrades]);
+
+  // Clean up preview URL on unmount
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
 
   const handleExport = async () => {
     setIsExporting(true);
     
     try {
-      // Filter items
-      let exportItems = selectedItemIds 
-        ? items.filter(i => selectedItemIds.includes(i.id))
-        : items;
-      
-      if (options.onlyFlagged) {
-        exportItems = exportItems.filter(i => i.status === 'review' || i.status === 'clarification');
-      }
-
       if (exportType === 'excel') {
-        await exportToExcel(exportItems, project, options);
+        await exportToExcel(filteredItems, project, preferences);
       } else {
-        await generatePdfReport(exportItems, project, {
-          format: options.pdfFormat,
-          includeDescription: options.includeDescription,
-          includeTrade: options.includeTrade,
-          includeQuantity: options.includeQuantity,
-          includeUnit: options.includeUnit,
-          includeOriginalPrice: options.includeOriginalPrice,
-          includeOriginalTotal: options.includeOriginalTotal,
-          includeRecommendedPrice: options.includeRecommendedPrice,
-          includeRecommendedTotal: options.includeRecommendedTotal,
-          includeVariance: options.includeVariance,
-          includeStatus: options.includeStatus,
-          onlyFlagged: options.onlyFlagged,
+        await generatePdfReport(filteredItems, project, {
+          format: preferences.pdfFormat,
+          includeDescription: preferences.includeDescription,
+          includeTrade: preferences.includeTrade,
+          includeQuantity: preferences.includeQuantity,
+          includeUnit: preferences.includeUnit,
+          includeOriginalPrice: preferences.includeOriginalPrice,
+          includeOriginalTotal: preferences.includeOriginalTotal,
+          includeRecommendedPrice: preferences.includeRecommendedPrice,
+          includeRecommendedTotal: preferences.includeRecommendedTotal,
+          includeVariance: preferences.includeVariance,
+          includeStatus: preferences.includeStatus,
+          onlyFlagged: false, // already filtered
+          clientName: preferences.clientName || undefined,
+          contractorName: preferences.contractorName || undefined,
+          coverNotes: preferences.coverNotes || undefined,
         });
         toast.success('PDF report exported successfully');
       }
@@ -125,9 +127,90 @@ export function ExportDialog({
     }
   };
 
-  const updateOption = (key: keyof ExportOptions, value: boolean | string) => {
-    setOptions(prev => ({ ...prev, [key]: value }));
+  const handlePreview = async () => {
+    setIsGeneratingPreview(true);
+    try {
+      const blob = await generatePdfReport(filteredItems, project, {
+        format: preferences.pdfFormat,
+        includeDescription: preferences.includeDescription,
+        includeTrade: preferences.includeTrade,
+        includeQuantity: preferences.includeQuantity,
+        includeUnit: preferences.includeUnit,
+        includeOriginalPrice: preferences.includeOriginalPrice,
+        includeOriginalTotal: preferences.includeOriginalTotal,
+        includeRecommendedPrice: preferences.includeRecommendedPrice,
+        includeRecommendedTotal: preferences.includeRecommendedTotal,
+        includeVariance: preferences.includeVariance,
+        includeStatus: preferences.includeStatus,
+        onlyFlagged: false,
+        clientName: preferences.clientName || undefined,
+        contractorName: preferences.contractorName || undefined,
+        coverNotes: preferences.coverNotes || undefined,
+      }, true); // preview mode - returns blob instead of downloading
+
+      if (blob) {
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
+        const url = URL.createObjectURL(blob);
+        setPreviewUrl(url);
+      }
+    } catch (error) {
+      console.error('Preview failed:', error);
+      toast.error('Failed to generate preview');
+    } finally {
+      setIsGeneratingPreview(false);
+    }
   };
+
+  const toggleTrade = (trade: string) => {
+    const current = preferences.excludedTrades;
+    if (current.includes(trade)) {
+      updatePreference('excludedTrades', current.filter(t => t !== trade));
+    } else {
+      updatePreference('excludedTrades', [...current, trade]);
+    }
+  };
+
+  // If preview is showing, render preview dialog
+  if (previewUrl) {
+    return (
+      <Dialog open={open} onOpenChange={(isOpen) => {
+        if (!isOpen) {
+          setPreviewUrl(null);
+          onClose();
+        }
+      }}>
+        <DialogContent className="sm:max-w-[900px] h-[85vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Eye className="h-5 w-5" />
+              PDF Preview
+            </DialogTitle>
+            <DialogDescription>
+              Preview of your {preferences.pdfFormat === 'executive' ? 'Executive Summary' : 'Full Report'}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="flex-1 min-h-0">
+            <iframe
+              src={previewUrl}
+              className="w-full h-[calc(85vh-160px)] border rounded-lg"
+              title="PDF Preview"
+            />
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setPreviewUrl(null)}>
+              Back to Settings
+            </Button>
+            <Button onClick={handleExport} disabled={isExporting}>
+              <Download className="h-4 w-4 mr-2" />
+              {isExporting ? 'Downloading...' : 'Download PDF'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
@@ -138,13 +221,12 @@ export function ExportDialog({
             Export Report
           </DialogTitle>
           <DialogDescription>
-            Generate a professional report of your cost analysis
+            Generate a professional report of your cost analysis ({filteredItems.length} items)
           </DialogDescription>
         </DialogHeader>
 
-        {/* Only show tabs for effective admin, regular users (or admin in preview) only get PDF */}
         {effectiveIsAdmin ? (
-          <Tabs value={exportType} onValueChange={(v) => setExportType(v as 'excel' | 'pdf')}>
+          <Tabs value={exportType} onValueChange={(v) => updatePreference('exportType', v as 'excel' | 'pdf')}>
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="excel" className="gap-2">
                 <FileSpreadsheet className="h-4 w-4" />
@@ -163,9 +245,7 @@ export function ExportDialog({
             </TabsContent>
 
             <TabsContent value="pdf" className="space-y-4 mt-4">
-              <div className="text-sm text-muted-foreground">
-                Generate a professional PDF report suitable for client presentations with branded headers and formatted tables.
-              </div>
+              <PdfFormatSelector value={preferences.pdfFormat} onChange={(v) => updatePreference('pdfFormat', v)} />
             </TabsContent>
           </Tabs>
         ) : (
@@ -173,199 +253,191 @@ export function ExportDialog({
             <div className="text-sm text-muted-foreground">
               Generate a professional PDF report suitable for client presentations.
             </div>
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Report Format</Label>
-              <RadioGroup
-                value={options.pdfFormat}
-                onValueChange={(v) => updateOption('pdfFormat', v)}
-                className="grid grid-cols-2 gap-3"
-              >
-                <Label
-                  htmlFor="fmt-exec"
-                  className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${options.pdfFormat === 'executive' ? 'border-primary bg-primary/5' : 'border-border'}`}
-                >
-                  <RadioGroupItem value="executive" id="fmt-exec" className="mt-0.5" />
-                  <div>
-                    <div className="flex items-center gap-1.5 font-medium text-sm">
-                      <BookOpen className="h-3.5 w-3.5" />
-                      Executive Summary
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">2-3 pages with KPIs, charts, and risk matrix</p>
-                  </div>
-                </Label>
-                <Label
-                  htmlFor="fmt-full"
-                  className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${options.pdfFormat === 'full' ? 'border-primary bg-primary/5' : 'border-border'}`}
-                >
-                  <RadioGroupItem value="full" id="fmt-full" className="mt-0.5" />
-                  <div>
-                    <div className="flex items-center gap-1.5 font-medium text-sm">
-                      <FileBarChart className="h-3.5 w-3.5" />
-                      Full Report
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">Complete with detailed tables and analysis</p>
-                  </div>
-                </Label>
-              </RadioGroup>
-            </div>
+            <PdfFormatSelector value={preferences.pdfFormat} onChange={(v) => updatePreference('pdfFormat', v)} />
           </div>
         )}
 
-        <div className="space-y-4 py-2 max-h-[300px] overflow-y-auto">
-          {/* Columns to Include */}
-          <div className="space-y-3">
-            <Label className="text-sm font-medium">Columns to Include</Label>
-            <div className="grid grid-cols-2 gap-2.5">
-              <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="description" 
-                  checked={options.includeDescription}
-                  onCheckedChange={(c) => updateOption('includeDescription', !!c)}
-                />
-                <Label htmlFor="description" className="text-sm">Description</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="trade" 
-                  checked={options.includeTrade}
-                  onCheckedChange={(c) => updateOption('includeTrade', !!c)}
-                />
-                <Label htmlFor="trade" className="text-sm">Trade</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="quantity" 
-                  checked={options.includeQuantity}
-                  onCheckedChange={(c) => updateOption('includeQuantity', !!c)}
-                />
-                <Label htmlFor="quantity" className="text-sm">Qty & Unit</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="originalPrice" 
-                  checked={options.includeOriginalPrice}
-                  onCheckedChange={(c) => updateOption('includeOriginalPrice', !!c)}
-                />
-                <Label htmlFor="originalPrice" className="text-sm">Original Price</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="originalTotal" 
-                  checked={options.includeOriginalTotal}
-                  onCheckedChange={(c) => updateOption('includeOriginalTotal', !!c)}
-                />
-                <Label htmlFor="originalTotal" className="text-sm">Original Total</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="recommendedPrice" 
-                  checked={options.includeRecommendedPrice}
-                  onCheckedChange={(c) => updateOption('includeRecommendedPrice', !!c)}
-                />
-                <Label htmlFor="recommendedPrice" className="text-sm">Rec. Price</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="recommendedTotal" 
-                  checked={options.includeRecommendedTotal}
-                  onCheckedChange={(c) => updateOption('includeRecommendedTotal', !!c)}
-                />
-                <Label htmlFor="recommendedTotal" className="text-sm">Rec. Total</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="variance" 
-                  checked={options.includeVariance}
-                  onCheckedChange={(c) => updateOption('includeVariance', !!c)}
-                />
-                <Label htmlFor="variance" className="text-sm">Variance %</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="status" 
-                  checked={options.includeStatus}
-                  onCheckedChange={(c) => updateOption('includeStatus', !!c)}
-                />
-                <Label htmlFor="status" className="text-sm">Status</Label>
-              </div>
-              {exportType === 'excel' && (
-                <>
-                  <div className="flex items-center space-x-2">
-                    <Checkbox 
-                      id="benchmarks" 
-                      checked={options.includeBenchmarks}
-                      onCheckedChange={(c) => updateOption('includeBenchmarks', !!c)}
-                    />
-                    <Label htmlFor="benchmarks" className="text-sm">Benchmarks</Label>
+        <ScrollArea className="max-h-[340px]">
+          <div className="space-y-4 py-2 pr-3">
+            {/* Cover Page Fields */}
+            {exportType === 'pdf' && (
+              <Collapsible open={showCoverFields} onOpenChange={setShowCoverFields}>
+                <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium w-full hover:text-primary transition-colors">
+                  {showCoverFields ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                  Cover Page Details
+                </CollapsibleTrigger>
+                <CollapsibleContent className="space-y-3 mt-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Client Name</Label>
+                      <Input
+                        placeholder="e.g. Skanska AB"
+                        value={preferences.clientName}
+                        onChange={(e) => updatePreference('clientName', e.target.value)}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Contractor Name</Label>
+                      <Input
+                        placeholder="e.g. NCC Group"
+                        value={preferences.contractorName}
+                        onChange={(e) => updatePreference('contractorName', e.target.value)}
+                        className="h-8 text-sm"
+                      />
+                    </div>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <Checkbox 
-                      id="aiComments" 
-                      checked={options.includeAIComments}
-                      onCheckedChange={(c) => updateOption('includeAIComments', !!c)}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Report Notes</Label>
+                    <Textarea
+                      placeholder="Additional notes for the cover page..."
+                      value={preferences.coverNotes}
+                      onChange={(e) => updatePreference('coverNotes', e.target.value)}
+                      className="text-sm min-h-[60px]"
+                      rows={2}
                     />
-                    <Label htmlFor="aiComments" className="text-sm">AI Comments</Label>
                   </div>
-                </>
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+
+            {/* Columns to Include */}
+            <div className="space-y-3">
+              <Label className="text-sm font-medium">Columns to Include</Label>
+              <div className="grid grid-cols-2 gap-2.5">
+                <ColumnCheckbox label="Description" checked={preferences.includeDescription} onChange={(c) => updatePreference('includeDescription', c)} />
+                <ColumnCheckbox label="Trade" checked={preferences.includeTrade} onChange={(c) => updatePreference('includeTrade', c)} />
+                <ColumnCheckbox label="Qty & Unit" checked={preferences.includeQuantity} onChange={(c) => updatePreference('includeQuantity', c)} />
+                <ColumnCheckbox label="Original Price" checked={preferences.includeOriginalPrice} onChange={(c) => updatePreference('includeOriginalPrice', c)} />
+                <ColumnCheckbox label="Original Total" checked={preferences.includeOriginalTotal} onChange={(c) => updatePreference('includeOriginalTotal', c)} />
+                <ColumnCheckbox label="Rec. Price" checked={preferences.includeRecommendedPrice} onChange={(c) => updatePreference('includeRecommendedPrice', c)} />
+                <ColumnCheckbox label="Rec. Total" checked={preferences.includeRecommendedTotal} onChange={(c) => updatePreference('includeRecommendedTotal', c)} />
+                <ColumnCheckbox label="Variance %" checked={preferences.includeVariance} onChange={(c) => updatePreference('includeVariance', c)} />
+                <ColumnCheckbox label="Status" checked={preferences.includeStatus} onChange={(c) => updatePreference('includeStatus', c)} />
+                {exportType === 'excel' && (
+                  <>
+                    <ColumnCheckbox label="Benchmarks" checked={preferences.includeBenchmarks} onChange={(c) => updatePreference('includeBenchmarks', c)} />
+                    <ColumnCheckbox label="AI Comments" checked={preferences.includeAIComments} onChange={(c) => updatePreference('includeAIComments', c)} />
+                  </>
+                )}
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Trade Filter */}
+            <Collapsible open={showTradeFilter} onOpenChange={setShowTradeFilter}>
+              <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium w-full hover:text-primary transition-colors">
+                {showTradeFilter ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                Filter by Trade
+                {preferences.excludedTrades.length > 0 && (
+                  <span className="text-xs text-muted-foreground ml-auto">
+                    {availableTrades.length - preferences.excludedTrades.length}/{availableTrades.length} selected
+                  </span>
+                )}
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-3 space-y-2">
+                <div className="flex gap-2 mb-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => updatePreference('excludedTrades', [])}
+                  >
+                    Select All
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => updatePreference('excludedTrades', [...availableTrades])}
+                  >
+                    Deselect All
+                  </Button>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5 max-h-[120px] overflow-y-auto">
+                  {availableTrades.map(trade => (
+                    <div key={trade} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`trade-${trade}`}
+                        checked={!preferences.excludedTrades.includes(trade)}
+                        onCheckedChange={() => toggleTrade(trade)}
+                      />
+                      <Label htmlFor={`trade-${trade}`} className="text-xs truncate cursor-pointer">
+                        {trade}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+
+            <Separator />
+
+            {/* Filter Options */}
+            <div className="space-y-3">
+              <Label className="text-sm font-medium">Filter Options</Label>
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="onlyFlagged" 
+                  checked={preferences.onlyFlagged}
+                  onCheckedChange={(c) => updatePreference('onlyFlagged', !!c)}
+                />
+                <Label htmlFor="onlyFlagged" className="text-sm">
+                  Include only flagged items (Review & Clarification)
+                </Label>
+              </div>
+              {selectedItemIds && selectedItemIds.length > 0 && (
+                <p className="text-sm text-muted-foreground">
+                  {selectedItemIds.length} items selected for export
+                </p>
               )}
             </div>
-          </div>
 
-          <Separator />
-
-          {/* Filter Options */}
-          <div className="space-y-3">
-            <Label className="text-sm font-medium">Filter Options</Label>
-            <div className="flex items-center space-x-2">
-              <Checkbox 
-                id="onlyFlagged" 
-                checked={options.onlyFlagged}
-                onCheckedChange={(c) => updateOption('onlyFlagged', !!c)}
-              />
-              <Label htmlFor="onlyFlagged" className="text-sm">
-                Include only flagged items (Review & Clarification)
-              </Label>
-            </div>
-            {selectedItemIds && selectedItemIds.length > 0 && (
-              <p className="text-sm text-muted-foreground">
-                {selectedItemIds.length} items selected for export
-              </p>
+            {exportType === 'excel' && (
+              <>
+                <Separator />
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium">Currency Format</Label>
+                  <RadioGroup 
+                    value={preferences.currencyFormat} 
+                    onValueChange={(v) => updatePreference('currencyFormat', v as 'symbol' | 'code' | 'none')}
+                    className="flex gap-4"
+                  >
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="code" id="code" />
+                      <Label htmlFor="code" className="text-sm">Code ({project.currency})</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="symbol" id="symbol" />
+                      <Label htmlFor="symbol" className="text-sm">Symbol</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="none" id="none" />
+                      <Label htmlFor="none" className="text-sm">Numbers Only</Label>
+                    </div>
+                  </RadioGroup>
+                </div>
+              </>
             )}
           </div>
+        </ScrollArea>
 
-          {exportType === 'excel' && (
-            <>
-              <Separator />
-              <div className="space-y-3">
-                <Label className="text-sm font-medium">Currency Format</Label>
-                <RadioGroup 
-                  value={options.currencyFormat} 
-                  onValueChange={(v) => updateOption('currencyFormat', v)}
-                  className="flex gap-4"
-                >
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="code" id="code" />
-                    <Label htmlFor="code" className="text-sm">Code ({project.currency})</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="symbol" id="symbol" />
-                    <Label htmlFor="symbol" className="text-sm">Symbol</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="none" id="none" />
-                    <Label htmlFor="none" className="text-sm">Numbers Only</Label>
-                  </div>
-                </RadioGroup>
-              </div>
-            </>
+        <DialogFooter className="gap-2">
+          <Button variant="ghost" size="sm" onClick={resetPreferences} className="mr-auto">
+            <RotateCcw className="h-3.5 w-3.5 mr-1" />
+            Reset
+          </Button>
+          {exportType === 'pdf' && (
+            <Button variant="outline" onClick={handlePreview} disabled={isGeneratingPreview || filteredItems.length === 0}>
+              <Eye className="h-4 w-4 mr-2" />
+              {isGeneratingPreview ? 'Generating...' : 'Preview'}
+            </Button>
           )}
-        </div>
-
-        <DialogFooter>
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={handleExport} disabled={isExporting}>
+          <Button onClick={handleExport} disabled={isExporting || filteredItems.length === 0}>
             {exportType === 'excel' ? (
               <FileSpreadsheet className="h-4 w-4 mr-2" />
             ) : (
@@ -379,40 +451,83 @@ export function ExportDialog({
   );
 }
 
+// ─── Sub-components ──────────────────────────────────────────────
+
+function ColumnCheckbox({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+  const id = `col-${label.replace(/\s/g, '-').toLowerCase()}`;
+  return (
+    <div className="flex items-center space-x-2">
+      <Checkbox id={id} checked={checked} onCheckedChange={(c) => onChange(!!c)} />
+      <Label htmlFor={id} className="text-sm">{label}</Label>
+    </div>
+  );
+}
+
+function PdfFormatSelector({ value, onChange }: { value: ReportFormat; onChange: (v: ReportFormat) => void }) {
+  return (
+    <div className="space-y-2">
+      <Label className="text-sm font-medium">Report Format</Label>
+      <RadioGroup
+        value={value}
+        onValueChange={(v) => onChange(v as ReportFormat)}
+        className="grid grid-cols-2 gap-3"
+      >
+        <Label
+          htmlFor="fmt-exec"
+          className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${value === 'executive' ? 'border-primary bg-primary/5' : 'border-border'}`}
+        >
+          <RadioGroupItem value="executive" id="fmt-exec" className="mt-0.5" />
+          <div>
+            <div className="flex items-center gap-1.5 font-medium text-sm">
+              <BookOpen className="h-3.5 w-3.5" />
+              Executive Summary
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">2-3 pages with KPIs, charts, and risk matrix</p>
+          </div>
+        </Label>
+        <Label
+          htmlFor="fmt-full"
+          className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${value === 'full' ? 'border-primary bg-primary/5' : 'border-border'}`}
+        >
+          <RadioGroupItem value="full" id="fmt-full" className="mt-0.5" />
+          <div>
+            <div className="flex items-center gap-1.5 font-medium text-sm">
+              <FileBarChart className="h-3.5 w-3.5" />
+              Full Report
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Complete with detailed tables and analysis</p>
+          </div>
+        </Label>
+      </RadioGroup>
+    </div>
+  );
+}
+
 // ==================== EXCEL EXPORT ====================
 
-async function exportToExcel(items: CostItem[], project: Project, options: ExportOptions) {
+async function exportToExcel(items: CostItem[], project: Project, options: any) {
   const wb = XLSX.utils.book_new();
 
-  // Executive Summary Sheet
   const summaryData = createSummarySheet(project, items);
   const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
   summarySheet['!cols'] = [{ wch: 30 }, { wch: 45 }];
   XLSX.utils.book_append_sheet(wb, summarySheet, 'Executive Summary');
 
-  // Cost Items Sheet
   const costItemsData = createCostItemsSheet(items, project.currency, options);
   const costItemsSheet = XLSX.utils.aoa_to_sheet(costItemsData);
-  
-  // Set column widths dynamically
   const colWidths = calculateColumnWidths(options, project.currency);
   costItemsSheet['!cols'] = colWidths;
-  
-  // Freeze header row and add auto-filter
-  costItemsSheet['!freeze'] = { xSplit: 0, ySplit: 4 }; // After metadata rows
-  const headerRowIndex = 3; // 0-indexed, row 4
+  costItemsSheet['!freeze'] = { xSplit: 0, ySplit: 4 };
+  const headerRowIndex = 3;
   const lastCol = String.fromCharCode(64 + colWidths.length);
   costItemsSheet['!autofilter'] = { ref: `A${headerRowIndex + 1}:${lastCol}${headerRowIndex + 1 + items.length}` };
-  
   XLSX.utils.book_append_sheet(wb, costItemsSheet, 'Cost Items');
 
-  // Variance Analysis Sheet
   const varianceData = createVarianceSheet(items, project.currency);
   const varianceSheet = XLSX.utils.aoa_to_sheet(varianceData);
   varianceSheet['!cols'] = [{ wch: 45 }, { wch: 18 }, { wch: 14 }, { wch: 18 }];
   XLSX.utils.book_append_sheet(wb, varianceSheet, 'Variance Analysis');
 
-  // Generate filename and download
   const timestamp = new Date().toISOString().split('T')[0];
   const filename = `UnitRate_${project.name.replace(/[^a-zA-Z0-9]/g, '_')}_${timestamp}.xlsx`;
   XLSX.writeFile(wb, filename);
@@ -420,7 +535,7 @@ async function exportToExcel(items: CostItem[], project: Project, options: Expor
   toast.success('Excel report exported successfully');
 }
 
-function calculateColumnWidths(options: ExportOptions, currency: string): { wch: number }[] {
+function calculateColumnWidths(options: any, currency: string): { wch: number }[] {
   const widths: { wch: number }[] = [];
   if (options.includeDescription) widths.push({ wch: 45 });
   if (options.includeTrade) widths.push({ wch: 18 });
@@ -491,15 +606,12 @@ function createSummarySheet(project: Project, items: CostItem[]): (string | numb
   ];
 }
 
-function createCostItemsSheet(items: CostItem[], currency: string, options: ExportOptions): (string | number)[][] {
+function createCostItemsSheet(items: CostItem[], currency: string, options: any): (string | number)[][] {
   const rows: (string | number)[][] = [];
-  
-  // Add project metadata header
   rows.push(['COST ITEMS DETAIL', '']);
   rows.push(['Generated:', new Date().toLocaleDateString('en-GB')]);
   rows.push(['']);
   
-  // Build header row
   const headers: string[] = [];
   if (options.includeDescription) headers.push('Description');
   if (options.includeTrade) headers.push('Trade');
@@ -515,10 +627,8 @@ function createCostItemsSheet(items: CostItem[], currency: string, options: Expo
   if (options.includeVariance) headers.push('Variance %');
   if (options.includeStatus) headers.push('Status');
   if (options.includeAIComments) headers.push('AI Comment');
-
   rows.push(headers);
 
-  // Add data rows
   for (const item of items) {
     const row: (string | number)[] = [];
     const recPrice = item.userOverridePrice || item.recommendedUnitPrice;
@@ -546,41 +656,29 @@ function createCostItemsSheet(items: CostItem[], currency: string, options: Expo
     }
     if (options.includeStatus) row.push(item.status.toUpperCase());
     if (options.includeAIComments) row.push(item.aiComment || '');
-
     rows.push(row);
   }
 
-  // Add totals row
   const totalsRow: (string | number)[] = [];
-  let colIdx = 0;
-  
-  if (options.includeDescription) { totalsRow.push('TOTALS'); colIdx++; }
-  if (options.includeTrade) { totalsRow.push(''); colIdx++; }
-  if (options.includeQuantity) { 
-    totalsRow.push(items.reduce((sum, i) => sum + i.quantity, 0)); 
-    colIdx++; 
+  if (options.includeDescription) totalsRow.push('TOTALS');
+  if (options.includeTrade) totalsRow.push('');
+  if (options.includeQuantity) totalsRow.push(items.reduce((sum, i) => sum + i.quantity, 0));
+  if (options.includeUnit) totalsRow.push('');
+  if (options.includeOriginalPrice) totalsRow.push('');
+  if (options.includeOriginalTotal) {
+    totalsRow.push(items.reduce((sum, i) => sum + (i.originalUnitPrice ? i.originalUnitPrice * i.quantity : 0), 0));
   }
-  if (options.includeUnit) { totalsRow.push(''); colIdx++; }
-  if (options.includeOriginalPrice) { totalsRow.push(''); colIdx++; }
-  if (options.includeOriginalTotal) { 
-    const total = items.reduce((sum, i) => sum + (i.originalUnitPrice ? i.originalUnitPrice * i.quantity : 0), 0);
-    totalsRow.push(total); 
-    colIdx++; 
-  }
-  if (options.includeRecommendedPrice) { totalsRow.push(''); colIdx++; }
-  if (options.includeRecommendedTotal) { 
-    const total = items.reduce((sum, i) => {
+  if (options.includeRecommendedPrice) totalsRow.push('');
+  if (options.includeRecommendedTotal) {
+    totalsRow.push(items.reduce((sum, i) => {
       const price = i.userOverridePrice || i.recommendedUnitPrice;
       return sum + (price ? price * i.quantity : 0);
-    }, 0);
-    totalsRow.push(total); 
-    colIdx++; 
+    }, 0));
   }
-  if (options.includeBenchmarks) { totalsRow.push('', '', ''); colIdx += 3; }
-  if (options.includeVariance) { totalsRow.push(''); colIdx++; }
-  if (options.includeStatus) { totalsRow.push(''); colIdx++; }
-  if (options.includeAIComments) { totalsRow.push(''); colIdx++; }
-
+  if (options.includeBenchmarks) totalsRow.push('', '', '');
+  if (options.includeVariance) totalsRow.push('');
+  if (options.includeStatus) totalsRow.push('');
+  if (options.includeAIComments) totalsRow.push('');
   rows.push(totalsRow);
 
   return rows;
