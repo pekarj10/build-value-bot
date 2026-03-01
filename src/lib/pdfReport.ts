@@ -24,6 +24,10 @@ export interface PdfExportOptions {
   includeVariance: boolean;
   includeStatus: boolean;
   onlyFlagged: boolean;
+  // Cover page fields
+  clientName?: string;
+  contractorName?: string;
+  coverNotes?: string;
 }
 
 // ─── Colors ──────────────────────────────────────────────────────
@@ -161,7 +165,8 @@ export async function generatePdfReport(
   items: CostItem[],
   project: Project,
   options: PdfExportOptions,
-) {
+  previewMode: boolean = false,
+): Promise<Blob | void> {
   const doc = new jsPDF('portrait', 'mm', 'a4');
   const pw = doc.internal.pageSize.getWidth();  // 210
   const ph = doc.internal.pageSize.getHeight(); // 297
@@ -306,10 +311,22 @@ export async function generatePdfReport(
   const dateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   infoLabel(M + colW + 11, y + 7, 'Report Date', dateStr);
   infoLabel(M + colW + 11, y + 19, 'Report Type', options.format === 'executive' ? 'Executive Summary' : 'Full Detailed Report');
-  infoLabel(M + colW + 6 + colW / 2, y + 7, 'Status', `${m.okCount} OK / ${m.reviewCount + m.clarificationCount} Flagged`);
-  infoLabel(M + colW + 6 + colW / 2, y + 19, 'Project ID', project.id.substring(0, 8) + '...');
+  infoLabel(M + colW + 6 + colW / 2, y + 7, options.clientName ? 'Client' : 'Status', options.clientName || `${m.okCount} OK / ${m.reviewCount + m.clarificationCount} Flagged`);
+  infoLabel(M + colW + 6 + colW / 2, y + 19, options.contractorName ? 'Contractor' : 'Project ID', options.contractorName || project.id.substring(0, 8) + '...');
 
   y += 34;
+
+  // Cover page notes
+  if (options.coverNotes) {
+    doc.setFillColor(...C.offWhite);
+    doc.roundedRect(M, y, contentWidth, 16, 2, 2, 'F');
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(8);
+    doc.setTextColor(...C.textMuted);
+    const noteLines = doc.splitTextToSize(options.coverNotes, contentWidth - 10);
+    doc.text(noteLines.slice(0, 3), M + 5, y + 6);
+    y += 20;
+  }
 
   // ── KPI Cards ──
   y = sectionTitle(y, 'Key Metrics');
@@ -615,11 +632,44 @@ export async function generatePdfReport(
   addFooter();
 
   // ════════════════════════════════════════════════════════════════
-  // FULL REPORT ONLY: Detailed tables + Analysis
+  // FULL REPORT ONLY: Table of Contents + Detailed tables + Analysis
   // ════════════════════════════════════════════════════════════════
   if (options.format === 'full') {
-    // ── Cost Items Detail Table ──
+    // ── Table of Contents ──
     y = addNewPage();
+    y = sectionTitle(y, 'Table of Contents');
+
+    const tocEntries = [
+      { label: 'Executive Summary & Key Metrics', page: '1' },
+      { label: 'Cost Distribution & Risk Matrix', page: '2' },
+      { label: 'Table of Contents', page: '3' },
+      { label: 'Detailed Cost Items', page: '3' },
+      { label: 'Analysis & Recommendations', page: '4+' },
+    ];
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    for (const entry of tocEntries) {
+      doc.setTextColor(...C.text);
+      doc.text(entry.label, M + 6, y);
+      doc.setTextColor(...C.textMuted);
+      // Dotted line
+      const labelWidth = doc.getTextWidth(entry.label);
+      const pageWidth = doc.getTextWidth(entry.page);
+      const dotsStart = M + 6 + labelWidth + 2;
+      const dotsEnd = pw - M - pageWidth - 2;
+      let dx = dotsStart;
+      while (dx < dotsEnd) {
+        doc.text('.', dx, y);
+        dx += 2;
+      }
+      doc.text(entry.page, pw - M, y, { align: 'right' });
+      y += 6;
+    }
+
+    y += 6;
+
+    // ── Cost Items Detail Table ──
     y = sectionTitle(y, 'Detailed Cost Items');
 
     const colIndex: Record<string, number> = {};
@@ -918,6 +968,11 @@ export async function generatePdfReport(
     author: 'Unit Rate',
     creator: 'Unit Rate Cost Analysis Platform',
   });
+
+  // Preview mode: return blob instead of downloading
+  if (previewMode) {
+    return doc.output('blob');
+  }
 
   // Download
   const timestamp = new Date().toISOString().split('T')[0];
