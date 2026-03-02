@@ -421,10 +421,12 @@ export async function generatePdfReport(
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
     doc.setTextColor(...fg);
-    doc.text(`${label}: ${count} items`, x + 4, iy + 6);
+    const indLabel = doc.splitTextToSize(`${label}: ${count} items`, indW - 8) as string[];
+    doc.text(indLabel[0], x + 4, iy + 6);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.5);
-    doc.text(desc, x + 4, iy + 12);
+    const indDesc = doc.splitTextToSize(desc, indW - 8) as string[];
+    doc.text(indDesc[0], x + 4, iy + 12);
   };
 
   drawIndicator(M, y, C.redBg, C.red, 'HIGH RISK', overrunItems.length, '>20% over benchmark');
@@ -446,9 +448,14 @@ export async function generatePdfReport(
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
   doc.setTextColor(...C.text);
+  const bulletMaxW = contentWidth - 8;
   for (const bullet of bullets) {
-    doc.text(`•  ${bullet}`, M + 3, y);
-    y += 5;
+    const wrapped = doc.splitTextToSize(`•  ${bullet}`, bulletMaxW) as string[];
+    for (const line of wrapped) {
+      doc.text(line, M + 3, y);
+      y += 4.5;
+    }
+    y += 1;
   }
 
   addFooter();
@@ -576,11 +583,13 @@ export async function generatePdfReport(
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
     doc.setTextColor(...fg);
-    doc.text(label, x + 4, iy + 7);
+    const labelLines = doc.splitTextToSize(label, rmW - 8) as string[];
+    doc.text(labelLines[0], x + 4, iy + 7);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.5);
     doc.setTextColor(...C.darkGray);
-    doc.text(desc, x + 4, iy + 13);
+    const descLines = doc.splitTextToSize(desc, rmW - 8) as string[];
+    doc.text(descLines[0], x + 4, iy + 13);
   };
 
   // Axis labels
