@@ -431,7 +431,7 @@ export async function generatePdfReport(
 
   drawIndicator(M, y, C.redBg, C.red, 'HIGH RISK', overrunItems.length, '>20% over benchmark');
   drawIndicator(M + indW + 4, y, C.orangeBg, C.orange, 'MODERATE', moderateItems.length, '+5% to +20% variance');
-  drawIndicator(M + (indW + 4) * 2, y, C.greenBg, C.green, 'ON BUDGET', withinBudget.length, '≤5% variance');
+  drawIndicator(M + (indW + 4) * 2, y, C.greenBg, C.green, 'ON BUDGET', withinBudget.length, '<5% variance');
 
   y += 22;
 
@@ -716,12 +716,12 @@ export async function generatePdfReport(
     if (options.includeVariance) pushCol('var', 'Var %');
     if (options.includeStatus) pushCol('status', 'Status');
 
-    const formatStatus = (s: string) => {
+  const formatStatus = (s: string) => {
       const sl = s.toLowerCase();
-      if (sl === 'ok') return '✓ OK';
-      if (sl === 'review' || sl === 'underpriced') return '⚠ Review';
-      if (sl === 'clarification') return '❓ Clarify';
-      if (sl === 'actual') return '● Actual';
+      if (sl === 'ok') return 'OK';
+      if (sl === 'review' || sl === 'underpriced') return 'Review';
+      if (sl === 'clarification') return 'Clarify';
+      if (sl === 'actual') return 'Actual';
       return s;
     };
 
@@ -738,7 +738,7 @@ export async function generatePdfReport(
 
     for (const [trade, groupItems] of groups.entries()) {
       const groupRow = new Array(headers.length).fill('');
-      groupRow[0] = `▸ ${trade}`;
+      groupRow[0] = trade;
       tableBody.push(groupRow);
       rowTypes.push('group');
 
@@ -797,6 +797,8 @@ export async function generatePdfReport(
       styles: { fontSize: 6.5, cellPadding: 1.8, valign: 'middle', lineWidth: 0.1, lineColor: C.border },
       headStyles: { fillColor: C.navy, textColor: C.white, fontStyle: 'bold', fontSize: 7 },
       alternateRowStyles: { fillColor: C.offWhite },
+      // Prevent orphaned group headers: keep group row together with at least 1 item row
+      rowPageBreak: 'avoid',
       columnStyles: {
         ...(options.includeDescription ? { [colIndex.desc]: { cellWidth: 58 } } : {}),
         ...(options.includeTrade ? { [colIndex.trade]: { cellWidth: 22 } } : {}),
@@ -860,6 +862,21 @@ export async function generatePdfReport(
             } else if (s.includes('CLARIFY')) {
               data.cell.styles.fillColor = C.blueBg;
               data.cell.styles.textColor = C.blue;
+            }
+          }
+        }
+      },
+      willDrawCell: (data) => {
+        // Prevent orphaned group headers at bottom of page
+        if (data.section === 'body') {
+          const t = rowTypes[data.row.index];
+          if (t === 'group' && data.column.index === 0) {
+            const remainingPageSpace = ph - 18 - data.cell.y; // 18 = footer space
+            if (remainingPageSpace < 20) {
+              // Not enough room for header + at least one item row; force page break
+              doc.addPage();
+              addHeader();
+              data.cell.y = 32;
             }
           }
         }
