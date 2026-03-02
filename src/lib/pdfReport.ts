@@ -288,11 +288,16 @@ export async function generatePdfReport(
 
   // Two-column project info
   const colW = contentWidth / 2 - 3;
+  const infoBoxH = 28;
   doc.setFillColor(...C.lightGray);
-  doc.roundedRect(M, y, colW, 28, 2, 2, 'F');
-  doc.roundedRect(M + colW + 6, y, colW, 28, 2, 2, 'F');
+  doc.roundedRect(M, y, colW, infoBoxH, 2, 2, 'F');
+  doc.roundedRect(M + colW + 6, y, colW, infoBoxH, 2, 2, 'F');
 
-  const infoLabel = (x: number, iy: number, label: string, value: string) => {
+  // Half-column width for each info cell (minus internal padding)
+  const cellW = colW / 2 - 8;
+
+  const infoLabel = (x: number, iy: number, label: string, value: string, maxW?: number) => {
+    const mw = maxW || cellW;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
     doc.setTextColor(...C.textMuted);
@@ -300,7 +305,13 @@ export async function generatePdfReport(
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.setTextColor(...C.text);
-    doc.text(value, x, iy + 5);
+    // Wrap or truncate long values to fit within the cell
+    const lines = doc.splitTextToSize(value, mw) as string[];
+    doc.text(lines[0], x, iy + 5);
+    if (lines.length > 1) {
+      doc.setFontSize(7.5);
+      doc.text(lines[1], x, iy + 9);
+    }
   };
 
   infoLabel(M + 5, y + 7, 'Country', project.country);
@@ -334,6 +345,8 @@ export async function generatePdfReport(
   const kpiCardW = (contentWidth - 9) / 4;
   const kpiCardH = 28;
 
+  const kpiTextW = kpiCardW - 9; // available text width inside card
+
   const drawKpiCard = (x: number, iy: number, accentColor: [number, number, number], label: string, value: string, subtitle?: string) => {
     doc.setFillColor(...C.white);
     doc.setDrawColor(...C.border);
@@ -346,10 +359,17 @@ export async function generatePdfReport(
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.5);
     doc.setTextColor(...C.textMuted);
-    doc.text(label.toUpperCase(), x + 6, iy + 7);
+    const labelLines = doc.splitTextToSize(label.toUpperCase(), kpiTextW) as string[];
+    doc.text(labelLines[0], x + 6, iy + 7);
 
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(13);
+    // Auto-shrink value font if it doesn't fit
+    let valueFontSize = 13;
+    doc.setFontSize(valueFontSize);
+    while (doc.getTextWidth(value) > kpiTextW && valueFontSize > 8) {
+      valueFontSize -= 0.5;
+      doc.setFontSize(valueFontSize);
+    }
     doc.setTextColor(...C.text);
     doc.text(value, x + 6, iy + 16);
 
@@ -357,7 +377,8 @@ export async function generatePdfReport(
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(6.5);
       doc.setTextColor(...C.textMuted);
-      doc.text(subtitle, x + 6, iy + 22);
+      const subLines = doc.splitTextToSize(subtitle, kpiTextW) as string[];
+      doc.text(subLines[0], x + 6, iy + 22);
     }
   };
 
