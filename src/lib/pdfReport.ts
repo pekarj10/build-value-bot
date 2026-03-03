@@ -1,12 +1,12 @@
 /**
  * Professional PDF Report Generator for Unit Rate
  * Supports two formats: Executive Summary (2-3 pages) and Full Report (detailed)
+ * All charts drawn natively with jsPDF (no image imports).
  */
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { CostItem, Project, PROJECT_TYPE_LABELS, ProjectType } from '@/types/project';
 import { formatCurrency } from '@/lib/formatters';
-import { renderChartToDataUrl } from '@/lib/pdfCharts';
 import logoImg from '@/assets/logo-new.png';
 
 export type ReportFormat = 'executive' | 'full';
@@ -24,7 +24,6 @@ export interface PdfExportOptions {
   includeVariance: boolean;
   includeStatus: boolean;
   onlyFlagged: boolean;
-  // Cover page fields
   clientName?: string;
   contractorName?: string;
   coverNotes?: string;
@@ -52,8 +51,18 @@ const C = {
   border:     [226, 232, 240] as [number, number, number],
 };
 
+const CHART_PALETTE: [number, number, number][] = [
+  [30, 58, 95],    // navy
+  [37, 99, 235],   // blue
+  [14, 165, 233],  // sky
+  [22, 163, 74],   // green
+  [245, 158, 11],  // amber
+  [220, 38, 38],   // red
+  [139, 92, 246],  // violet
+  [236, 72, 153],  // pink
+];
+
 // ─── Smart Description Truncation ────────────────────────────────
-// Removes filler words and keeps the meaningful parts of a description
 const FILLER_WORDS = new Set([
   'and', 'the', 'for', 'with', 'including', 'incl', 'of', 'to', 'in', 'on',
   'all', 'as', 'per', 'etc', 'various', 'general', 'complete', 'full',
@@ -61,25 +70,41 @@ const FILLER_WORDS = new Set([
 ]);
 
 function smartTruncate(text: string, maxLen: number): string {
+  if (!text) return '—';
   if (text.length <= maxLen) return text;
 
-  // First try: remove content in parentheses
+  // Remove content in parentheses
   let shortened = text.replace(/\s*\([^)]*\)/g, '');
   if (shortened.length <= maxLen) return shortened;
 
-  // Second try: remove filler words
+  // Remove filler words
   const words = shortened.split(/\s+/);
   const important = words.filter(w => !FILLER_WORDS.has(w.toLowerCase()));
   shortened = important.join(' ');
   if (shortened.length <= maxLen) return shortened;
 
-  // Third: truncate at word boundary
-  if (shortened.length > maxLen) {
-    const cut = shortened.substring(0, maxLen - 1);
-    const lastSpace = cut.lastIndexOf(' ');
-    return (lastSpace > maxLen * 0.5 ? cut.substring(0, lastSpace) : cut) + '…';
+  // Remove em-dashes and content after them if still too long
+  const dashIdx = shortened.indexOf('—');
+  if (dashIdx > 10 && dashIdx < shortened.length - 5) {
+    const beforeDash = shortened.substring(0, dashIdx).trim();
+    if (beforeDash.length <= maxLen) return beforeDash;
+    shortened = beforeDash;
   }
-  return shortened;
+
+  // Truncate at word boundary
+  const cut = shortened.substring(0, maxLen - 1);
+  const lastSpace = cut.lastIndexOf(' ');
+  return (lastSpace > maxLen * 0.4 ? cut.substring(0, lastSpace) : cut) + '…';
+}
+
+/** Format unknown project type strings nicely */
+function formatProjectType(project: Project): string {
+  const label = PROJECT_TYPE_LABELS[project.projectType as ProjectType];
+  if (label) return label;
+  // Fallback: format raw DB string
+  return project.projectType
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase());
 }
 
 // ─── Metric Helpers ──────────────────────────────────────────────
@@ -189,6 +214,130 @@ function computeMetrics(items: CostItem[]): Metrics {
   };
 }
 
+// ─── Native Chart Drawing ────────────────────────────────────────
+// All charts drawn directly with jsPDF — no canvas, no images.
+
+function drawDonutChart(
+  doc: jsPDF,
+  cx: number, cy: number, outerR: number, innerR: number,
+  data: Array<{ label: string; value: number; color: [number, number, number] }>,
+  legendX: number, legendY: number, legendMaxW: number, currency: string, fmt: (v: number) => string,
+) {
+  const total = data.reduce((s, d) => s + d.value, 0);
+  if (total === 0) return;
+
+  // Draw slices using filled arcs approximated by polygon wedges
+  let startAngle = -Math.PI / 2; // start from top
+  for (const slice of data) {
+    const sweepAngle = (slice.value / total) * Math.PI * 2;
+    const endAngle = startAngle + sweepAngle;
+
+    // Draw wedge as a filled polygon (many small segments)
+    doc.setFillColor(...slice.color);
+    const points: [number, number][] = [];
+    // Outer arc
+    const steps = Math.max(20, Math.ceil(sweepAngle / 0.05));
+    for (let i = 0; i <= steps; i++) {
+      const a = startAngle + (sweepAngle * i) / steps;
+      points.push([cx + Math.cos(a) * outerR, cy + Math.sin(a) * outerR]);
+    }
+    // Inner arc (reverse)
+    for (let i = steps; i >= 0; i--) {
+      const a = startAngle + (sweepAngle * i) / steps;
+      points.push([cx + Math.cos(a) * innerR, cy + Math.sin(a) * innerR]);
+    }
+
+    // Draw polygon using lines
+    if (points.length > 2) {
+      doc.setDrawColor(...C.white);
+      doc.setLineWidth(0.5);
+      // Use triangle fan approach
+      const path = points.map(([x, y], i) => 
+        i === 0 ? `${x.toFixed(2)} ${y.toFixed(2)} m` : `${x.toFixed(2)} ${y.toFixed(2)} l`
+      ).join(' ') + ' h';
+      
+      // Fallback: draw using multiple triangles from center
+      // jsPDF doesn't have native polygon, so use rect-based approximation
+      // Actually use the triangle() method or lines
+      const xCoords = points.map(p => p[0]);
+      const yCoords = points.map(p => p[1]);
+      doc.setFillColor(...slice.color);
+      // @ts-ignore - using internal lines method
+      doc.lines(
+        points.slice(1).map((p, i) => [p[0] - points[i][0], p[1] - points[i][1]]),
+        points[0][0], points[0][1],
+        [1, 1], 'F', true
+      );
+    }
+
+    startAngle = endAngle;
+  }
+
+  // Draw center hole (white circle)
+  doc.setFillColor(...C.white);
+  doc.circle(cx, cy, innerR, 'F');
+
+  // Center text
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(...C.navy);
+  doc.text(fmt(total), cx, cy + 1, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6);
+  doc.setTextColor(...C.textMuted);
+  doc.text('Total', cx, cy + 5, { align: 'center' });
+
+  // Legend
+  let ly = legendY;
+  doc.setFontSize(6.5);
+  for (const slice of data) {
+    const pct = ((slice.value / total) * 100).toFixed(0);
+    doc.setFillColor(...slice.color);
+    doc.rect(legendX, ly - 2.5, 3, 3, 'F');
+    doc.setTextColor(...C.text);
+    doc.setFont('helvetica', 'normal');
+    const legendLabel = smartTruncate(slice.label, 22);
+    doc.text(`${legendLabel} (${pct}%)`, legendX + 5, ly);
+    doc.setTextColor(...C.textMuted);
+    doc.text(fmt(slice.value), legendX + 5, ly + 3.5);
+    ly += 9;
+  }
+}
+
+function drawHorizontalBarChart(
+  doc: jsPDF,
+  x: number, y: number, w: number, h: number,
+  bars: Array<{ label: string; value: number; color: [number, number, number] }>,
+  fmt: (v: number) => string,
+) {
+  const maxVal = Math.max(...bars.map(b => b.value), 1);
+  const barH = Math.min(12, (h - 10) / bars.length - 2);
+  const labelW = 55;
+  const chartW = w - labelW - 25;
+
+  let by = y + 5;
+  for (const bar of bars) {
+    // Label
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(...C.text);
+    doc.text(smartTruncate(bar.label, 28), x, by + barH / 2 + 1);
+
+    // Bar
+    const barWidth = (bar.value / maxVal) * chartW;
+    doc.setFillColor(...bar.color);
+    doc.roundedRect(x + labelW, by, barWidth, barH, 1, 1, 'F');
+
+    // Value
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(...C.textMuted);
+    doc.text(fmt(bar.value), x + labelW + barWidth + 2, by + barH / 2 + 1);
+
+    by += barH + 3;
+  }
+}
+
 // ─── PDF Builder ─────────────────────────────────────────────────
 
 export async function generatePdfReport(
@@ -198,13 +347,12 @@ export async function generatePdfReport(
   previewMode: boolean = false,
 ): Promise<Blob | void> {
   const doc = new jsPDF('portrait', 'mm', 'a4');
-  const pw = doc.internal.pageSize.getWidth();  // 210
-  const ph = doc.internal.pageSize.getHeight(); // 297
-  const M = 20; // margin
+  const pw = 210;
+  const ph = 297;
+  const M = 18;
   const contentWidth = pw - 2 * M;
   let pageNum = 0;
 
-  // Filter items
   let exportItems = [...items];
   if (options.onlyFlagged) {
     exportItems = exportItems.filter(i => i.status === 'review' || i.status === 'clarification');
@@ -230,70 +378,46 @@ export async function generatePdfReport(
     const ctx = canvas.getContext('2d');
     ctx?.drawImage(img, 0, 0);
     logoDataUrl = canvas.toDataURL('image/png');
-  } catch {
-    // fallback: no logo
-  }
+  } catch { /* fallback: no logo */ }
 
   // ── Helpers ──
-  const addHeader = (orientation: 'portrait' | 'landscape' = 'portrait') => {
-    const pageW = orientation === 'landscape' ? 297 : 210;
-    const pageM = M;
-    // Top accent bar
+  const addHeader = () => {
     doc.setFillColor(...C.navy);
-    doc.rect(0, 0, pageW, 3, 'F');
-
-    // Logo
-    if (logoDataUrl) {
-      doc.addImage(logoDataUrl, 'PNG', pageM, 8, 10, 10);
-    }
+    doc.rect(0, 0, pw, 3, 'F');
+    if (logoDataUrl) doc.addImage(logoDataUrl, 'PNG', M, 8, 10, 10);
     doc.setTextColor(...C.navy);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(16);
-    doc.text('Unit Rate', pageM + (logoDataUrl ? 13 : 0), 15);
-
+    doc.text('Unit Rate', M + (logoDataUrl ? 13 : 0), 15);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(...C.textMuted);
-    doc.text('Construction Cost Analysis', pageM + (logoDataUrl ? 13 : 0), 19);
-
-    // Right side: date
-    doc.setFontSize(8);
-    doc.setTextColor(...C.textMuted);
+    doc.text('Construction Cost Analysis', M + (logoDataUrl ? 13 : 0), 19);
     const dateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
-    doc.text(dateStr, pageW - pageM, 12, { align: 'right' });
-    doc.text(options.format === 'executive' ? 'Executive Summary' : 'Full Report', pageW - pageM, 17, { align: 'right' });
-
-    // Divider
+    doc.text(dateStr, pw - M, 12, { align: 'right' });
+    doc.text(options.format === 'executive' ? 'Executive Summary' : 'Full Report', pw - M, 17, { align: 'right' });
     doc.setDrawColor(...C.border);
     doc.setLineWidth(0.3);
-    doc.line(pageM, 23, pageW - pageM, 23);
-
+    doc.line(M, 23, pw - M, 23);
     return 28;
   };
 
-  const addFooter = (orientation: 'portrait' | 'landscape' = 'portrait') => {
+  const addFooter = () => {
     pageNum++;
-    const pageW = orientation === 'landscape' ? 297 : 210;
-    const pageH = orientation === 'landscape' ? 210 : 297;
-    const footerY = pageH - 12;
+    const footerY = ph - 12;
     doc.setDrawColor(...C.border);
     doc.setLineWidth(0.3);
-    doc.line(M, footerY, pageW - M, footerY);
-
+    doc.line(M, footerY, pw - M, footerY);
     doc.setFontSize(7);
     doc.setTextColor(...C.textMuted);
     doc.text('Generated by Unit Rate', M, footerY + 5);
-    doc.text(`${project.name}`, pageW / 2, footerY + 5, { align: 'center' });
-    doc.text(`Page ${pageNum}`, pageW - M, footerY + 5, { align: 'right' });
+    doc.text(project.name, pw / 2, footerY + 5, { align: 'center' });
+    doc.text(`Page ${pageNum}`, pw - M, footerY + 5, { align: 'right' });
   };
 
-  const addNewPage = (orientation?: 'portrait' | 'landscape') => {
-    if (orientation === 'landscape') {
-      doc.addPage('a4', 'landscape');
-    } else {
-      doc.addPage();
-    }
-    return addHeader(orientation || 'portrait');
+  const addNewPage = () => {
+    doc.addPage();
+    return addHeader();
   };
 
   const sectionTitle = (y: number, title: string) => {
@@ -306,22 +430,28 @@ export async function generatePdfReport(
     return y + 10;
   };
 
+  const formatStatus = (s: string) => {
+    const sl = s.toLowerCase();
+    if (sl === 'ok') return 'OK';
+    if (sl === 'review' || sl === 'underpriced') return 'Review';
+    if (sl === 'clarification') return 'Clarify';
+    if (sl === 'actual') return 'Actual';
+    return s;
+  };
+
   // ════════════════════════════════════════════════════════════════
   // PAGE 1: COVER + EXECUTIVE SUMMARY
   // ════════════════════════════════════════════════════════════════
   let y = addHeader();
 
-  // Project title block
   doc.setTextColor(...C.navy);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(22);
   doc.text('Cost Analysis Report', M, y + 8);
-
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(11);
   doc.setTextColor(...C.darkGray);
   doc.text(project.name, M, y + 16);
-
   y += 22;
 
   // Two-column project info
@@ -331,7 +461,6 @@ export async function generatePdfReport(
   doc.roundedRect(M, y, colW, infoBoxH, 2, 2, 'F');
   doc.roundedRect(M + colW + 6, y, colW, infoBoxH, 2, 2, 'F');
 
-  // Half-column width for each info cell (minus internal padding)
   const cellW = colW / 2 - 8;
 
   const infoLabel = (x: number, iy: number, label: string, value: string, maxW?: number) => {
@@ -343,30 +472,24 @@ export async function generatePdfReport(
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.setTextColor(...C.text);
-    // Wrap or truncate long values to fit within the cell
     const lines = doc.splitTextToSize(value, mw) as string[];
     doc.text(lines[0], x, iy + 5);
-    if (lines.length > 1) {
-      doc.setFontSize(7.5);
-      doc.text(lines[1], x, iy + 9);
-    }
   };
 
   infoLabel(M + 5, y + 7, 'Country', project.country);
   infoLabel(M + 5, y + 19, 'Currency', project.currency);
-  infoLabel(M + colW / 2, y + 7, 'Project Type', PROJECT_TYPE_LABELS[project.projectType as ProjectType] || project.projectType);
+  infoLabel(M + colW / 2, y + 7, 'Project Type', formatProjectType(project));
   infoLabel(M + colW / 2, y + 19, 'Total Items', String(exportItems.length));
 
   const dateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   infoLabel(M + colW + 11, y + 7, 'Report Date', dateStr);
-  infoLabel(M + colW + 11, y + 19, 'Report Type', options.format === 'executive' ? 'Executive Summary' : 'Full Detailed Report');
+  infoLabel(M + colW + 11, y + 19, 'Report Type', options.format === 'executive' ? 'Executive Summary' : 'Full Report');
   infoLabel(M + colW + 6 + colW / 2, y + 7, options.clientName ? 'Client' : 'Status', options.clientName || `${m.okCount} OK / ${m.reviewCount + m.clarificationCount} Flagged`);
-  // Show Contractor if provided, otherwise show Total Value instead of Project ID
   infoLabel(M + colW + 6 + colW / 2, y + 19, options.contractorName ? 'Contractor' : 'Total Value', options.contractorName || fmt(m.totalEstimated));
 
   y += 34;
 
-  // Cover page notes
+  // Cover notes
   if (options.coverNotes) {
     doc.setFillColor(...C.offWhite);
     doc.roundedRect(M, y, contentWidth, 16, 2, 2, 'F');
@@ -383,26 +506,19 @@ export async function generatePdfReport(
 
   const kpiCardW = (contentWidth - 9) / 4;
   const kpiCardH = 28;
-
-  const kpiTextW = kpiCardW - 9; // available text width inside card
+  const kpiTextW = kpiCardW - 9;
 
   const drawKpiCard = (x: number, iy: number, accentColor: [number, number, number], label: string, value: string, subtitle?: string) => {
     doc.setFillColor(...C.white);
     doc.setDrawColor(...C.border);
     doc.roundedRect(x, iy, kpiCardW, kpiCardH, 2, 2, 'FD');
-
-    // Left accent
     doc.setFillColor(...accentColor);
     doc.rect(x, iy + 2, 2.5, kpiCardH - 4, 'F');
-
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.5);
     doc.setTextColor(...C.textMuted);
-    const labelLines = doc.splitTextToSize(label.toUpperCase(), kpiTextW) as string[];
-    doc.text(labelLines[0], x + 6, iy + 7);
-
+    doc.text(label.toUpperCase(), x + 6, iy + 7);
     doc.setFont('helvetica', 'bold');
-    // Auto-shrink value font if it doesn't fit
     let valueFontSize = 13;
     doc.setFontSize(valueFontSize);
     while (doc.getTextWidth(value) > kpiTextW && valueFontSize > 8) {
@@ -411,7 +527,6 @@ export async function generatePdfReport(
     }
     doc.setTextColor(...C.text);
     doc.text(value, x + 6, iy + 16);
-
     if (subtitle) {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(6.5);
@@ -422,12 +537,8 @@ export async function generatePdfReport(
   };
 
   const delta = m.totalEstimated - m.totalOriginal;
-  const deltaLabel = delta >= 0
-    ? `+${fmt(Math.abs(delta))} vs original`
-    : `-${fmt(Math.abs(delta))} vs original`;
-
-  const varianceColor: [number, number, number] = Math.abs(m.avgVariance) <= 5
-    ? C.green : Math.abs(m.avgVariance) <= 20 ? C.orange : C.red;
+  const deltaLabel = delta >= 0 ? `+${fmt(Math.abs(delta))} vs original` : `-${fmt(Math.abs(delta))} vs original`;
+  const varianceColor: [number, number, number] = Math.abs(m.avgVariance) <= 5 ? C.green : Math.abs(m.avgVariance) <= 20 ? C.orange : C.red;
 
   drawKpiCard(M, y, C.blue, `Project Estimate (${currency})`, fmt(m.totalEstimated), deltaLabel);
   drawKpiCard(M + kpiCardW + 3, y, C.orange, 'Items Flagged', `${m.reviewCount + m.clarificationCount + m.underpricedCount}`, `${m.reviewCount} Review · ${m.clarificationCount} Clarify`);
@@ -436,7 +547,7 @@ export async function generatePdfReport(
 
   y += kpiCardH + 6;
 
-  // ── Variance Visual Indicators ──
+  // ── Variance Indicators ──
   y = sectionTitle(y, 'Variance Assessment');
 
   const overrunItems = items.filter(i => {
@@ -460,12 +571,10 @@ export async function generatePdfReport(
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
     doc.setTextColor(...fg);
-    const indLabel = doc.splitTextToSize(`${label}: ${count} items`, indW - 8) as string[];
-    doc.text(indLabel[0], x + 4, iy + 6);
+    doc.text(`${label}: ${count} items`, x + 4, iy + 6);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.5);
-    const indDesc = doc.splitTextToSize(desc, indW - 8) as string[];
-    doc.text(indDesc[0], x + 4, iy + 12);
+    doc.text(desc, x + 4, iy + 12);
   };
 
   drawIndicator(M, y, C.redBg, C.red, 'HIGH RISK', overrunItems.length, '>20% over benchmark');
@@ -474,7 +583,7 @@ export async function generatePdfReport(
 
   y += 22;
 
-  // ── Summary Bullets (renamed from TL;DR) ──
+  // ── Summary Bullets ──
   y = sectionTitle(y, 'Summary');
 
   const bullets: string[] = [];
@@ -487,9 +596,8 @@ export async function generatePdfReport(
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
   doc.setTextColor(...C.text);
-  const bulletMaxW = contentWidth - 8;
   for (const bullet of bullets) {
-    const wrapped = doc.splitTextToSize(`•  ${bullet}`, bulletMaxW) as string[];
+    const wrapped = doc.splitTextToSize(`•  ${bullet}`, contentWidth - 8) as string[];
     for (const line of wrapped) {
       doc.text(line, M + 3, y);
       y += 4.5;
@@ -500,90 +608,63 @@ export async function generatePdfReport(
   addFooter();
 
   // ════════════════════════════════════════════════════════════════
-  // PAGE 2: CHARTS + RISK MATRIX
+  // PAGE 2: NATIVE CHARTS + RISK MATRIX
   // ════════════════════════════════════════════════════════════════
   y = addNewPage();
   y = sectionTitle(y, 'Cost Distribution');
 
-  // Trade breakdown chart (donut)
+  // Trade breakdown data
   const topTrades = [...m.tradeBreakdown.entries()]
     .sort((a, b) => b[1].estimated - a[1].estimated)
-    .slice(0, 6);
+    .slice(0, 8);
 
-  const chartColors = ['#1e3a5f', '#2563eb', '#0ea5e9', '#22c55e', '#f59e0b', '#ef4444'];
+  const donutData = topTrades.map(([trade, data], i) => ({
+    label: trade,
+    value: data.estimated,
+    color: CHART_PALETTE[i % CHART_PALETTE.length],
+  }));
 
-  const donutUrl = await renderChartToDataUrl({
-    type: 'doughnut',
-    data: {
-      labels: topTrades.map(([t]) => t),
-      datasets: [{
-        data: topTrades.map(([, v]) => Math.round(v.estimated)),
-        backgroundColor: chartColors.slice(0, topTrades.length),
-        borderWidth: 0,
-      }],
-    },
-    options: {
-      responsive: false,
-      plugins: {
-        legend: { display: true, position: 'right', labels: { font: { size: 11 }, padding: 10 } },
-      },
-      cutout: '60%',
-    },
-  }, 600, 350);
-
-  // Waterfall-style bar chart: Original → Adjustments → Final
-  const adjustmentValue = m.totalEstimated - m.totalOriginal;
-  const waterfallUrl = await renderChartToDataUrl({
-    type: 'bar',
-    data: {
-      labels: ['Original Estimate', 'Adjustments', 'Final Estimate'],
-      datasets: [{
-        data: [m.totalOriginal, Math.abs(adjustmentValue), m.totalEstimated],
-        backgroundColor: [
-          '#1e3a5f',
-          adjustmentValue >= 0 ? '#ef4444' : '#22c55e',
-          '#2563eb',
-        ],
-        borderRadius: 4,
-      }],
-    },
-    options: {
-      responsive: false,
-      indexAxis: 'y',
-      plugins: { legend: { display: false } },
-      scales: {
-        x: { ticks: { font: { size: 10 } }, grid: { color: '#e2e8f0' } },
-        y: { ticks: { font: { size: 11 } }, grid: { display: false } },
-      },
-    },
-  }, 600, 250);
-
-  // Place charts in two rows instead of cramped 3-column
-  const chartDonutH = 65;
-  const chartWaterfallH = 48;
-
-  // Donut chart - full width
+  // Draw donut chart — left side
+  const donutAreaH = 85;
   doc.setFillColor(...C.lightGray);
   doc.setDrawColor(...C.border);
-  doc.roundedRect(M, y, contentWidth, chartDonutH, 2, 2, 'FD');
+  doc.roundedRect(M, y, contentWidth, donutAreaH, 2, 2, 'FD');
   doc.setTextColor(...C.navy);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
   doc.text('Cost by Trade', M + 4, y + 7);
-  doc.addImage(donutUrl, 'PNG', M + 2, y + 10, contentWidth - 4, chartDonutH - 13);
 
-  y += chartDonutH + 5;
+  drawDonutChart(
+    doc,
+    M + 45, y + 48, 28, 16,  // center, outer, inner
+    donutData,
+    M + 85, y + 14, contentWidth - 90, currency, fmt,
+  );
 
-  // Waterfall chart - full width
+  y += donutAreaH + 5;
+
+  // Estimate Flow — horizontal bars
+  const flowH = 50;
   doc.setFillColor(...C.lightGray);
-  doc.roundedRect(M, y, contentWidth, chartWaterfallH, 2, 2, 'FD');
+  doc.setDrawColor(...C.border);
+  doc.roundedRect(M, y, contentWidth, flowH, 2, 2, 'FD');
   doc.setTextColor(...C.navy);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
   doc.text('Estimate Flow', M + 4, y + 7);
-  doc.addImage(waterfallUrl, 'PNG', M + 2, y + 10, contentWidth - 4, chartWaterfallH - 13);
 
-  y += chartWaterfallH + 8;
+  const adjustmentValue = m.totalEstimated - m.totalOriginal;
+  drawHorizontalBarChart(
+    doc, M + 4, y + 10, contentWidth - 8, flowH - 15,
+    [
+      { label: 'Original Estimate', value: m.totalOriginal, color: C.navy },
+      { label: `Adjustments (${adjustmentValue >= 0 ? '+' : ''}${fmt(adjustmentValue)})`, value: Math.abs(adjustmentValue), color: adjustmentValue >= 0 ? C.red : C.green },
+      { label: 'Final Estimate', value: m.totalEstimated, color: C.blue },
+    ],
+    fmt,
+  );
+
+  y += flowH + 8;
 
   // ── Risk Matrix (2x2) ──
   y = sectionTitle(y, 'Risk Matrix');
@@ -597,18 +678,13 @@ export async function generatePdfReport(
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
     doc.setTextColor(...fg);
-    const labelLines = doc.splitTextToSize(label, rmW - 8) as string[];
-    doc.text(labelLines[0], x + 4, iy + 7);
+    doc.text(label, x + 4, iy + 7);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.5);
     doc.setTextColor(...C.darkGray);
-    const descLines = doc.splitTextToSize(desc, rmW - 8) as string[];
-    doc.text(descLines[0], x + 4, iy + 13);
+    doc.text(desc, x + 4, iy + 13);
   };
 
-  // No more "HIGH VARIANCE" / "LOW VARIANCE" axis labels
-
-  // High variance, high cost
   const hvhcItems = exportItems.filter(i => {
     if (!i.originalUnitPrice || !i.benchmarkTypical || i.benchmarkTypical === 0) return false;
     const v = Math.abs(((i.originalUnitPrice - i.benchmarkTypical) / i.benchmarkTypical) * 100);
@@ -641,12 +717,12 @@ export async function generatePdfReport(
 
   y += rmH * 2 + 8;
 
-  // ── Trade Summary Table ──
-  // Only add if space remains, otherwise new page
-  if (y > ph - 80) {
-    addFooter();
-    y = addNewPage();
-  }
+  addFooter();
+
+  // ════════════════════════════════════════════════════════════════
+  // PAGE 3: TRADE SUMMARY TABLE
+  // ════════════════════════════════════════════════════════════════
+  y = addNewPage();
   y = sectionTitle(y, 'Trade Summary');
 
   const tradeSummaryData = [...m.tradeBreakdown.entries()]
@@ -671,49 +747,18 @@ export async function generatePdfReport(
       3: { halign: 'right', cellWidth: 35 },
       4: { halign: 'center', cellWidth: 22 },
     },
+    didDrawPage: () => addFooter(),
   });
 
-  addFooter();
-
   // ════════════════════════════════════════════════════════════════
-  // FULL REPORT ONLY: Detailed tables (LANDSCAPE) + Analysis
+  // FULL REPORT: Detailed Tables (PORTRAIT) + Analysis
   // ════════════════════════════════════════════════════════════════
   if (options.format === 'full') {
-    // Switch to landscape for the detailed cost items table
-    y = addNewPage('landscape');
-    const lw = 297; // landscape width
-    const lh = 210; // landscape height
-    const lContentWidth = lw - 2 * M;
-
+    y = addNewPage();
     y = sectionTitle(y, 'Detailed Cost Items');
 
-    const colIndex: Record<string, number> = {};
-    const headers: string[] = [];
-    const pushCol = (key: string, label: string) => { colIndex[key] = headers.length; headers.push(label); };
-    if (options.includeDescription) pushCol('desc', 'Description');
-    if (options.includeTrade) pushCol('trade', 'Trade');
-    if (options.includeQuantity) pushCol('qty', 'Qty');
-    if (options.includeUnit) pushCol('unit', 'Unit');
-    if (options.includeOriginalPrice) pushCol('origP', `Orig. (${currency})`);
-    if (options.includeOriginalTotal) pushCol('origT', `Orig. Total`);
-    if (options.includeRecommendedPrice) pushCol('recP', `Rec. (${currency})`);
-    if (options.includeRecommendedTotal) pushCol('recT', `Rec. Total`);
-    if (options.includeVariance) pushCol('var', 'Var %');
-    if (options.includeStatus) pushCol('status', 'Status');
-
-    const formatStatus = (s: string) => {
-      const sl = s.toLowerCase();
-      if (sl === 'ok') return 'OK';
-      if (sl === 'review' || sl === 'underpriced') return 'Review';
-      if (sl === 'clarification') return 'Clarify';
-      if (sl === 'actual') return 'Actual';
-      return s;
-    };
-
-    const rowTypes: Array<'group' | 'item' | 'subtotal' | 'total'> = [];
-    const tableBody: string[][] = [];
-
-    // Group by trade
+    // Portrait table: Description | Qty | Unit | Orig Total | Rec Total | Var%
+    // Trade column removed — it's shown in group header rows
     const sorted = [...exportItems].sort((a, b) => (a.trade || 'Uncategorized').localeCompare(b.trade || 'Uncategorized'));
     const groups = new Map<string, CostItem[]>();
     for (const it of sorted) {
@@ -721,81 +766,69 @@ export async function generatePdfReport(
       groups.set(key, [...(groups.get(key) || []), it]);
     }
 
+    const rowTypes: Array<'group' | 'item' | 'subtotal' | 'total'> = [];
+    const tableBody: string[][] = [];
+
     for (const [trade, groupItems] of groups.entries()) {
-      const groupRow = new Array(headers.length).fill('');
-      groupRow[0] = trade;
-      tableBody.push(groupRow);
+      // Group header
+      tableBody.push([trade, '', '', '', '', '']);
       rowTypes.push('group');
 
       for (const item of groupItems) {
-        const row: string[] = [];
         const ep = getEffectivePrice(item);
         const origT = item.originalUnitPrice ? item.originalUnitPrice * item.quantity : null;
         const recT = ep != null ? ep * item.quantity : null;
-
-        // Use smart truncation for descriptions — landscape gives more room (90 chars)
-        if (options.includeDescription) row.push(smartTruncate(item.originalDescription, 90));
-        if (options.includeTrade) row.push(item.trade || '—');
-        if (options.includeQuantity) row.push(item.quantity.toLocaleString());
-        if (options.includeUnit) row.push(item.unit);
-        if (options.includeOriginalPrice) row.push(item.originalUnitPrice != null ? fmt(item.originalUnitPrice) : '—');
-        if (options.includeOriginalTotal) row.push(origT != null ? fmt(origT) : '—');
-        if (options.includeRecommendedPrice) row.push(ep != null ? fmt(ep) : '—');
-        if (options.includeRecommendedTotal) row.push(recT != null ? fmt(recT) : '—');
-        if (options.includeVariance) {
-          if (item.originalUnitPrice && item.benchmarkTypical && item.benchmarkTypical !== 0) {
-            const v = ((item.originalUnitPrice - item.benchmarkTypical) / item.benchmarkTypical) * 100;
-            row.push(`${v > 0 ? '+' : ''}${Math.abs(v).toFixed(0)}%`);
-          } else {
-            row.push('—');
-          }
+        let varianceStr = '—';
+        if (item.originalUnitPrice && item.benchmarkTypical && item.benchmarkTypical !== 0) {
+          const v = ((item.originalUnitPrice - item.benchmarkTypical) / item.benchmarkTypical) * 100;
+          varianceStr = `${v > 0 ? '+' : ''}${v.toFixed(0)}%`;
         }
-        if (options.includeStatus) row.push(formatStatus(item.status));
-        tableBody.push(row);
+
+        tableBody.push([
+          smartTruncate(item.originalDescription, 55),
+          item.quantity.toLocaleString(),
+          item.unit,
+          origT != null ? fmt(origT) : '—',
+          recT != null ? fmt(recT) : '—',
+          varianceStr,
+        ]);
         rowTypes.push('item');
       }
 
       // Subtotal
       const subOrig = groupItems.reduce((s, i) => s + (i.originalUnitPrice ? i.originalUnitPrice * i.quantity : 0), 0);
       const subEst = groupItems.reduce((s, i) => { const p = getEffectivePrice(i); return s + (p != null ? p * i.quantity : 0); }, 0);
-      const subRow = new Array(headers.length).fill('');
-      subRow[0] = `Subtotal: ${trade}`;
-      if (options.includeOriginalTotal && colIndex.origT != null) subRow[colIndex.origT] = fmt(subOrig);
-      if (options.includeRecommendedTotal && colIndex.recT != null) subRow[colIndex.recT] = fmt(subEst);
-      tableBody.push(subRow);
+      tableBody.push([`Subtotal: ${trade}`, '', '', fmt(subOrig), fmt(subEst), '']);
       rowTypes.push('subtotal');
     }
 
     // Grand total
-    const totalRow = new Array(headers.length).fill('');
-    totalRow[0] = 'GRAND TOTAL';
-    if (options.includeQuantity && colIndex.qty != null) totalRow[colIndex.qty] = exportItems.reduce((s, i) => s + i.quantity, 0).toLocaleString();
-    if (options.includeOriginalTotal && colIndex.origT != null) totalRow[colIndex.origT] = fmt(m.totalOriginal);
-    if (options.includeRecommendedTotal && colIndex.recT != null) totalRow[colIndex.recT] = fmt(m.totalEstimated);
-    tableBody.push(totalRow);
+    tableBody.push([
+      'GRAND TOTAL',
+      exportItems.reduce((s, i) => s + i.quantity, 0).toLocaleString(),
+      '',
+      fmt(m.totalOriginal),
+      fmt(m.totalEstimated),
+      '',
+    ]);
     rowTypes.push('total');
 
     autoTable(doc, {
-      head: [headers],
+      head: [['Description', 'Qty', 'Unit', `Original (${currency})`, `Estimated (${currency})`, 'Var %']],
       body: tableBody,
       startY: y,
       margin: { left: M, right: M },
-      styles: { fontSize: 7, cellPadding: 2, valign: 'middle', lineWidth: 0.1, lineColor: C.border },
+      styles: { fontSize: 7, cellPadding: 2, valign: 'middle', lineWidth: 0.1, lineColor: C.border, overflow: 'linebreak' },
       headStyles: { fillColor: C.navy, textColor: C.white, fontStyle: 'bold', fontSize: 7.5 },
       alternateRowStyles: { fillColor: C.offWhite },
       rowPageBreak: 'avoid',
-      tableWidth: lContentWidth,
       columnStyles: {
-        ...(options.includeDescription ? { [colIndex.desc]: { cellWidth: 90 } } : {}),
-        ...(options.includeTrade ? { [colIndex.trade]: { cellWidth: 35 } } : {}),
-        ...(options.includeQuantity ? { [colIndex.qty]: { cellWidth: 18, halign: 'right' } } : {}),
-        ...(options.includeUnit ? { [colIndex.unit]: { cellWidth: 16 } } : {}),
-        ...(options.includeOriginalPrice ? { [colIndex.origP]: { cellWidth: 22, halign: 'right' } } : {}),
-        ...(options.includeOriginalTotal ? { [colIndex.origT]: { cellWidth: 28, halign: 'right' } } : {}),
-        ...(options.includeRecommendedPrice ? { [colIndex.recP]: { cellWidth: 22, halign: 'right' } } : {}),
-        ...(options.includeRecommendedTotal ? { [colIndex.recT]: { cellWidth: 28, halign: 'right' } } : {}),
-        ...(options.includeVariance ? { [colIndex.var]: { cellWidth: 16, halign: 'center' } } : {}),
-        ...(options.includeStatus ? { [colIndex.status]: { cellWidth: 18, halign: 'center' } } : {}),
+        0: { cellWidth: 68 },
+        1: { cellWidth: 18, halign: 'right' },
+        2: { cellWidth: 14 },
+        3: { cellWidth: 30, halign: 'right' },
+        4: { cellWidth: 30, halign: 'right' },
+        5: { cellWidth: 16, halign: 'center' },
       },
       didParseCell: (data) => {
         const t = rowTypes[data.row.index];
@@ -821,33 +854,14 @@ export async function generatePdfReport(
         }
         if (t === 'item') {
           // Variance color coding
-          if (options.includeVariance && data.column.index === colIndex.var) {
+          if (data.column.index === 5) {
             const raw = (data.cell.text?.[0] ?? '').replace(/[+\-%\s]/g, '');
             const v = Number(raw);
             if (!Number.isNaN(v)) {
               data.cell.styles.fontStyle = 'bold';
-              if (v > 20) {
-                data.cell.styles.textColor = C.red;
-              } else if (v > 5) {
-                data.cell.styles.textColor = C.orange;
-              } else {
-                data.cell.styles.textColor = C.green;
-              }
-            }
-          }
-          // Status badges
-          if (options.includeStatus && data.column.index === colIndex.status) {
-            const s = (data.cell.text?.[0] ?? '').toUpperCase();
-            data.cell.styles.fontStyle = 'bold';
-            if (s.includes('OK')) {
-              data.cell.styles.fillColor = C.greenBg;
-              data.cell.styles.textColor = C.green;
-            } else if (s.includes('REVIEW')) {
-              data.cell.styles.fillColor = C.orangeBg;
-              data.cell.styles.textColor = C.orange;
-            } else if (s.includes('CLARIFY')) {
-              data.cell.styles.fillColor = C.blueBg;
-              data.cell.styles.textColor = C.blue;
+              if (v > 20) data.cell.styles.textColor = C.red;
+              else if (v > 5) data.cell.styles.textColor = C.orange;
+              else data.cell.styles.textColor = C.green;
             }
           }
         }
@@ -857,20 +871,20 @@ export async function generatePdfReport(
         if (data.section === 'body') {
           const t = rowTypes[data.row.index];
           if (t === 'group' && data.column.index === 0) {
-            const remainingPageSpace = lh - 18 - data.cell.y; // landscape height
-            if (remainingPageSpace < 20) {
-              doc.addPage('a4', 'landscape');
-              addHeader('landscape');
+            const remainingPageSpace = ph - 18 - data.cell.y;
+            if (remainingPageSpace < 25) {
+              doc.addPage();
+              addHeader();
               data.cell.y = 32;
             }
           }
         }
       },
-      didDrawPage: () => addFooter('landscape'),
+      didDrawPage: () => addFooter(),
     });
 
-    // ── Analysis Section (back to portrait) ──
-    y = addNewPage('portrait');
+    // ── Analysis Section ──
+    y = addNewPage();
     y = sectionTitle(y, 'Analysis & Recommendations');
 
     // Top flagged items
@@ -884,10 +898,9 @@ export async function generatePdfReport(
       const flaggedData = m.topFlaggedItems.slice(0, 8).map(item => {
         const total = (getEffectivePrice(item) ?? 0) * item.quantity;
         return [
-          smartTruncate(item.originalDescription, 50),
+          smartTruncate(item.originalDescription, 45),
           formatStatus(item.status),
           fmt(total),
-          // Let AI comment wrap fully — no truncation
           item.aiComment || '—',
         ];
       });
@@ -901,17 +914,17 @@ export async function generatePdfReport(
         headStyles: { fillColor: C.navy, textColor: C.white, fontStyle: 'bold' },
         alternateRowStyles: { fillColor: C.offWhite },
         columnStyles: {
-          0: { cellWidth: 45 },
-          1: { cellWidth: 16, halign: 'center' },
+          0: { cellWidth: 42 },
+          1: { cellWidth: 14, halign: 'center' },
           2: { cellWidth: 25, halign: 'right' },
-          3: { cellWidth: 80 },
+          3: { cellWidth: 93 },
         },
         didParseCell: (data) => {
           if (data.column.index === 1 && data.section === 'body') {
             const s = (data.cell.text?.[0] ?? '').toUpperCase();
             data.cell.styles.fontStyle = 'bold';
-            if (s.includes('REVIEW')) { data.cell.styles.textColor = C.orange; }
-            else if (s.includes('CLARIFY')) { data.cell.styles.textColor = C.blue; }
+            if (s.includes('REVIEW')) data.cell.styles.textColor = C.orange;
+            else if (s.includes('CLARIFY')) data.cell.styles.textColor = C.blue;
           }
         },
         didDrawPage: () => addFooter(),
@@ -923,13 +936,12 @@ export async function generatePdfReport(
     // Savings opportunities
     if (m.savingsOpportunities.length > 0) {
       if (y > ph - 60) {
-        addFooter();
         y = addNewPage();
       }
       y = sectionTitle(y, 'Savings Opportunities');
 
       const savingsData = m.savingsOpportunities.slice(0, 8).map(({ item, savings }) => [
-        smartTruncate(item.originalDescription, 50),
+        smartTruncate(item.originalDescription, 45),
         item.trade || '—',
         fmt(item.originalUnitPrice || 0),
         fmt(item.userOverridePrice || item.recommendedUnitPrice || 0),
@@ -941,12 +953,12 @@ export async function generatePdfReport(
         body: savingsData,
         startY: y,
         margin: { left: M, right: M },
-        styles: { fontSize: 7, cellPadding: 2 },
+        styles: { fontSize: 7, cellPadding: 2, overflow: 'linebreak' },
         headStyles: { fillColor: C.green, textColor: C.white, fontStyle: 'bold' },
         alternateRowStyles: { fillColor: C.offWhite },
         columnStyles: {
-          0: { cellWidth: 50 },
-          1: { cellWidth: 25 },
+          0: { cellWidth: 48 },
+          1: { cellWidth: 35 },
           2: { cellWidth: 28, halign: 'right' },
           3: { cellWidth: 28, halign: 'right' },
           4: { cellWidth: 28, halign: 'right', fontStyle: 'bold' },
@@ -960,7 +972,6 @@ export async function generatePdfReport(
     // High deviation items
     if (m.highVarianceItems.length > 0) {
       if (y > ph - 60) {
-        addFooter();
         y = addNewPage();
       }
       y = sectionTitle(y, 'Cost Deviation Analysis (>10%)');
@@ -968,7 +979,7 @@ export async function generatePdfReport(
       const devData = m.highVarianceItems.slice(0, 8).map(item => {
         const v = ((item.originalUnitPrice! - item.benchmarkTypical!) / item.benchmarkTypical!) * 100;
         return [
-          smartTruncate(item.originalDescription, 55),
+          smartTruncate(item.originalDescription, 50),
           fmt(item.originalUnitPrice || 0),
           fmt(item.benchmarkTypical || 0),
           `${v > 0 ? '+' : ''}${Math.abs(v).toFixed(1)}%`,
@@ -980,11 +991,11 @@ export async function generatePdfReport(
         body: devData,
         startY: y,
         margin: { left: M, right: M },
-        styles: { fontSize: 7, cellPadding: 2 },
+        styles: { fontSize: 7, cellPadding: 2, overflow: 'linebreak' },
         headStyles: { fillColor: C.red, textColor: C.white, fontStyle: 'bold' },
         alternateRowStyles: { fillColor: C.offWhite },
         columnStyles: {
-          0: { cellWidth: 60 },
+          0: { cellWidth: 65 },
           1: { cellWidth: 30, halign: 'right' },
           2: { cellWidth: 30, halign: 'right' },
           3: { cellWidth: 25, halign: 'center', fontStyle: 'bold' },
@@ -1001,8 +1012,6 @@ export async function generatePdfReport(
         didDrawPage: () => addFooter(),
       });
     }
-
-    addFooter();
   } // end full report
 
   // ── PDF Properties ──
@@ -1013,12 +1022,10 @@ export async function generatePdfReport(
     creator: 'Unit Rate Cost Analysis Platform',
   });
 
-  // Preview mode: return blob instead of downloading
   if (previewMode) {
     return doc.output('blob');
   }
 
-  // Download
   const timestamp = new Date().toISOString().split('T')[0];
   const formatSuffix = options.format === 'executive' ? 'Executive' : 'Full';
   const filename = `UnitRate_${project.name.replace(/[^a-zA-Z0-9]/g, '_')}_${formatSuffix}_${timestamp}.pdf`;
