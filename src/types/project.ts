@@ -79,7 +79,7 @@ export const PROJECT_TYPE_LABELS: Record<ProjectType, string> = {
   new_construction_industrial: 'New Construction - Industrial',
   new_construction_retail: 'New Construction - Retail',
   new_construction_office: 'New Construction - Office',
-  reconstruction: 'Reconstruction / Refurbishment',
+  reconstruction: 'Reconstruction',
   demolition: 'Demolition',
   office_fitout: 'Office Fit-out',
 };
