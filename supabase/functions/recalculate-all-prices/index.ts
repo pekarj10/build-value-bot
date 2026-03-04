@@ -18,7 +18,7 @@ const corsHeaders = {
 };
 
 // UNIFIED AI PROMPT - Single AI call for translation + search terms + matching
-const UNIFIED_MATCH_PROMPT = `You are a senior construction cost expert matching cost items to a Swedish REPAB-style benchmark database.
+const UNIFIED_MATCH_PROMPT = `You are a senior construction cost expert matching cost items to a benchmark database.
 
 YOUR TASK:
 1. TRANSLATE the cost item to Swedish construction terminology
