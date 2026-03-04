@@ -986,9 +986,16 @@ serve(async (req) => {
 
   } catch (error) {
     console.error("analyze-cost-items error:", error);
+    
+    // Surface rate limit and payment errors to client
+    const errorMsg = error instanceof Error ? error.message : "Analysis failed";
+    let status = 500;
+    if (errorMsg.includes('429')) status = 429;
+    if (errorMsg.includes('402')) status = 402;
+    
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Analysis failed" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ error: errorMsg }),
+      { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });

@@ -118,6 +118,7 @@ interface ChatRequest {
     name?: string;
   };
   itemsSummary?: string;
+  stream?: boolean;
 }
 
 serve(async (req) => {
@@ -132,7 +133,7 @@ serve(async (req) => {
       throw new Error("AI service not configured");
     }
 
-    const { messages, project, itemsSummary } = await req.json() as ChatRequest;
+    const { messages, project, itemsSummary, stream } = await req.json() as ChatRequest;
 
     if (!messages || !Array.isArray(messages)) {
       return new Response(
@@ -141,7 +142,7 @@ serve(async (req) => {
       );
     }
 
-    console.log(`AI Chat request for project: ${project.name}`);
+    console.log(`AI Chat request for project: ${project.name}, stream: ${!!stream}`);
 
     // Build context-aware system prompt
     let systemContent = SYSTEM_PROMPT;
@@ -167,6 +168,7 @@ serve(async (req) => {
           { role: "system", content: systemContent },
           ...messages,
         ],
+        stream: !!stream,
       }),
     });
 
@@ -190,6 +192,14 @@ serve(async (req) => {
       throw new Error(`AI service error: ${response.status}`);
     }
 
+    // If streaming, pass through the SSE stream
+    if (stream) {
+      return new Response(response.body, {
+        headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
+      });
+    }
+
+    // Non-streaming: return full response
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content;
 

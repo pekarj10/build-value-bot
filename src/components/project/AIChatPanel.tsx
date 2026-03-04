@@ -48,6 +48,92 @@ const QUICK_PROMPTS = [
   { icon: BarChart3, label: "Compare", prompt: "Compare this project's costs to typical projects of this type" },
 ];
 
+const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-chat`;
+
+async function streamChat({
+  messages,
+  project,
+  itemsSummary,
+  onDelta,
+  onDone,
+}: {
+  messages: { role: string; content: string }[];
+  project: { country: string; currency: string; projectType: string; name?: string };
+  itemsSummary: string;
+  onDelta: (text: string) => void;
+  onDone: () => void;
+}) {
+  const resp = await fetch(CHAT_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+    },
+    body: JSON.stringify({ messages, project, itemsSummary, stream: true }),
+  });
+
+  if (!resp.ok || !resp.body) {
+    // Try to parse error
+    const errorData = await resp.json().catch(() => ({ error: "Stream failed" }));
+    throw new Error(errorData.error || `Stream error ${resp.status}`);
+  }
+
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let textBuffer = "";
+  let streamDone = false;
+
+  while (!streamDone) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    textBuffer += decoder.decode(value, { stream: true });
+
+    let newlineIndex: number;
+    while ((newlineIndex = textBuffer.indexOf("\n")) !== -1) {
+      let line = textBuffer.slice(0, newlineIndex);
+      textBuffer = textBuffer.slice(newlineIndex + 1);
+
+      if (line.endsWith("\r")) line = line.slice(0, -1);
+      if (line.startsWith(":") || line.trim() === "") continue;
+      if (!line.startsWith("data: ")) continue;
+
+      const jsonStr = line.slice(6).trim();
+      if (jsonStr === "[DONE]") {
+        streamDone = true;
+        break;
+      }
+
+      try {
+        const parsed = JSON.parse(jsonStr);
+        const content = parsed.choices?.[0]?.delta?.content as string | undefined;
+        if (content) onDelta(content);
+      } catch {
+        textBuffer = line + "\n" + textBuffer;
+        break;
+      }
+    }
+  }
+
+  // Flush remaining
+  if (textBuffer.trim()) {
+    for (let raw of textBuffer.split("\n")) {
+      if (!raw) continue;
+      if (raw.endsWith("\r")) raw = raw.slice(0, -1);
+      if (raw.startsWith(":") || raw.trim() === "") continue;
+      if (!raw.startsWith("data: ")) continue;
+      const jsonStr = raw.slice(6).trim();
+      if (jsonStr === "[DONE]") continue;
+      try {
+        const parsed = JSON.parse(jsonStr);
+        const content = parsed.choices?.[0]?.delta?.content as string | undefined;
+        if (content) onDelta(content);
+      } catch { /* ignore */ }
+    }
+  }
+
+  onDone();
+}
+
 export function AIChatPanel({ project, items, onItemsUpdate, className }: AIChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -63,7 +149,6 @@ export function AIChatPanel({ project, items, onItemsUpdate, className }: AIChat
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Scroll to bottom when messages change
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
@@ -88,7 +173,6 @@ export function AIChatPanel({ project, items, onItemsUpdate, className }: AIChat
     setIsLoading(true);
 
     try {
-      // Check if this is an analyze all request
       const isAnalyzeAll = messageText.toLowerCase().includes('analyze all') || 
                            messageText.toLowerCase().includes('analyze items');
       
@@ -96,15 +180,11 @@ export function AIChatPanel({ project, items, onItemsUpdate, className }: AIChat
       let itemUpdates: ItemUpdate[] = [];
 
       if (isAnalyzeAll) {
-        // Use the analyze-cost-items function
-        // Include ALL items - either for initial analysis or re-analysis
-        // This ensures every item gets processed when "Analyze All" is clicked
-        const itemsNeedingAnalysis = items; // Analyze ALL items
+        const itemsNeedingAnalysis = items;
         
         if (itemsNeedingAnalysis.length === 0) {
           response = "All items have already been analyzed. There are no items currently needing analysis.";
         } else {
-          // Show progress message
           setMessages(prev => [...prev, {
             id: 'analyzing-progress',
             role: 'assistant',
@@ -142,8 +222,6 @@ export function AIChatPanel({ project, items, onItemsUpdate, className }: AIChat
               recommendedPrice: result.recommendedUnitPrice,
             }));
 
-            // Apply updates - INCLUDING all benchmark matching fields
-            // RESET userClarification when re-analyzing to start fresh
             const updates = data.items.map((result: any) => {
               const originalItem = items.find(i => i.id === result.id);
               return {
@@ -158,20 +236,16 @@ export function AIChatPanel({ project, items, onItemsUpdate, className }: AIChat
                   aiComment: result.aiComment,
                   clarificationQuestion: result.clarificationQuestion,
                   totalPrice: originalItem ? originalItem.quantity * (result.recommendedUnitPrice || 0) : undefined,
-                  // CRITICAL: Include benchmark matching fields for consistency
                   matchedBenchmarkId: result.matchedBenchmarkId || null,
                   matchConfidence: result.matchConfidence || null,
                   matchReasoning: result.matchReasoning || null,
                   priceSource: result.priceSource || null,
-                  // RESET user clarification when re-analyzing all items
                   userClarification: undefined,
                 },
               };
             });
 
             onItemsUpdate(updates);
-
-            // Remove progress message
             setMessages(prev => prev.filter(m => m.id !== 'analyzing-progress'));
 
             const okCount = data.items.filter((i: any) => i.status === 'ok').length;
@@ -195,18 +269,49 @@ export function AIChatPanel({ project, items, onItemsUpdate, className }: AIChat
             response = "Analysis completed but no results were returned. Please try again.";
           }
         }
+
+        const assistantMessage: Message = {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: response,
+          timestamp: new Date(),
+          itemUpdates: itemUpdates.length > 0 ? itemUpdates : undefined,
+        };
+        setMessages(prev => [...prev, assistantMessage]);
       } else {
-        // Use general chat - create a context-aware prompt
+        // Streaming chat
+        const chatHistory = messages.filter(m => m.id !== 'welcome').map(m => ({
+          role: m.role,
+          content: m.content,
+        }));
+
         const contextPrompt = buildContextPrompt(messageText, items, project, selectedItemContext);
-        
-        const { data, error } = await supabase.functions.invoke('ai-chat', {
-          body: { 
+        const summary = buildItemsSummary(items);
+
+        const assistantId = crypto.randomUUID();
+        let assistantSoFar = "";
+
+        const upsertAssistant = (chunk: string) => {
+          assistantSoFar += chunk;
+          setMessages(prev => {
+            const last = prev[prev.length - 1];
+            if (last?.id === assistantId) {
+              return prev.map((m) => m.id === assistantId ? { ...m, content: assistantSoFar } : m);
+            }
+            return [...prev, {
+              id: assistantId,
+              role: 'assistant' as const,
+              content: assistantSoFar,
+              timestamp: new Date(),
+            }];
+          });
+        };
+
+        try {
+          await streamChat({
             messages: [
-              ...messages.filter(m => m.id !== 'welcome').map(m => ({
-                role: m.role,
-                content: m.content,
-              })),
-              { role: 'user', content: contextPrompt }
+              ...chatHistory,
+              { role: 'user', content: contextPrompt },
             ],
             project: {
               country: project.country,
@@ -214,36 +319,57 @@ export function AIChatPanel({ project, items, onItemsUpdate, className }: AIChat
               projectType: project.projectType,
               name: project.name,
             },
-            itemsSummary: buildItemsSummary(items),
-          },
-        });
+            itemsSummary: summary,
+            onDelta: upsertAssistant,
+            onDone: () => {},
+          });
+        } catch (streamError) {
+          console.warn('Streaming failed, falling back to non-streaming:', streamError);
+          
+          // Fallback to non-streaming
+          const { data, error } = await supabase.functions.invoke('ai-chat', {
+            body: { 
+              messages: [
+                ...chatHistory,
+                { role: 'user', content: contextPrompt }
+              ],
+              project: {
+                country: project.country,
+                currency: project.currency,
+                projectType: project.projectType,
+                name: project.name,
+              },
+              itemsSummary: summary,
+            },
+          });
 
-        if (error) {
-          // Fallback to analyze function if chat function doesn't exist
-          console.log('ai-chat function not available, using fallback');
-          response = generateFallbackResponse(messageText, items, project);
-        } else {
-          response = data?.response || data?.message || "I couldn't generate a response. Please try again.";
+          if (error) {
+            console.log('ai-chat function not available, using fallback');
+            response = generateFallbackResponse(messageText, items, project);
+          } else {
+            response = data?.response || data?.message || "I couldn't generate a response. Please try again.";
+          }
+          
+          setMessages(prev => {
+            // Remove any partial streaming message
+            const filtered = prev.filter(m => m.id !== assistantId);
+            return [...filtered, {
+              id: assistantId,
+              role: 'assistant' as const,
+              content: response!,
+              timestamp: new Date(),
+            }];
+          });
         }
       }
-
-      const assistantMessage: Message = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: response,
-        timestamp: new Date(),
-        itemUpdates: itemUpdates.length > 0 ? itemUpdates : undefined,
-      };
-
-      setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
       console.error('AI Chat error:', error);
       
       let errorMessage = "I encountered an error processing your request.";
       if (error instanceof Error) {
-        if (error.message.includes('429')) {
+        if (error.message.includes('429') || error.message.includes('Rate limit')) {
           errorMessage = "Rate limit exceeded. Please wait a moment and try again.";
-        } else if (error.message.includes('402')) {
+        } else if (error.message.includes('402') || error.message.includes('credits')) {
           errorMessage = "AI credits exhausted. Please add credits to continue.";
         }
       }
@@ -387,7 +513,6 @@ export function AIChatPanel({ project, items, onItemsUpdate, className }: AIChat
               </div>
             </div>
           )}
-          {/* Scroll anchor */}
           <div ref={messagesEndRef} />
         </div>
       </ScrollArea>
