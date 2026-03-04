@@ -18,7 +18,7 @@ const corsHeaders = {
 };
 
 // UNIFIED AI PROMPT - Single AI call for translation + search terms + matching
-const UNIFIED_MATCH_PROMPT = `You are a senior construction cost expert matching cost items to a Swedish REPAB-style benchmark database.
+const UNIFIED_MATCH_PROMPT = `You are a senior construction cost expert matching cost items to a benchmark database.
 
 YOUR TASK:
 1. TRANSLATE the cost item to Swedish construction terminology
@@ -324,7 +324,7 @@ Select the BEST matching benchmark or return null if none are suitable.`
       else if (variance > 15) status = 'review';
     }
 
-    const priceSource = `${benchmark.source || 'REPAB'} - ${benchmark.category}: ${benchmark.description}`;
+    const priceSource = `${benchmark.source || 'Benchmark'} - ${benchmark.category}: ${benchmark.description}`;
 
     // STEP 7: Update cost item with match
     const { error: updateError } = await supabase

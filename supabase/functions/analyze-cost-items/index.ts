@@ -849,7 +849,7 @@ async function processCostItem(
       else if (variance > 15) status = 'review';
     }
 
-    const priceSource = `${benchmark.source || 'REPAB'} - ${benchmark.category}: ${benchmark.description}`;
+    const priceSource = `${benchmark.source || 'Benchmark'} - ${benchmark.category}: ${benchmark.description}`;
 
     console.log(`[${item.originalDescription}] → MATCHED: ${benchmark.avg_price} (${confidence}% confidence)`);
 
@@ -986,9 +986,16 @@ serve(async (req) => {
 
   } catch (error) {
     console.error("analyze-cost-items error:", error);
+    
+    // Surface rate limit and payment errors to client
+    const errorMsg = error instanceof Error ? error.message : "Analysis failed";
+    let status = 500;
+    if (errorMsg.includes('429')) status = 429;
+    if (errorMsg.includes('402')) status = 402;
+    
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Analysis failed" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ error: errorMsg }),
+      { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });

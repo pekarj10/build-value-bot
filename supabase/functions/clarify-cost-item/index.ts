@@ -6,32 +6,11 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// STEP 1: AI generates search terms based on clarification
-const SEARCH_TERMS_PROMPT = `You are a construction cost expert. The user has provided a clarification for a cost item. Generate search terms to find matching benchmarks in a Swedish price database.
-
-## CRITICAL: PERCENTAGE-BASED ITEMS
-
-If the user specifies a TOTAL AREA (e.g., "total area is 2500 m2") and the item has an adjustment quantity:
-1. Calculate the percentage: adjustment_quantity ÷ total_area = percentage
-2. Include search terms with the calculated percentage (e.g., "10%", "10% av bruttoytan")
-3. Include the Swedish term "bruttoytan" (gross area)
-
-Example:
-- Item: "Kullersten justering" with quantity 250 m²
-- Clarification: "total area is 2500 m2"
-- Calculation: 250 / 2500 = 10%
-- Search terms should include: "kullersten justering 10%", "10% av bruttoytan", "kullersten", "justering"
-
-Generate 5-10 search terms including:
-- Swedish translations based on the clarification
-- Technical terms related to the clarified scope
-- Percentage terms if applicable
-- Category terms
-
-Return JSON: { "searchTerms": ["term1", "term2", ...], "calculatedPercentage": 10, "totalArea": 2500 }`;
-
-// STEP 2: AI picks the best benchmark from candidates
+// AI picks the best benchmark from candidates based on clarification
 const MATCH_PROMPT = `You are a senior quantity surveyor. Based on the user's clarification, pick the BEST matching benchmark.
+
+## CRITICAL LANGUAGE REQUIREMENT
+ALL your reasoning MUST be in ENGLISH. Even when referencing Swedish/German benchmarks.
 
 CRITICAL RULES:
 1. UNIT MUST MATCH exactly
@@ -39,27 +18,21 @@ CRITICAL RULES:
 3. Return the EXACT benchmark ID from the list - do NOT make up IDs
 4. If no good match, return null
 
-## CRITICAL: PERCENTAGE-BASED BENCHMARKS
+## PERCENTAGE-BASED BENCHMARKS
 
 Some benchmarks are priced per percentage of total area (e.g., "Kullersten justering 10% av bruttoytan").
-When the user clarifies the TOTAL AREA (e.g., "total area is 2500 m2") and the item has a quantity to adjust:
+When the user clarifies the TOTAL AREA and the item has a quantity to adjust:
 1. Calculate: adjustment_quantity ÷ total_area = percentage
 2. Pick the benchmark matching that percentage (5%, 10%, or 20% - choose closest)
 3. The benchmark price applies to the TOTAL AREA, not the adjustment quantity
-
-Example:
-- Item quantity: 250 m² to adjust
-- Clarification: "total area is 2500 m2"  
-- Calculation: 250 ÷ 2500 = 10%
-- Match: "Kullersten justering 10% av bruttoytan"
 
 Return JSON:
 {
   "matchedBenchmarkId": "exact-uuid-from-list-or-null",
   "confidence": 0-100,
-  "reasoning": "Why this benchmark matches based on clarification",
-  "calculatedPercentage": 10,
-  "totalAreaForPricing": 2500
+  "reasoning": "ENGLISH ONLY: Why this benchmark matches based on clarification",
+  "calculatedPercentage": null,
+  "totalAreaForPricing": null
 }`;
 
 interface ClarificationRequest {
@@ -94,7 +67,6 @@ interface BenchmarkPrice {
   source: string | null;
 }
 
-// Map country names to database country format
 function mapCountryToDb(country: string): string {
   const mapping: Record<string, string> = {
     'SE': 'SE', 'Sweden': 'SE', 'SWEDEN': 'SE',
@@ -108,7 +80,6 @@ function mapCountryToDb(country: string): string {
   return mapping[country] || country.toUpperCase().slice(0, 2);
 }
 
-// Normalize unit for comparison
 function normalizeUnit(unit: string): string {
   const u = unit.toLowerCase().trim();
   if (u === 'm2' || u === 'm²' || u === 'sqm' || u === 'square meter' || u === 'square meters') return 'm²';
@@ -119,6 +90,87 @@ function normalizeUnit(unit: string): string {
 
 function unitsCompatible(itemUnit: string, benchmarkUnit: string): boolean {
   return normalizeUnit(itemUnit) === normalizeUnit(benchmarkUnit);
+}
+
+/**
+ * Fetch ALL benchmarks for a country/currency with pagination (no 1000-row cap)
+ */
+async function fetchAllBenchmarks(
+  supabase: any,
+  dbCountry: string,
+  currency: string
+): Promise<BenchmarkPrice[]> {
+  const pageSize = 1000;
+  const all: BenchmarkPrice[] = [];
+  let from = 0;
+
+  while (true) {
+    const { data, error } = await supabase
+      .from('benchmark_prices')
+      .select('id, description, unit, min_price, avg_price, max_price, category, source')
+      .eq('country', dbCountry)
+      .eq('currency', currency)
+      .order('id', { ascending: true })
+      .range(from, from + pageSize - 1);
+
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+
+    all.push(...data);
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
+
+  return all;
+}
+
+/**
+ * Generate search terms from description + clarification for in-memory filtering
+ */
+function generateSearchTerms(description: string, clarification: string): string[] {
+  const terms: string[] = [];
+  const combined = `${description} ${clarification}`.toLowerCase();
+  
+  // Split into meaningful words
+  const words = combined.split(/[\s,.\-\/\(\)]+/).filter(w => w.length >= 3);
+  terms.push(...words);
+  terms.push(description.toLowerCase());
+  
+  // Extract percentage if mentioned
+  const percentMatch = combined.match(/(\d+)\s*%/);
+  if (percentMatch) {
+    terms.push(`${percentMatch[1]}%`);
+    terms.push('bruttoytan');
+  }
+  
+  // Extract area numbers
+  const areaMatch = combined.match(/(\d+)\s*m[²2]/);
+  if (areaMatch) {
+    terms.push('m²');
+  }
+
+  return [...new Set(terms)];
+}
+
+/**
+ * Filter benchmarks in memory against search terms
+ */
+function filterBenchmarks(
+  allBenchmarks: BenchmarkPrice[],
+  searchTerms: string[],
+  itemUnit: string
+): BenchmarkPrice[] {
+  return allBenchmarks.filter(b => {
+    if (!unitsCompatible(itemUnit, b.unit)) return false;
+    
+    const descLower = (b.description || '').toLowerCase();
+    const catLower = (b.category || '').toLowerCase();
+    
+    return searchTerms.some(term => {
+      const t = term.toLowerCase();
+      return descLower.includes(t) || catLower.includes(t);
+    });
+  });
 }
 
 async function callAI(apiKey: string, systemPrompt: string, userPrompt: string): Promise<any> {
@@ -134,6 +186,8 @@ async function callAI(apiKey: string, systemPrompt: string, userPrompt: string):
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
+      temperature: 0,
+      seed: 42,
       response_format: { type: "json_object" },
     }),
   });
@@ -192,53 +246,18 @@ serve(async (req) => {
 
     const dbCountry = mapCountryToDb(project.country);
 
-    // STEP 1: Generate search terms based on original + clarification
-    const searchTermsResult = await callAI(
-      LOVABLE_API_KEY,
-      SEARCH_TERMS_PROMPT,
-      `Original description: "${item.originalDescription}"
-User clarification: "${clarification}"
-Unit: ${item.unit}
-Quantity: ${item.quantity}
+    // STEP 1: Fetch ALL benchmarks once (paginated, no 1000-row cap)
+    const allBenchmarks = await fetchAllBenchmarks(supabase, dbCountry, project.currency);
+    console.log(`Fetched ${allBenchmarks.length} benchmarks for ${dbCountry}/${project.currency}`);
 
-Generate search terms that incorporate the user's clarification.`
-    );
-    
-    const searchTerms = searchTermsResult.searchTerms || [];
-    console.log(`Generated search terms: ${searchTerms.join(', ')}`);
+    // STEP 2: Generate search terms from description + clarification
+    const searchTerms = generateSearchTerms(item.originalDescription, clarification);
+    console.log(`Generated ${searchTerms.length} search terms`);
 
-    // STEP 2: Search database for candidates using ILIKE
-    const candidateBenchmarks: BenchmarkPrice[] = [];
-    const seenIds = new Set<string>();
+    // STEP 3: Filter benchmarks in memory (unit-compatible + term hits)
+    const unitCompatibleCandidates = filterBenchmarks(allBenchmarks, searchTerms, item.unit);
+    console.log(`Found ${unitCompatibleCandidates.length} unit-compatible candidates`);
 
-    for (const term of searchTerms) {
-      const { data: matches } = await supabase
-        .from('benchmark_prices')
-        .select('id, description, unit, min_price, avg_price, max_price, category, source')
-        .eq('country', dbCountry)
-        .eq('currency', project.currency)
-        .ilike('description', `%${term}%`)
-        .limit(20);
-
-      if (matches) {
-        for (const m of matches) {
-          if (!seenIds.has(m.id)) {
-            seenIds.add(m.id);
-            candidateBenchmarks.push(m);
-          }
-        }
-      }
-    }
-
-    console.log(`Found ${candidateBenchmarks.length} candidate benchmarks from DB`);
-
-    // STEP 3: Filter by unit compatibility
-    const unitCompatibleCandidates = candidateBenchmarks.filter(
-      b => unitsCompatible(item.unit, b.unit)
-    );
-    console.log(`After unit filter (${item.unit}): ${unitCompatibleCandidates.length} candidates`);
-
-    // If no unit-compatible candidates
     if (unitCompatibleCandidates.length === 0) {
       console.log(`No unit-compatible benchmarks found`);
       return new Response(
@@ -260,7 +279,7 @@ Generate search terms that incorporate the user's clarification.`
     }
 
     // STEP 4: AI picks the best match from candidates
-    const candidateList = unitCompatibleCandidates.map(b => 
+    const candidateList = unitCompatibleCandidates.slice(0, 30).map(b => 
       `ID: ${b.id} | ${b.description} | Unit: ${b.unit} | Price: ${b.avg_price} ${project.currency} (${b.min_price || 'N/A'} - ${b.max_price || 'N/A'}) | Source: ${b.source || 'Unknown'}`
     ).join('\n');
 
@@ -275,7 +294,7 @@ ${item.originalUnitPrice ? `Original Price: ${item.originalUnitPrice} ${project.
 USER CLARIFICATION:
 "${clarification}"
 
-CANDIDATE BENCHMARKS (all have compatible units):
+CANDIDATE BENCHMARKS (all have compatible units, showing top ${Math.min(unitCompatibleCandidates.length, 30)}):
 ${candidateList}
 
 Based on the clarification, pick the BEST matching benchmark. Return the EXACT ID from the list above.`
@@ -283,7 +302,6 @@ Based on the clarification, pick the BEST matching benchmark. Return the EXACT I
 
     console.log(`AI match result:`, JSON.stringify(matchResult));
 
-    // STEP 5: Validate the match
     const matchedId = matchResult.matchedBenchmarkId;
     const confidence = matchResult.confidence || 0;
     const reasoning = matchResult.reasoning || "";
@@ -331,10 +349,9 @@ Based on the clarification, pick the BEST matching benchmark. Return the EXACT I
       );
     }
 
-    // SUCCESS: We have a valid DB match
-    console.log(`✓ Matched to "${matchedBenchmark.description}" at ${matchedBenchmark.avg_price} ${project.currency}`);
+    // SUCCESS
+    console.log(`Matched to "${matchedBenchmark.description}" at ${matchedBenchmark.avg_price} ${project.currency}`);
 
-    // Calculate status
     let status: string = 'ok';
     if (item.originalUnitPrice && matchedBenchmark.avg_price) {
       const variance = ((item.originalUnitPrice - matchedBenchmark.avg_price) / matchedBenchmark.avg_price) * 100;
@@ -364,9 +381,14 @@ Based on the clarification, pick the BEST matching benchmark. Return the EXACT I
 
   } catch (error) {
     console.error("clarify-cost-item error:", error);
+    const errorMsg = error instanceof Error ? error.message : "Processing failed";
+    let status = 500;
+    if (errorMsg.includes('429') || errorMsg.includes('Rate limit')) status = 429;
+    if (errorMsg.includes('402') || errorMsg.includes('credits')) status = 402;
+    
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Processing failed" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ error: errorMsg }),
+      { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
