@@ -849,7 +849,7 @@ async function processCostItem(
       else if (variance > 15) status = 'review';
     }
 
-    const priceSource = `${benchmark.source || 'REPAB'} - ${benchmark.category}: ${benchmark.description}`;
+    const priceSource = `${benchmark.source || 'Benchmark'} - ${benchmark.category}: ${benchmark.description}`;
 
     console.log(`[${item.originalDescription}] → MATCHED: ${benchmark.avg_price} (${confidence}% confidence)`);
 
