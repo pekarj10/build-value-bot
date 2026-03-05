@@ -25,6 +25,7 @@ interface DbProject {
   issues_count: number | null;
   created_at: string;
   updated_at: string;
+  user_id: string | null;
 }
 
 interface DbCostItem {
