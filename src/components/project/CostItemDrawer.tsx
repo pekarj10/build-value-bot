@@ -22,6 +22,7 @@ import {
 } from '@/lib/roleUtils';
 import { useViewMode } from '@/hooks/useViewMode';
 import { MutationTimeline } from './MutationTimeline';
+import { CostItemComments } from './CostItemComments';
 import { LastModifiedBadge } from './LastModifiedBadge';
 import { TrustScoreIndicator } from './TrustScoreIndicator';
 
