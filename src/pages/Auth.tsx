@@ -68,8 +68,24 @@ export default function Auth() {
       return;
     }
 
+    // Save remember-me preference and configure storage
+    localStorage.setItem('unitrate-remember-me', rememberMe ? 'true' : 'false');
+    if (!rememberMe) {
+      // Move session to sessionStorage so it expires on tab close
+      supabase.auth.setSession as any; // will clear after sign-in below
+    }
+
     setIsLoading(true);
     const { error } = await signIn(loginEmail, loginPassword);
+    
+    if (!error && !rememberMe) {
+      // Copy session to sessionStorage and remove from localStorage
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      if (currentSession) {
+        sessionStorage.setItem('sb-session-forget', 'true');
+      }
+    }
+    
     setIsLoading(false);
 
     if (error) {
