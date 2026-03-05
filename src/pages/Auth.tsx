@@ -28,6 +28,9 @@ export default function Auth() {
   // Login form state
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(() => {
+    return localStorage.getItem('unitrate-remember-me') !== 'false';
+  });
   
   // Sign up form state
   const [signupEmail, setSignupEmail] = useState('');
