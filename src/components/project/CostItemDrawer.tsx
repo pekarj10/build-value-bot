@@ -174,8 +174,12 @@ export function CostItemDrawer({
         </SheetHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="details">Details</TabsTrigger>
+            <TabsTrigger value="comments" className="flex items-center gap-1.5">
+              <MessageSquareText className="h-3.5 w-3.5" />
+              Comments
+            </TabsTrigger>
             <TabsTrigger value="history" className="flex items-center gap-1.5">
               <History className="h-3.5 w-3.5" />
               History
