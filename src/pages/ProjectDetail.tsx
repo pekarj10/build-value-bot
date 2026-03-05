@@ -14,6 +14,7 @@ import { UploadSpreadsheetDialog } from '@/components/project/UploadSpreadsheetD
 import { ClarificationsList } from '@/components/project/ClarificationsList';
 import { ProjectNotes } from '@/components/project/ProjectNotes';
 import { BenchmarkUpdateBanner } from '@/components/project/BenchmarkUpdateBanner';
+import { ShareProjectDialog } from '@/components/project/ShareProjectDialog';
 
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
