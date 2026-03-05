@@ -21,13 +21,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    // Set up auth state listener FIRST
+    // Check if user chose not to be remembered — sign out on fresh tab
+    const shouldForget = sessionStorage.getItem('sb-session-forget') === null 
+      && localStorage.getItem('unitrate-remember-me') === 'false';
+    
+    if (shouldForget) {
+      // User didn't check "remember me" and this is a new tab/session
+      supabase.auth.signOut().then(() => {
+        setIsLoading(false);
+      });
+      // Still set up the listener for future sign-ins within this tab
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(
+        (event, session) => {
+          setSession(session);
+          setUser(session?.user ?? null);
+          if (session?.user) {
+            setTimeout(() => checkAdminStatus(session.user.id), 0);
+          } else {
+            setIsAdmin(false);
+          }
+        }
+      );
+      return () => subscription.unsubscribe();
+    }
+
+    // Normal flow: Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
         
-        // Defer admin check with setTimeout to avoid deadlock
         if (session?.user) {
           setTimeout(() => {
             checkAdminStatus(session.user.id);

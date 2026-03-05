@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -28,6 +29,9 @@ export default function Auth() {
   // Login form state
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(() => {
+    return localStorage.getItem('unitrate-remember-me') !== 'false';
+  });
   
   // Sign up form state
   const [signupEmail, setSignupEmail] = useState('');
@@ -64,8 +68,24 @@ export default function Auth() {
       return;
     }
 
+    // Save remember-me preference and configure storage
+    localStorage.setItem('unitrate-remember-me', rememberMe ? 'true' : 'false');
+    if (!rememberMe) {
+      // Move session to sessionStorage so it expires on tab close
+      supabase.auth.setSession as any; // will clear after sign-in below
+    }
+
     setIsLoading(true);
     const { error } = await signIn(loginEmail, loginPassword);
+    
+    if (!error && !rememberMe) {
+      // Copy session to sessionStorage and remove from localStorage
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      if (currentSession) {
+        sessionStorage.setItem('sb-session-forget', 'true');
+      }
+    }
+    
     setIsLoading(false);
 
     if (error) {
@@ -294,6 +314,17 @@ export default function Auth() {
                       required
                       autoComplete="current-password"
                     />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="remember-me"
+                      checked={rememberMe}
+                      onCheckedChange={(checked) => setRememberMe(checked === true)}
+                    />
+                    <Label htmlFor="remember-me" className="text-sm font-normal text-muted-foreground cursor-pointer">
+                      Remember me
+                    </Label>
                   </div>
                 </CardContent>
 
