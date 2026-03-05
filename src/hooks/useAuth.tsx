@@ -36,7 +36,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setSession(session);
           setUser(session?.user ?? null);
           if (session?.user) {
-            setTimeout(() => checkAdminStatus(session.user.id), 0);
+            setTimeout(() => {
+              checkAdminStatus(session.user.id);
+              acceptPendingInvitations();
+            }, 0);
           } else {
             setIsAdmin(false);
           }
