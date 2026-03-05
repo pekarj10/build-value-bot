@@ -481,6 +481,10 @@ export function CostItemDrawer({
           </div>
           </TabsContent>
 
+          <TabsContent value="comments" className="mt-4">
+            <CostItemComments costItemId={item.id} />
+          </TabsContent>
+
           <TabsContent value="history" className="mt-4">
             <MutationTimeline
               costItemId={item.id}
