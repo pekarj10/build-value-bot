@@ -209,6 +209,7 @@ export function useProject() {
         issuesCount: project.issues_count || 0,
         createdAt: new Date(project.created_at),
         updatedAt: new Date(project.updated_at),
+        userId: project.user_id || undefined,
       }));
     } catch (error) {
       console.error('Get all projects error:', error);
