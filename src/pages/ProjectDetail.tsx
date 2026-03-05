@@ -660,6 +660,10 @@ export default function ProjectDetail() {
         ]}
         actions={
           <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setShowShareDialog(true)}>
+              <Users className="h-4 w-4 mr-2" />
+              Share
+            </Button>
             <Button 
               variant="outline" 
               className="text-destructive hover:text-destructive hover:bg-destructive/10"
