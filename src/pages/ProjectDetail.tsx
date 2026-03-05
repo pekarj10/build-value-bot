@@ -45,7 +45,7 @@ import { toast } from 'sonner';
 export default function ProjectDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
   const { showAsAdmin } = useViewMode();
   const effectiveIsAdmin = isAdmin && showAsAdmin;
   const { getProject, getCostItems, updateCostItem, deleteCostItem, addCostItem, deleteProject, updateProjectNotes, syncProjectTotals, uploadFile, parseExcelFile } = useProject();
