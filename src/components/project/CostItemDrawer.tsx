@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Check, MessageSquare, TrendingUp, Loader2, HelpCircle, RotateCcw, History, CheckCheck } from 'lucide-react';
+import { Check, MessageSquare, TrendingUp, Loader2, HelpCircle, RotateCcw, History, CheckCheck, MessageSquareText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { 
   sanitizeAnalysisNoteForUser, 
