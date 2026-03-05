@@ -26,6 +26,7 @@ export interface Project {
   totalItems?: number;
   totalValue?: number;
   issuesCount?: number;
+  userId?: string;
 }
 
 export interface CostItem {

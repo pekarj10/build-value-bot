@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Check, MessageSquare, TrendingUp, Loader2, HelpCircle, RotateCcw, History, CheckCheck } from 'lucide-react';
+import { Check, MessageSquare, TrendingUp, Loader2, HelpCircle, RotateCcw, History, CheckCheck, MessageSquareText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { 
   sanitizeAnalysisNoteForUser, 
@@ -22,6 +22,7 @@ import {
 } from '@/lib/roleUtils';
 import { useViewMode } from '@/hooks/useViewMode';
 import { MutationTimeline } from './MutationTimeline';
+import { CostItemComments } from './CostItemComments';
 import { LastModifiedBadge } from './LastModifiedBadge';
 import { TrustScoreIndicator } from './TrustScoreIndicator';
 
@@ -173,8 +174,12 @@ export function CostItemDrawer({
         </SheetHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="details">Details</TabsTrigger>
+            <TabsTrigger value="comments" className="flex items-center gap-1.5">
+              <MessageSquareText className="h-3.5 w-3.5" />
+              Comments
+            </TabsTrigger>
             <TabsTrigger value="history" className="flex items-center gap-1.5">
               <History className="h-3.5 w-3.5" />
               History
@@ -474,6 +479,10 @@ export function CostItemDrawer({
               </div>
             )}
           </div>
+          </TabsContent>
+
+          <TabsContent value="comments" className="mt-4">
+            <CostItemComments costItemId={item.id} />
           </TabsContent>
 
           <TabsContent value="history" className="mt-4">

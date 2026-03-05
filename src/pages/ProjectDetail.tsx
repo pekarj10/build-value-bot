@@ -14,6 +14,7 @@ import { UploadSpreadsheetDialog } from '@/components/project/UploadSpreadsheetD
 import { ClarificationsList } from '@/components/project/ClarificationsList';
 import { ProjectNotes } from '@/components/project/ProjectNotes';
 import { BenchmarkUpdateBanner } from '@/components/project/BenchmarkUpdateBanner';
+import { ShareProjectDialog } from '@/components/project/ShareProjectDialog';
 
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
@@ -35,7 +36,8 @@ import {
   Bot,
   Trash2,
   FileDown,
-  StickyNote
+  StickyNote,
+  Users
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -43,7 +45,7 @@ import { toast } from 'sonner';
 export default function ProjectDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
   const { showAsAdmin } = useViewMode();
   const effectiveIsAdmin = isAdmin && showAsAdmin;
   const { getProject, getCostItems, updateCostItem, deleteCostItem, addCostItem, deleteProject, updateProjectNotes, syncProjectTotals, uploadFile, parseExcelFile } = useProject();
@@ -63,6 +65,7 @@ export default function ProjectDetail() {
   const [showUploadDialog, setShowUploadDialog] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [activeTab, setActiveTab] = useState('items');
+  const [showShareDialog, setShowShareDialog] = useState(false);
 
   // Benchmark update notification state
   const [pendingBenchmarkUpdate, setPendingBenchmarkUpdate] = useState(false);
@@ -657,6 +660,10 @@ export default function ProjectDetail() {
         ]}
         actions={
           <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setShowShareDialog(true)}>
+              <Users className="h-4 w-4 mr-2" />
+              Share
+            </Button>
             <Button 
               variant="outline" 
               className="text-destructive hover:text-destructive hover:bg-destructive/10"
@@ -897,6 +904,15 @@ export default function ProjectDetail() {
         onOpenChange={setShowUploadDialog}
         onUpload={handleUploadFiles}
         isUploading={isUploading}
+      />
+
+      {/* Share Project Dialog */}
+      <ShareProjectDialog
+        projectId={project.id}
+        projectName={project.name}
+        open={showShareDialog}
+        onOpenChange={setShowShareDialog}
+        isOwner={project.userId === user?.id}
       />
     </AppLayout>
   );

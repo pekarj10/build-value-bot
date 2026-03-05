@@ -36,7 +36,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setSession(session);
           setUser(session?.user ?? null);
           if (session?.user) {
-            setTimeout(() => checkAdminStatus(session.user.id), 0);
+            setTimeout(() => {
+              checkAdminStatus(session.user.id);
+              acceptPendingInvitations();
+            }, 0);
           } else {
             setIsAdmin(false);
           }
@@ -54,6 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (session?.user) {
           setTimeout(() => {
             checkAdminStatus(session.user.id);
+            acceptPendingInvitations();
           }, 0);
         } else {
           setIsAdmin(false);
@@ -68,6 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (session?.user) {
         checkAdminStatus(session.user.id);
+        acceptPendingInvitations();
       }
       
       setIsLoading(false);
@@ -75,6 +80,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  const acceptPendingInvitations = async () => {
+    try {
+      await supabase.functions.invoke('accept-invitations');
+    } catch {
+      // Silent fail — non-critical
+    }
+  };
 
   const checkAdminStatus = async (userId: string) => {
     try {

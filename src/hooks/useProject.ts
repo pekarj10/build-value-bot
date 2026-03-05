@@ -25,6 +25,7 @@ interface DbProject {
   issues_count: number | null;
   created_at: string;
   updated_at: string;
+  user_id: string | null;
 }
 
 interface DbCostItem {
@@ -177,6 +178,7 @@ export function useProject() {
         issuesCount: project.issues_count || 0,
         createdAt: new Date(project.created_at),
         updatedAt: new Date(project.updated_at),
+        userId: project.user_id || undefined,
       };
     } catch (error) {
       console.error('Get project error:', error);
@@ -207,6 +209,7 @@ export function useProject() {
         issuesCount: project.issues_count || 0,
         createdAt: new Date(project.created_at),
         updatedAt: new Date(project.updated_at),
+        userId: project.user_id || undefined,
       }));
     } catch (error) {
       console.error('Get all projects error:', error);
