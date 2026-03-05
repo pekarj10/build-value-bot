@@ -78,6 +78,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
+  const acceptPendingInvitations = async () => {
+    try {
+      await supabase.functions.invoke('accept-invitations');
+    } catch {
+      // Silent fail — non-critical
+    }
+  };
+
   const checkAdminStatus = async (userId: string) => {
     try {
       const { data, error } = await supabase
