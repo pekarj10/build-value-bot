@@ -36,7 +36,8 @@ import {
   Bot,
   Trash2,
   FileDown,
-  StickyNote
+  StickyNote,
+  Users
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
