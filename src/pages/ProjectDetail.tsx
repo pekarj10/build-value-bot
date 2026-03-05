@@ -905,6 +905,15 @@ export default function ProjectDetail() {
         onUpload={handleUploadFiles}
         isUploading={isUploading}
       />
+
+      {/* Share Project Dialog */}
+      <ShareProjectDialog
+        projectId={project.id}
+        projectName={project.name}
+        open={showShareDialog}
+        onOpenChange={setShowShareDialog}
+        isOwner={project.userId === user?.id}
+      />
     </AppLayout>
   );
 }
