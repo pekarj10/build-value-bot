@@ -69,6 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (session?.user) {
         checkAdminStatus(session.user.id);
+        acceptPendingInvitations();
       }
       
       setIsLoading(false);
