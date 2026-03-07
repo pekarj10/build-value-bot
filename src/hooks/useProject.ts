@@ -188,12 +188,29 @@ export function useProject() {
 
   const getAllProjects = useCallback(async () => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const currentUserId = user?.id;
+
       const { data, error } = await supabase
         .from('projects')
         .select('*')
         .order('updated_at', { ascending: false });
 
       if (error) throw error;
+
+      // Get memberships to identify shared projects
+      let membershipMap: Record<string, string> = {};
+      if (currentUserId) {
+        const { data: memberships } = await supabase
+          .from('project_members')
+          .select('project_id, role')
+          .eq('user_id', currentUserId);
+        if (memberships) {
+          for (const m of memberships) {
+            membershipMap[m.project_id] = m.role;
+          }
+        }
+      }
 
       return (data as DbProject[]).map((project) => ({
         id: project.id,
@@ -210,6 +227,8 @@ export function useProject() {
         createdAt: new Date(project.created_at),
         updatedAt: new Date(project.updated_at),
         userId: project.user_id || undefined,
+        isShared: project.user_id !== currentUserId,
+        sharedRole: membershipMap[project.id] as 'viewer' | 'editor' | 'admin' | undefined,
       }));
     } catch (error) {
       console.error('Get all projects error:', error);
