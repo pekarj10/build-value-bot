@@ -664,7 +664,7 @@ export default function ProjectDetail() {
               <Users className="h-4 w-4 mr-2" />
               Share
             </Button>
-            {(project.userId === user?.id || effectiveIsAdmin) && (
+            {project.userId === user?.id && (
               <Button 
                 variant="outline" 
                 className="text-destructive hover:text-destructive hover:bg-destructive/10"
