@@ -75,11 +75,22 @@ export function ProjectCard({ project, onDeleted }: ProjectCardProps) {
         <Link to={`/project/${project.id}`} className="block">
           <div className="flex items-start justify-between mb-4 pr-8">
             <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-foreground group-hover:text-primary transition-base truncate">
-                {project.name}
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="font-semibold text-foreground group-hover:text-primary transition-base truncate">
+                  {project.name}
+                </h3>
+                {project.isShared && (
+                  <Badge variant="secondary" className="shrink-0 text-xs gap-1">
+                    <Users className="h-3 w-3" />
+                    Shared
+                  </Badge>
+                )}
+              </div>
               <p className="text-sm text-muted-foreground mt-0.5">
                 {PROJECT_TYPE_LABELS[project.projectType]}
+                {project.isShared && project.sharedRole && (
+                  <span className="text-muted-foreground/70"> · {project.sharedRole === 'viewer' ? 'View only' : project.sharedRole === 'editor' ? 'Can edit' : 'Full access'}</span>
+                )}
               </p>
             </div>
             <StatusBadge status={project.status} />
