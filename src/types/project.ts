@@ -27,6 +27,8 @@ export interface Project {
   totalValue?: number;
   issuesCount?: number;
   userId?: string;
+  isShared?: boolean;
+  sharedRole?: 'viewer' | 'editor' | 'admin';
 }
 
 export interface CostItem {

@@ -6,7 +6,8 @@ import { StatusBadge } from '@/components/ui/status-badge';
 import { DeleteProjectDialog } from '@/components/project/DeleteProjectDialog';
 import { Project, PROJECT_TYPE_LABELS, SUPPORTED_COUNTRIES } from '@/types/project';
 import { useProject } from '@/hooks/useProject';
-import { Calendar, MapPin, FileText, AlertTriangle, Trash2, MoreVertical } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Calendar, MapPin, FileText, AlertTriangle, Trash2, MoreVertical, Users } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import {
   DropdownMenu,
