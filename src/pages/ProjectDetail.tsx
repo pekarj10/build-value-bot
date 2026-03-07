@@ -664,14 +664,16 @@ export default function ProjectDetail() {
               <Users className="h-4 w-4 mr-2" />
               Share
             </Button>
-            <Button 
-              variant="outline" 
-              className="text-destructive hover:text-destructive hover:bg-destructive/10"
-              onClick={() => setShowDeleteDialog(true)}
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete
-            </Button>
+            {(project.userId === user?.id || effectiveIsAdmin) && (
+              <Button 
+                variant="outline" 
+                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                onClick={() => setShowDeleteDialog(true)}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete
+              </Button>
+            )}
             <Button variant="outline" onClick={() => setShowExportDialog(true)}>
               <FileDown className="h-4 w-4 mr-2" />
               {effectiveIsAdmin ? 'Export' : 'Export PDF'}

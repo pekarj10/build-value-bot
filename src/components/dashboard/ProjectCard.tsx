@@ -46,31 +46,33 @@ export function ProjectCard({ project, onDeleted }: ProjectCardProps) {
   return (
     <>
       <Card className="p-5 hover:border-primary/30 transition-base cursor-pointer group relative animate-enter wow-elevated">
-        <div className="absolute top-3 right-3 z-10">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild onClick={(e) => e.preventDefault()}>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
-              >
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem 
-                className="text-destructive focus:text-destructive"
-                onClick={(e) => {
-                  e.preventDefault();
-                  setShowDeleteDialog(true);
-                }}
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Delete Project
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+        {!project.isShared && (
+          <div className="absolute top-3 right-3 z-10">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild onClick={(e) => e.preventDefault()}>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem 
+                  className="text-destructive focus:text-destructive"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setShowDeleteDialog(true);
+                  }}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete Project
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )}
         
         <Link to={`/project/${project.id}`} className="block">
           <div className="flex items-start justify-between mb-4 pr-8">
