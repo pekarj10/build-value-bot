@@ -1,0 +1,1 @@
+UPDATE projects SET user_id = 'ab2da2db-bdcb-466d-ad52-591a0361ec3b' WHERE id = '90a781e9-d300-41d4-9f3e-6d071ccaf9a9' AND user_id IS NULL
