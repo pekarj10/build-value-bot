@@ -326,6 +326,12 @@ export default function TeamChat() {
                   </span>
                 )}
                 <div className="ml-auto flex items-center gap-2">
+                  {onlineInChannel > 0 && (
+                    <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                      <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                      {onlineInChannel} here
+                    </span>
+                  )}
                   {activeChannel.isGlobal && (
                     <Badge variant="secondary" className="text-[10px]">
                       <Globe className="h-3 w-3 mr-1" />
