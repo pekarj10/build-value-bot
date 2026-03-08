@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 
 const Settings = () => {
   const { user } = useAuth();
+  const { theme, setTheme } = useTheme();
   const [fullName, setFullName] = useState("");
   const [company, setCompany] = useState("");
   const [emailNotifications, setEmailNotifications] = useState(true);
