@@ -15,7 +15,8 @@ import {
   User,
   Shield,
   Menu,
-  X
+  X,
+  MessageSquare
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -41,6 +42,7 @@ interface AppLayoutProps {
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
   { name: 'Projects', href: '/projects', icon: FolderOpen },
+  { name: 'Team Chat', href: '/chat', icon: MessageSquare },
   { name: 'Settings', href: '/settings', icon: Settings },
   { name: 'Help', href: '/help', icon: HelpCircle },
 ];
