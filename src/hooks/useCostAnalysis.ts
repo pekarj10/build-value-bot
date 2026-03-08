@@ -117,6 +117,7 @@ export function useCostAnalysis() {
           matchConfidence: null,
           matchReasoning: null,
           priceSource: null,
+          userExplanation: null,
         };
       });
 
