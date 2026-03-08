@@ -1121,6 +1121,14 @@ Select the BEST matching benchmark. Even partial matches (65-80% confidence) are
 
     console.log(`[${item.originalDescription}] → MATCHED: ${benchmark.avg_price} SEK/${benchmark.unit} (${confidence}% confidence)`);
 
+    // Strip UUIDs from reasoning before including in aiComment
+    const cleanReasoning = reasoning
+      .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, '')
+      .replace(/benchmark\s*ID\s*,?\s*/gi, '')
+      .replace(/ID\s*=\s*,?\s*/gi, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+
     return {
       id: item.id,
       matchedBenchmarkId: benchmark.id,
@@ -1133,7 +1141,7 @@ Select the BEST matching benchmark. Even partial matches (65-80% confidence) are
       benchmarkMax: benchmark.max_price || benchmark.avg_price * 1.15,
       priceSource: priceSource,
       status: status,
-      aiComment: `Matched with ${confidence}% confidence. ${reasoning}`,
+      aiComment: `Matched with ${confidence}% confidence. ${cleanReasoning}`,
     };
 
   } catch (error) {
