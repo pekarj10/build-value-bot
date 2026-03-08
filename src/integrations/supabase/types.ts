@@ -110,6 +110,82 @@ export type Database = {
         }
         Relationships: []
       }
+      chat_channels: {
+        Row: {
+          created_at: string
+          created_by: string
+          description: string | null
+          id: string
+          is_global: boolean
+          name: string
+          project_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          description?: string | null
+          id?: string
+          is_global?: boolean
+          name: string
+          project_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          id?: string
+          is_global?: boolean
+          name?: string
+          project_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_channels_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chat_messages: {
+        Row: {
+          channel_id: string
+          content: string
+          created_at: string
+          edited_at: string | null
+          id: string
+          user_id: string
+        }
+        Insert: {
+          channel_id: string
+          content: string
+          created_at?: string
+          edited_at?: string | null
+          id?: string
+          user_id: string
+        }
+        Update: {
+          channel_id?: string
+          content?: string
+          created_at?: string
+          edited_at?: string | null
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_messages_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "chat_channels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cost_item_comments: {
         Row: {
           content: string
