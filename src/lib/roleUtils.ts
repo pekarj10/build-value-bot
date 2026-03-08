@@ -16,8 +16,14 @@ export function sanitizeAnalysisNoteForUser(
   confidence: number | null | undefined,
   region: string,
   currency: string,
-  hasRecommendedPrice: boolean = true
+  hasRecommendedPrice: boolean = true,
+  userExplanation?: string | null
 ): string {
+  // If we have a dedicated user explanation from the AI, use it directly
+  if (userExplanation && hasRecommendedPrice) {
+    return userExplanation;
+  }
+
   if (!aiComment) {
     return hasRecommendedPrice 
       ? 'Price analysis based on market data for this region.'
@@ -53,41 +59,30 @@ export function sanitizeAnalysisNoteForUser(
     return 'We could not find a matching price in our database. Please provide more details about this work item using the clarification box, or set a manual price.';
   }
 
-  // HAS a recommended price - show confidence-based message
-  // Patterns to detect proprietary information
-  const proprietaryPatterns = [
-    /REPAB/gi,
-    /\b[A-ZÅÄÖ][a-zåäö]+arbeten\b/g,
-    /\b[A-ZÅÄÖ][a-zåäö]+ytor\b/g,
-    /Matched to [^.()]+(?:\([^)]+\))?/gi,
-    /benchmark_id[:\s]+[a-f0-9-]+/gi,
-    /source[:\s]*["']?[A-Z]+["']?/gi,
-  ];
-
-  let hasProprietary = proprietaryPatterns.some(pattern => pattern.test(aiComment));
-  
-  if (hasProprietary) {
-    const confidenceText = confidence && confidence >= 50 ? `${Math.round(confidence)}% match confidence` : '';
-    const confSuffix = confidenceText ? ` (${confidenceText})` : '';
-    return `Price matched from our database${confSuffix}. The recommended price reflects typical market rates for this type of work in the ${region} area.`;
-  }
-
-  // Cleanup remaining technical terms
-  let sanitized = aiComment
-    .replace(/\([^)]*%\s*confidence\)/gi, '')
-    .replace(/matched\s+to\s+/gi, 'comparable to ')
-    .replace(/Matched with \d+% confidence\.\s*/gi, '')
-    .replace(/benchmark\s+(data|database|source)/gi, 'market data')
-    .replace(/REPAB/gi, 'industry standards')
+  // HAS a recommended price but NO userExplanation - try to extract useful info from aiComment
+  // First strip the "Matched with X% confidence." prefix
+  let explanation = aiComment
+    .replace(/^Matched with \d+% confidence\.\s*/i, '')
     .trim();
 
-  if (sanitized.length < 20 || /[åäöÅÄÖ]/.test(sanitized)) {
+  // Remove proprietary references but keep the explanation
+  explanation = explanation
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, '')
+    .replace(/REPAB/gi, 'industry')
+    .replace(/benchmark\s*(ID|database|source|data)?/gi, 'market data')
+    .replace(/category\s+\d+[\w]*/gi, '')
+    .replace(/\(\s*\)/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+  // If explanation still has Swedish or is too short, use a confidence-based fallback
+  if (explanation.length < 30 || /[åäöÅÄÖ]/.test(explanation)) {
     const confidenceText = confidence && confidence >= 50 ? `${Math.round(confidence)}% match confidence` : '';
     const confSuffix = confidenceText ? ` (${confidenceText})` : '';
     return `Price matched from market data${confSuffix} for the ${region} region.`;
   }
 
-  return sanitized;
+  return explanation;
 }
 
 /**
