@@ -1091,19 +1091,22 @@ async function processCostItem(
 Description: "${item.originalDescription}"
 Unit: ${item.unit}
 Quantity: ${item.quantity}
-${item.originalUnitPrice ? `Original Price: ${item.originalUnitPrice} per ${item.unit}` : ''}
-${item.trade ? `Trade/Category: ${item.trade}` : ''}
+${item.originalUnitPrice ? `Original Price: ${item.originalUnitPrice} per ${item.unit} — use this to validate your match is in the right price range` : 'No original price provided'}
+${item.trade ? `Trade/Category hint: ${item.trade}` : ''}
+${item.sheetName ? `Sheet/section: ${item.sheetName}` : ''}
 
-TARGET LANGUAGE: ${targetLanguage}
-PROJECT TYPE: ${project.projectType || 'maintenance/renovation'}
-PROJECT: ${project.name || 'N/A'}
+PROJECT CONTEXT:
+- Name: ${project.name || 'N/A'}
+- Type: ${project.projectType || 'maintenance/renovation'}
+- Country: ${project.country}
+- Language: ${targetLanguage}
 
-IMPORTANT: Select the benchmark whose SIZE BRACKET contains quantity ${item.quantity}. For example, if quantity is ${item.quantity}, pick the ">100 m²" or "1000-5000 m²" benchmark that covers this range — NOT a small-area benchmark.
+REASONING INSTRUCTION: Think step by step. First translate and understand what "${item.originalDescription}" means as construction work. Then identify which REPAB category it belongs to. Then select the benchmark whose size bracket contains quantity ${item.quantity}. Explain your reasoning chain.
 
 AVAILABLE BENCHMARKS (ranked by relevance; top ${top.length} of ${ranked.length} candidates):
 ${candidateList}
 
-Select the BEST matching benchmark. Even partial matches (65-80% confidence) are valuable.`
+Select the BEST matching benchmark. Even partial matches (65-80% confidence) are valuable — explain any assumptions.`
     );
 
     console.log(`[${item.originalDescription}] AI result:`, JSON.stringify(aiResult));
