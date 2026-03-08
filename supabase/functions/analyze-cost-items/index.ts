@@ -598,7 +598,7 @@ function generateSearchTerms(description: string): string[] {
     terms.push('textilgolv', 'nålfilt', 'golvmatta', 'matta', 'heltäckningsmatta');
   }
   if (desc.includes('innertak') || desc.includes('ceiling') || desc.includes('undertak')) {
-    terms.push('innertak', 'undertak', 'takskivor');
+    terms.push('innertak', 'undertak', 'takskivor', '335', '337', '229', 'skivor', 'gipsskiva', 'spånskiva', 'akustikplattor', 'träpanel');
   }
   if (desc.includes('isolering') || desc.includes('insulation')) {
     terms.push('isolering', 'tilläggsisolering', 'fasadisolering');
@@ -615,11 +615,14 @@ function generateSearchTerms(description: string): string[] {
   if (desc.includes('belysning') || desc.includes('led') || desc.includes('lampor') || desc.includes('armatur')) {
     terms.push('belysning', 'ljus', 'armaturer', 'LED');
   }
-  if (desc.includes('balkong') || desc.includes('balcony')) {
-    terms.push('232', '233', 'balkong', 'balkongplatta', 'balkongräcke');
+  if (desc.includes('balkong') || desc.includes('balcony') || desc.includes('räcke') || desc.includes('railing')) {
+    terms.push('232', '233', 'balkong', 'balkongplatta', 'balkongräcke', 'räcke', 'trä', 'plåt', 'aluminium', 'målning', 'byte', 'lagning');
   }
   if (desc.includes('relining') || desc.includes('avlopp') || desc.includes('stam')) {
-    terms.push('relining', 'avlopp', 'stamrenovering', 'rör');
+    terms.push('relining', 'avlopp', 'stamrenovering', 'rör', '142', 'avloppsledningar', 'vattenledningar');
+  }
+  if (desc.includes('vattenledn') || desc.includes('water pipe')) {
+    terms.push('142', 'vattenledningar', 'byte', 'avloppsledningar', 'rensning', 'stambyte');
   }
   if (desc.includes('membran') || desc.includes('tätskikt')) {
     terms.push('membran', 'tätskikt', 'vattentätning', '264');
@@ -630,8 +633,11 @@ function generateSearchTerms(description: string): string[] {
   if (desc.includes('trappa') || desc.includes('stair')) {
     terms.push('151', '228', 'trappa', 'trappor');
   }
-  if (desc.includes('brand') || desc.includes('fire')) {
-    terms.push('brandlarm', 'brandsäkerhet', 'larm');
+  if (desc.includes('brand') || desc.includes('fire') || desc.includes('larm')) {
+    terms.push('brandlarm', 'brandsäkerhet', 'larm', 'larmanläggning', '646', 'rökdetektor', 'centralutrustning');
+  }
+  if (desc.includes('elcentral') || desc.includes('elanlägg') || desc.includes('elinstall') || desc.includes('electrical panel')) {
+    terms.push('elinstallation', 'elinstallationer', 'elanläggning', '6S1', '6S3', 'byte', 'led', 'lysrör');
   }
   if (desc.includes('port') || desc.includes('gate') || desc.includes('garage')) {
     terms.push('255', '256', 'port', 'portar', 'garageport');
