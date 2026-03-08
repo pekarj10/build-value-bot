@@ -246,10 +246,18 @@ export default function TeamChat() {
           {/* Channel sidebar */}
           <div className="w-64 border-r flex flex-col shrink-0">
             <div className="p-3 border-b space-y-2">
-              <h3 className="font-semibold text-sm flex items-center gap-2">
-                <MessageSquare className="h-4 w-4" />
-                Channels
-              </h3>
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-sm flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4" />
+                  Channels
+                </h3>
+                {totalOnline > 0 && (
+                  <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                    <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+                    {totalOnline} online
+                  </span>
+                )}
+              </div>
               {channels.length > 5 && (
                 <div className="relative">
                   <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
