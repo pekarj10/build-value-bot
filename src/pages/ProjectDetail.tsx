@@ -632,6 +632,7 @@ export default function ProjectDetail() {
           match_confidence: analyzed.matchConfidence || null,
           match_reasoning: analyzed.matchReasoning || null,
           price_source: analyzed.priceSource || null,
+          user_explanation: analyzed.userExplanation || null,
         });
       }
       
