@@ -1012,6 +1012,7 @@ async function processCostItem(
     priceSource: null,
     status: "clarification",
     aiComment: "No benchmark match found. Manual pricing required.",
+    userExplanation: null,
   };
 
   try {
