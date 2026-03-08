@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { AppLayout, PageHeader } from '@/components/layout/AppLayout';
 import { useTeamChat, ChatMessage } from '@/hooks/useTeamChat';
+import { useChatPresence } from '@/hooks/useChatPresence';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
