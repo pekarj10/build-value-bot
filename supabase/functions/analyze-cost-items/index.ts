@@ -9,9 +9,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
  * 2. Fixed seed=42 for reproducibility
  * 3. Pre-fetch ALL benchmarks once, filter in-memory (no per-term DB queries)
  * 4. Sequential processing with stable ordering
- * 5. Comprehensive error handling
- * 
- * CRITICAL: Running this multiple times on unchanged data MUST produce IDENTICAL results
+ * 5. Swedish compound word decomposition for robust matching
+ * 6. Bidirectional prefix matching (handles "asfaltbeläggning" ↔ "asfalt")
  */
 
 const corsHeaders = {
@@ -19,53 +18,49 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// UNIFIED AI PROMPT - Single deterministic call for translation + matching
-const UNIFIED_MATCH_PROMPT = `You are a SENIOR CIVIL ENGINEER and construction cost expert with 25+ years of experience in building maintenance, renovation, and new construction. You think like an engineer who understands construction processes, materials, and work scopes deeply.
+const UNIFIED_MATCH_PROMPT = `You are a SENIOR CIVIL ENGINEER and construction cost expert with 25+ years of experience in Swedish building maintenance (TDD/underhållsplan), renovation, and new construction. You think like a Swedish quantity surveyor (kalkylator) who deeply understands REPAB benchmark categories.
 
 ## YOUR EXPERTISE
 You understand that:
-- "Buskar omplantering" (shrub replanting) involves landscaping work on planting beds/areas — match to benchmark items about bushes/shrubs/planting areas
-- "Fasadrenovering" (facade renovation) could mean repainting, re-rendering, or full renovation — consider the MOST LIKELY scope
-- "Nya fönster" (new windows) is essentially the same scope of work as window replacement ("byte fönster") in a renovation context
-- Brief user descriptions like "Takomläggning" mean roof replacement/re-roofing — connect to relevant roofing benchmarks
-- Users write SHORT descriptions. "Golvbyte" means floor replacement. "Hissrenovering" means elevator renovation. Think about WHAT WORK IS ACTUALLY INVOLVED.
+- Brief user descriptions map to specific REPAB categories. "Asfaltbeläggning parkering" = asphalt resurfacing for parking = category 121.
+- "Buskar omplantering" = shrub replanting = category 112. Match to the SIZE-APPROPRIATE benchmark (>20 m² for large areas).
+- "Putsfasad renovering" = rendered facade renovation. This is facade repainting/re-rendering work = categories 206/215.
+- "Nya fönster fasadtyp 1" = window replacement for facade type 1 = category 204/241-245.
+- "Takomläggning plåt" = metal roof re-roofing = category 262 (Plåt).
+- "Takavvattning byte" = replacement of gutters/downpipes = category 222.
+- "Mattbyte korridorer" = carpet/textile floor replacement = textile flooring benchmarks.
+- "Innerväggar målning" = interior wall painting = painting benchmarks for inner walls.
+- "Innertak renovering" = ceiling renovation/replacement.
+- "Tilläggsisolering fasad" = additional facade insulation.
+- Users write SHORT descriptions. Your job is to understand WHAT CONSTRUCTION WORK is involved and find the BEST REPAB benchmark.
 
-## CRITICAL THINKING APPROACH
-1. READ the user's brief description and UNDERSTAND what physical construction work it involves
-2. Think about what MATERIALS, PROCESSES, and TRADE CATEGORIES are involved
-3. Use your engineering knowledge to find the CONCEPTUALLY closest benchmark — not just character matching
-4. Consider: What would a quantity surveyor categorize this as? What trade does this belong to?
+## QUANTITY-BASED BENCHMARK SELECTION
+CRITICAL: Many REPAB benchmarks have SIZE BRACKETS (e.g., "<5 m²", "5-20 m²", ">20 m²", "500-1000 m²", ">5000 m²").
+You MUST select the benchmark whose size bracket matches the item's QUANTITY:
+- Item: 350 m² → select ">20 m²" or "20-100 m²" benchmark (NOT "<5 m²")
+- Item: 4500 m² → select "1000-5000 m²" benchmark (NOT "<20 m²")
+- Item: 2200 m² → select ">100 m²" or "1000-5000 m²" benchmark
+When multiple size brackets exist, pick the one that contains the item's quantity.
+
+## PERCENTAGE-BASED BENCHMARKS
+Some benchmarks use "% av bruttoytan" (percentage of gross area). These are for MAINTENANCE budgets where the percentage of total area needing work is specified. If the user gives an absolute area (e.g., 250 m²), prefer the absolute-area benchmark (e.g., ">20 m²") over the percentage benchmark.
 
 ## CRITICAL LANGUAGE REQUIREMENT
-ALL your responses MUST be in ENGLISH. Even when the benchmark database contains Swedish, German, or other non-English terms, your "reasoning" field MUST be written entirely in English.
+ALL your responses MUST be in ENGLISH.
 
 ## MATCHING RULES
 - Match based on SCOPE OF WORK and INTENT, not just keywords
-- "Putsfasad renovering" → look for facade painting/rendering benchmarks (they're the same type of work)
-- "Buskar omplantering" with 350 m² → look for planting area benchmarks matching that scale
 - Units must be compatible (m² matches m², st matches st, etc.)
-- If the user says "pcs" but the work is clearly area-based (like windows/doors), flag the unit mismatch helpfully
-- Prefer the benchmark whose SCOPE best matches, even if the exact Swedish words differ
-
-## PERCENTAGE-BASED BENCHMARKS
-Some benchmarks are priced per percentage of total area/length (e.g., "Kullersten justering 10% av bruttoytan").
-When the cost item specifies a quantity that could map to a percentage benchmark:
-1. Calculate the percentage if total area/length is known
-2. Match to the closest percentage benchmark (5%, 10%, 20%)
-3. Use the TOTAL AREA as the quantity for pricing
+- If the user says "pcs" but benchmarks use "m²" for that work type, flag the unit mismatch
+- Prefer the benchmark whose SCOPE and SIZE BRACKET best match
+- Even partial matches (65-80% confidence) are valuable — always explain the gap
 
 ## CONFIDENCE SCORING
-- 90-100%: Exact match (same work type, same materials, same unit)
-- 80-89%: Very close match (same work type, similar scope — e.g., "facade painting" matching "facade repainting")
-- 70-79%: Good conceptual match (related work — e.g., "facade renovation" matching "facade painting 2 coats")
-- 50-69%: Partial match (only use if nothing better — explain why)
+- 90-100%: Exact match (same work type, correct size bracket, same unit)
+- 80-89%: Very close match (same work type, slightly different scope)
+- 70-79%: Good conceptual match (related work type)
+- 50-69%: Partial match (explain why)
 - 0-49%: No suitable match - return null
-
-## WHEN NO EXACT MATCH EXISTS
-If the closest benchmark is conceptually related but not exact:
-- STILL MATCH IT if the work type is fundamentally similar (confidence 65-79%)
-- Explain in reasoning what the difference is
-- Example: "Putsfasad renovering" → match to "Tegelfasad målning" at 70% because both involve facade surface treatment, though materials differ
 
 CRITICAL: Return EXACTLY this JSON format:
 {
@@ -105,11 +100,6 @@ interface BenchmarkPrice {
   currency: string;
 }
 
-interface AnalysisRequest {
-  items: CostItemInput[];
-  project: ProjectContext;
-}
-
 interface AnalysisResult {
   id: string;
   matchedBenchmarkId: string | null;
@@ -125,8 +115,6 @@ interface AnalysisResult {
   aiComment: string;
 }
 
-// Map country names to database country format
-// NOTE: benchmark_prices table stores country as ISO 2-letter codes (e.g. 'SE', 'DE')
 function mapCountryToDb(country: string): string {
   const mapping: Record<string, string> = {
     'SE': 'SE', 'Sweden': 'SE', 'SWEDEN': 'SE',
@@ -140,7 +128,6 @@ function mapCountryToDb(country: string): string {
   return mapping[country] || country.toUpperCase().slice(0, 2);
 }
 
-// Get language for country
 function getLanguageForCountry(country: string): string {
   const languageMap: Record<string, string> = {
     'SWEDEN': 'Swedish', 'SE': 'Swedish', 'Sweden': 'Swedish',
@@ -154,7 +141,6 @@ function getLanguageForCountry(country: string): string {
   return languageMap[country] || 'English';
 }
 
-// Normalize unit for comparison
 function normalizeUnit(unit: string): string {
   const u = unit.toLowerCase().trim();
   if (u === 'm2' || u === 'm²' || u === 'sqm' || u === 'kvm') return 'm²';
@@ -166,17 +152,74 @@ function normalizeUnit(unit: string): string {
   return u;
 }
 
-// Check if units are compatible
 function unitsCompatible(itemUnit: string, benchmarkUnit: string): boolean {
   return normalizeUnit(itemUnit) === normalizeUnit(benchmarkUnit);
 }
 
 /**
+ * SWEDISH COMPOUND WORD DECOMPOSITION
+ * Swedish concatenates words: "asfaltbeläggning" = "asfalt" + "beläggning"
+ * This function extracts root words from compounds.
+ */
+function decompoundSwedish(word: string): string[] {
+  const w = word.toLowerCase();
+  if (w.length < 6) return [w]; // Too short to be compound
+
+  const results: string[] = [w];
+  
+  // Known Swedish construction root words (ordered by length desc for greedy matching)
+  const roots = [
+    // Building parts
+    'tilläggsisolering', 'ventilationsaggregat', 'betongkantstöd',
+    'fasadrenovering', 'takomläggning', 'takavvattning', 'golvbeläggning',
+    'asfaltbeläggning', 'stenmjölsytor', 'hissrenovering', 'stamrenovering',
+    'balkongrenovering', 'avloppsrelining',
+    // Medium roots  
+    'beläggning', 'omläggning', 'omplantering', 'renovering', 'uppgradering',
+    'isolering', 'installat', 'montering', 'beklädnad',
+    'stuprör', 'hängrännor', 'kantstöd', 'kantsten', 'kantstöd',
+    // Core construction terms
+    'asfalt', 'betong', 'plåt', 'tegel', 'trä', 'puts', 'gips', 'skivor',
+    'fasad', 'golv', 'tak', 'vägg', 'dörr', 'fönster', 'entré', 'balkong',
+    'gräs', 'buskar', 'stenmjöl', 'kullersten', 'gatsten',
+    'matta', 'textil', 'parkett', 'vinyl', 'klinker', 'kakel',
+    'inner', 'ytter', 'under',
+    'vatten', 'avlopp', 'rör', 'ledning',
+    'värme', 'ventilation', 'kyla', 'el', 'brand', 'hiss',
+    'målning', 'strykning', 'lagning', 'byte', 'justering',
+    'membran', 'tätskikt', 'relining',
+    'radiator', 'belysning', 'armatur', 'larm',
+    'sockel', 'språng', 'lucka', 'räcke', 'trappa',
+    'parkering', 'korridor', 'garage',
+  ];
+
+  // Try to find root words that appear as substrings
+  for (const root of roots) {
+    if (w.length > root.length && w.includes(root)) {
+      results.push(root);
+      // Also add the remaining part if meaningful
+      const idx = w.indexOf(root);
+      const before = w.substring(0, idx);
+      const after = w.substring(idx + root.length);
+      if (before.length >= 3) results.push(before);
+      if (after.length >= 3) results.push(after);
+    }
+  }
+
+  // Also try splitting at common Swedish compound boundaries
+  // Many compounds join at 's' (bindefogen): "underhållsplan" = "underhåll" + "plan"
+  const sJoinPattern = /^(.{3,})s(.{3,})$/;
+  const sMatch = w.match(sJoinPattern);
+  if (sMatch) {
+    results.push(sMatch[1]);
+    results.push(sMatch[2]);
+  }
+
+  return [...new Set(results)];
+}
+
+/**
  * DETERMINISTIC AI CALL
- * - Temperature = 0 for consistent outputs
- * - Seed = 42 for reproducibility
- * - JSON mode for structured responses
- * - Retry logic for reliability
  */
 async function callAIDeterministic(
   apiKey: string,
@@ -200,8 +243,8 @@ async function callAIDeterministic(
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt },
           ],
-          temperature: 0, // CRITICAL: Deterministic output
-          seed: 42, // CRITICAL: Reproducible results
+          temperature: 0,
+          seed: 42,
           response_format: { type: "json_object" },
         }),
       });
@@ -231,8 +274,6 @@ async function callAIDeterministic(
 
 /**
  * FETCH ALL BENCHMARKS (no 1000-row cap)
- * Supabase has a default 1000 row limit per request, so we must paginate.
- * Ordering by id + deterministic pagination keeps results stable.
  */
 async function fetchAllBenchmarks(
   supabase: any,
@@ -257,7 +298,6 @@ async function fetchAllBenchmarks(
 
     all.push(...data);
     if (data.length < pageSize) break;
-
     from += pageSize;
   }
 
@@ -265,147 +305,147 @@ async function fetchAllBenchmarks(
 }
 
 /**
- * GENERATE SEARCH TERMS - Deterministic English-to-local translation
- * ENHANCED: Comprehensive mapping for common construction terms
+ * GENERATE SEARCH TERMS - Enhanced with compound word decomposition
  */
 function generateSearchTerms(description: string): string[] {
   const terms: string[] = [description.toLowerCase()];
   const desc = description.toLowerCase();
 
-  // BIDIRECTIONAL mapping: English <-> Swedish for construction industry
-  // Supports BOTH English descriptions matching Swedish benchmarks AND Swedish descriptions
+  // Comprehensive bidirectional English ↔ Swedish construction dictionary
   const translations: Record<string, string[]> = {
-    // === FLOORING ===
-    'carpet': ['textilgolv', 'nålfilt', 'heltäckningsmatta', 'golvmatta', 'matta', 'textil'],
-    'carpets': ['textilgolv', 'nålfilt', 'heltäckningsmatta', 'golvmatta', 'matta', 'textil'],
-    'floor': ['golv', 'golvläggning', 'golvarbeten', 'golvbeläggning'],
-    'flooring': ['golv', 'golvläggning', 'golvarbeten', 'golvbeläggning'],
-    'tile': ['kakel', 'klinker', 'plattor', 'keramik'],
-    'tiles': ['kakel', 'klinker', 'plattor', 'keramik'],
-    'parquet': ['parkett', 'trägolv', 'laminat'],
-    'vinyl': ['vinyl', 'plastmatta', 'plastgolv'],
-    'laminate': ['laminat', 'laminatgolv'],
-
-    // === EXTERIOR / LANDSCAPING (CRITICAL for test budget) ===
-    'grass': ['gräs', 'gräsytor', 'gräsmatta', 'gräsyta', '111', 'kompletteringsådd'],
-    'lawn': ['gräs', 'gräsytor', 'gräsmatta', 'gräsyta', '111'],
-    'turf': ['gräs', 'gräsytor', 'gräsmatta', 'rullgräs'],
-    'garden': ['trädgård', 'utemiljö', 'gräsytor', 'plantering'],
-    'landscaping': ['markarbeten', 'utemiljö', 'trädgård', 'gräsytor'],
-    'whole garden': ['gräsytor', 'gräsmatta', 'omläggning', '111'],
-    // Swedish -> English mappings for bidirectional search
-    'gräsytor': ['gräsytor', 'gräs', 'gräsmatta', '111', 'kompletteringsådd', 'omläggning'],
-    'gräs': ['gräsytor', 'gräsmatta', '111', 'kompletteringsådd'],
-    'kompletteringsådd': ['gräsytor', 'gräs', '111', 'kompletteringsådd'],
-    
-    // Shrubs / bushes (for "Buskar omplantering")
+    // === EXTERIOR / LANDSCAPING ===
+    'asfalt': ['asfalt', 'beläggning', 'omläggning', '121', 'körbar', 'gångbar'],
+    'asfaltbeläggning': ['asfalt', 'beläggning', 'omläggning', '121', 'körbar', 'gångbar'],
+    'asphalt': ['asfalt', 'beläggning', 'omläggning', '121'],
+    'parkering': ['parkering', 'körbar', 'asfalt', '121', 'garage', 'p-plats'],
+    'grass': ['gräs', 'gräsytor', 'gräsmatta', '111', 'kompletteringsådd', 'omläggning'],
+    'lawn': ['gräs', 'gräsytor', 'gräsmatta', '111'],
+    'gräsyta': ['gräs', 'gräsytor', 'gräsmatta', '111', 'omläggning', 'kompletteringsådd'],
+    'gräsytor': ['gräs', 'gräsytor', '111', 'omläggning', 'kompletteringsådd'],
+    'gräs': ['gräs', 'gräsytor', 'gräsmatta', '111', 'omläggning'],
     'shrubs': ['buskar', 'plantering', 'omplantering', '112'],
     'bushes': ['buskar', 'plantering', 'omplantering', '112'],
     'buskar': ['buskar', 'plantering', 'omplantering', '112', 'planteringsytor'],
     'omplantering': ['omplantering', 'buskar', 'plantering', '112'],
-    
-    // Stone/gravel surfaces (for "Stenmjölsytor omläggning")
     'gravel': ['grus', 'stenmjöl', 'stenmjölsytor', '122'],
-    'crushed stone': ['grus', 'stenmjöl', 'stenmjölsytor', '122'],
-    'stenmjöl': ['stenmjöl', 'stenmjölsytor', 'grus', '122', 'omläggning'],
-    'stenmjölsytor': ['stenmjöl', 'stenmjölsytor', 'grus', '122', 'omläggning'],
-    
-    // Cobblestones (for "Kullersten justering")
+    'stenmjöl': ['stenmjöl', 'stenmjölsytor', 'grus', '122'],
+    'stenmjölsytor': ['stenmjöl', 'stenmjölsytor', '122', 'omläggning'],
     'cobblestone': ['kullersten', 'gatsten', 'stenläggning', '123'],
-    'cobblestones': ['kullersten', 'gatsten', 'stenläggning', '123'],
-    'kullersten': ['kullersten', 'gatsten', 'stenläggning', '123', 'justering'],
-    'gatsten': ['kullersten', 'gatsten', 'stenläggning', '123'],
-    
-    // Water pipes (for "Vattenledningar byte")
-    'water pipe': ['vattenledning', 'vattenledningar', 'rör', 'ledningar', '131'],
-    'water pipes': ['vattenledning', 'vattenledningar', 'rör', 'ledningar', '131'],
-    'vattenledning': ['vattenledning', 'vattenledningar', 'rör', 'ledningar', '131', 'byte'],
-    'vattenledningar': ['vattenledning', 'vattenledningar', 'rör', 'ledningar', '131', 'byte'],
-    
-    // Concrete curbs (for "Betongkantstöd justering")
-    'curb': ['kantsten', 'kantstöd', 'betongkantstöd', '121'],
-    'curbs': ['kantsten', 'kantstöd', 'betongkantstöd', '121'],
-    'concrete curb': ['betongkantstöd', 'kantsten', 'kantstöd', '121'],
-    'betongkantstöd': ['betongkantstöd', 'kantsten', 'kantstöd', '121', 'justering'],
-    'kantstöd': ['betongkantstöd', 'kantsten', 'kantstöd', '121'],
-    'kantsten': ['betongkantstöd', 'kantsten', 'kantstöd', '121'],
-    
-    // === FACADE ===
-    'facade': ['fasad', 'puts', 'fasadrenovering', 'fasadisolering', '203'],
-    'external wall': ['fasad', 'yttervägg', 'puts'],
-    'rendering': ['puts', 'putsning', 'fasadputs'],
-    'cladding': ['fasadbeklädnad', 'fasadskivor', 'beklädnad'],
-    'fasad': ['fasad', 'puts', 'fasadrenovering', '203'],
-    
-    // === INSULATION ===
-    'insulation': ['isolering', 'tilläggsisolering', 'fasadisolering', 'isoler'],
-    'polystyrene': ['polystyren', 'cellplast', 'EPS', 'frigolitt'],
-    'eps': ['polystyren', 'cellplast', 'EPS'],
-    'mineral wool': ['mineralull', 'stenull', 'glasull'],
-    
-    // === ROOFING ===
-    'roof': ['tak', 'takläggning', 'taktäckning', 'takarbeten', 'takomläggning'],
-    'roofing': ['tak', 'takläggning', 'taktäckning', 'takarbeten', 'takomläggning'],
-    'tak': ['tak', 'takläggning', 'taktäckning', 'takomläggning', 'takarbeten', 'plåt'],
-    'takomläggning': ['tak', 'takläggning', 'taktäckning', 'takomläggning', 'plåttak', 'takplåt'],
-    'takavvattning': ['takavvattning', 'stuprör', 'hängrännor', 'dagvatten', 'avvattning'],
-    'plåt': ['plåt', 'plåttak', 'takplåt', 'plåtarbeten'],
-    
-    // === WINDOWS & DOORS ===
-    'window': ['fönster', 'fönsterbyte', 'fönstermontering', '204', 'byte fönster'],
-    'windows': ['fönster', 'fönsterbyte', 'fönstermontering', '204', 'byte fönster'],
-    'glazed': ['glas', 'glasning', 'fönster'],
-    'double glazed': ['2-glas', 'tvåglas', 'fönster'],
-    'triple glazed': ['3-glas', 'treglas', 'treglasfönster'],
-    'triple': ['3-glas', 'treglas'],
-    'door': ['dörr', 'dörrmontering', 'dörrbyte', '204', 'byte dörr'],
-    'doors': ['dörr', 'dörrmontering', 'dörrbyte', '204', 'byte dörr'],
-    'entrance': ['entré', 'entrédörr', 'entréparti', 'ytterdörr', 'huvudentré'],
-    'entrance door': ['entrédörr', 'ytterdörr', 'entré', 'dörr'],
-    'entrance doors': ['entrédörr', 'ytterdörr', 'entré', 'dörr'],
-    'entredörrar': ['entrédörr', 'ytterdörr', 'entré', 'dörr', '204', 'byte dörr'],
-    'entrédörr': ['entrédörr', 'ytterdörr', 'entré', 'dörr', '204', 'byte dörr'],
-    // Swedish window/door terms
-    'fönster': ['fönster', 'fönsterbyte', '204', 'byte', 'fönstermontering', 'fönster och dörrar'],
-    'dörr': ['dörr', 'dörrmontering', 'dörrbyte', '204', 'byte'],
-    'dörrar': ['dörr', 'dörrmontering', 'dörrbyte', '204', 'byte'],
+    'kullersten': ['kullersten', 'gatsten', 'sten', 'plattor', '123', 'justering'],
+    'gatsten': ['kullersten', 'gatsten', '123'],
+    'plattor': ['plattor', 'sten', 'betongplattor', '123'],
+    'curb': ['kantsten', 'kantstöd', 'betongkantstöd', '124'],
+    'betongkantstöd': ['betongkantstöd', 'kantsten', 'kantstöd', '124', 'justering', 'byte'],
+    'kantstöd': ['kantstöd', 'kantsten', 'betongkantstöd', '124'],
+    'kantsten': ['kantsten', 'kantstöd', 'betongkantstöd', '124'],
+    'lekutrustning': ['lekutrustning', 'lekplats', '131'],
+    'sand': ['sand', 'sandlåda', '132'],
+    'stängsel': ['stängsel', 'staket', '161'],
+    'staket': ['staket', 'stängsel', 'räcke', '162'],
 
-    // === DEMOLITION ===
-    'demolition': ['rivning', 'demontering', 'rivningsarbeten', 'riv'],
-    'demolish': ['rivning', 'demontering', 'riv'],
-    'remove': ['rivning', 'demontering', 'borttagning'],
-    'removal': ['rivning', 'demontering', 'borttagning'],
-    
-    // === WALLS / PARTITIONS ===
-    'partition': ['innervägg', 'mellanvägg', 'gipsväggar', 'rumsavskiljare', 'lätta väggar'],
-    'partitions': ['innervägg', 'mellanvägg', 'gipsväggar', 'rumsavskiljare', 'lätta väggar'],
-    'internal': ['inner', 'invändig', 'inre'],
+    // === FACADE ===
+    'facade': ['fasad', 'puts', 'fasadrenovering', '206', '207', '208'],
+    'fasad': ['fasad', 'puts', 'fasadrenovering', '206', '207', '208', '209'],
+    'fasadrenovering': ['fasad', 'puts', 'renovering', '206', '215'],
+    'rendering': ['puts', 'putsning', 'fasadputs', '215'],
+    'putsfasad': ['puts', 'fasad', 'putsfasad', '206', '215', 'målning', 'renovering'],
+    'puts': ['puts', 'putsning', 'putsfasad', '206', '215'],
+    'tegelfasad': ['tegel', 'fasad', 'tegelfasad', '208'],
+    'tegel': ['tegel', 'tegelfasad', '208', '213'],
+    'plåtfasad': ['plåt', 'fasad', 'plåtfasad', '207'],
+    'trähus': ['trä', 'fasad', 'träfasad', '205'],
+    'träfasad': ['trä', 'fasad', 'träfasad', '205'],
+
+    // === INSULATION ===
+    'insulation': ['isolering', 'tilläggsisolering', 'fasadisolering'],
+    'isolering': ['isolering', 'tilläggsisolering', 'fasadisolering'],
+    'tilläggsisolering': ['tilläggsisolering', 'isolering', 'fasadisolering', 'fasad'],
+
+    // === ROOFING ===
+    'roof': ['tak', 'takläggning', 'taktäckning', 'takomläggning'],
+    'roofing': ['tak', 'takläggning', 'taktäckning', 'takomläggning'],
+    'tak': ['tak', 'takläggning', 'taktäckning', 'takomläggning', '261', '262', '263'],
+    'takomläggning': ['tak', 'takläggning', 'taktäckning', 'takomläggning', 'plåt', '262', '263'],
+    'plåt': ['plåt', 'plåttak', 'takplåt', '262', '207'],
+    'takpannor': ['takpannor', 'pannor', '261'],
+    'papp': ['papp', 'taktäckning', '263'],
+    'tätskikt': ['tätskikt', 'membran', '264'],
+    'takavvattning': ['takavvattning', 'stuprör', 'hängrännor', 'dagvatten', '222'],
+    'stuprör': ['stuprör', 'hängrännor', 'takavvattning', '222'],
+    'hängrännor': ['hängrännor', 'stuprör', 'takavvattning', '222'],
+
+    // === WINDOWS ===
+    'window': ['fönster', 'fönsterbyte', '204', '241', '242', '243'],
+    'windows': ['fönster', 'fönsterbyte', '204', '241', '242', '243'],
+    'fönster': ['fönster', 'fönsterbyte', '204', '241', '242', '243', '244', 'byte'],
+    'fönsterbyte': ['fönster', 'byte', '204', '241', '242', '243'],
+    'träfönster': ['träfönster', 'fönster', '241', '242'],
+    'aluminiumfönster': ['aluminiumfönster', 'aluminium', 'fönster', '243'],
+    'glasning': ['glas', 'glasning', 'fönster', 'isolerglas', '249'],
+
+    // === DOORS ===
+    'door': ['dörr', 'dörrmontering', 'dörrbyte', '251', '252', '253', '254'],
+    'doors': ['dörr', 'dörrmontering', 'dörrbyte', '251', '252', '253'],
+    'dörr': ['dörr', 'dörrmontering', 'dörrbyte', '251', '252', '253', '254'],
+    'dörrar': ['dörr', 'dörrmontering', 'dörrbyte', '251', '252', '253'],
+    'entrance': ['entré', 'entrédörr', 'entréparti', '257'],
+    'entrédörr': ['entrédörr', 'entré', 'dörr', '257'],
+    'entré': ['entré', 'entrédörr', 'entréparti', 'dörr', '257'],
+    'port': ['port', 'slagport', 'rullport', '255', '256'],
+    'portar': ['port', 'portar', '255', '256'],
+
+    // === BALCONY ===
+    'balkong': ['balkong', 'balkongrenovering', 'balkongplatta', '232', '233'],
+    'balkongrenovering': ['balkong', 'balkongplatta', 'balkongräcke', '232', '233'],
+    'balkongplatta': ['balkongplatta', 'balkong', '232'],
+    'balkongräcke': ['balkongräcke', 'balkong', 'räcke', '233'],
+
+    // === SOCKEL / DETAILS ===
+    'sockel': ['sockel', '221'],
+    'taksprång': ['taksprång', '224'],
+    'solavskärmning': ['solavskärmning', 'markis', '227'],
+    'skorsten': ['skorsten', 'huv', '271'],
+    'takfönster': ['takfönster', '273'],
+    'takbrunnar': ['takbrunnar', 'brunn', '274'],
+    'beslag': ['beslag', '275'],
+    'ställning': ['ställning', 'byggnadsställning', '291'],
+
+    // === FLOORING ===
+    'carpet': ['textilgolv', 'nålfilt', 'heltäckningsmatta', 'golvmatta', 'matta'],
+    'floor': ['golv', 'golvläggning', 'golvbeläggning'],
+    'flooring': ['golv', 'golvläggning', 'golvbeläggning'],
+    'tile': ['kakel', 'klinker', 'plattor', 'keramik'],
+    'parquet': ['parkett', 'trägolv', 'laminat'],
+    'vinyl': ['vinyl', 'plastmatta', 'plastgolv'],
+    'laminate': ['laminat', 'laminatgolv'],
+    'matta': ['matta', 'textilgolv', 'nålfilt', 'golvmatta', 'textil', 'heltäckningsmatta'],
+    'mattbyte': ['matta', 'textilgolv', 'nålfilt', 'golvmatta', 'byte'],
+    'textilgolv': ['textilgolv', 'nålfilt', 'matta', 'golvmatta'],
+    'golv': ['golv', 'golvläggning', 'golvbeläggning'],
+    'golvbyte': ['golv', 'byte', 'golvbeläggning'],
+
+    // === WALLS / PAINTING ===
     'wall': ['vägg', 'väggar'],
     'walls': ['vägg', 'väggar'],
+    'partition': ['innervägg', 'mellanvägg', 'gipsväggar'],
     'drywall': ['gips', 'gipsskivor', 'gipsvägg'],
-    'gypsum': ['gips', 'gipsskivor'],
     'innervägg': ['innervägg', 'innerväggar', 'vägg', 'gips'],
     'innerväggar': ['innervägg', 'innerväggar', 'vägg', 'gips', 'målning'],
+    'vägg': ['vägg', 'väggar', 'innervägg'],
+    'painting': ['målning', 'ommålning', 'strykning', 'färg'],
+    'målning': ['målning', 'ommålning', 'strykning', 'färg', 'måla'],
+    'ommålning': ['ommålning', 'målning', 'strykning'],
     'innertak': ['innertak', 'tak', 'undertak', 'takskivor'],
 
-    // === PAINTING ===
-    'målning': ['målning', 'ommålning', 'strykning', 'färg', 'måla'],
-    'painting': ['målning', 'ommålning', 'strykning', 'färg'],
-    'repainting': ['ommålning', 'målning', 'strykning'],
-
-    // === HVAC / SYSTEMS ===
-    'heat pump': ['värmepump', 'luft-vatten', 'bergvärme', 'värmepumpar'],
-    'heat': ['värme', 'uppvärmning'],
-    'pump': ['pump', 'värmepump'],
-    'air to water': ['luft-vatten', 'luft/vatten', 'luftvärmepump'],
-    'air-to-water': ['luft-vatten', 'luft/vatten', 'luftvärmepump'],
+    // === HVAC / MEP ===
+    'heat pump': ['värmepump', 'luft-vatten', 'bergvärme'],
     'heating': ['värme', 'uppvärmning', 'värmesystem', 'radiatorer'],
     'ventilation': ['ventilation', 'fläkt', 'ventilationsaggregat', 'luft'],
-    'ventilationsaggregat': ['ventilation', 'ventilationsaggregat', 'fläkt', 'luft', 'byte'],
+    'ventilationsaggregat': ['ventilation', 'ventilationsaggregat', 'fläkt', 'byte'],
     'radiator': ['radiator', 'radiatorer', 'element', 'värme'],
     'radiatorer': ['radiator', 'radiatorer', 'element', 'värme', 'byte'],
     'hvac': ['VVS', 'ventilation', 'värme', 'kyla'],
-    'plumbing': ['VVS', 'rör', 'rörarbeten', 'rörmokare'],
+    'plumbing': ['VVS', 'rör', 'rörarbeten'],
     'electrical': ['el', 'elinstallation', 'elarbeten', 'elanläggning'],
     'belysning': ['belysning', 'ljus', 'lampor', 'LED', 'armaturer', 'el'],
     'elcentral': ['elcentral', 'elskåp', 'elanläggning', 'elinstallation'],
@@ -414,42 +454,39 @@ function generateSearchTerms(description: string): string[] {
     'hissrenovering': ['hiss', 'hissrenovering', 'elevator', 'hissar', 'byte'],
     'avlopp': ['avlopp', 'avloppsrör', 'relining', 'stamrenovering', 'rör'],
     'relining': ['relining', 'avlopp', 'stamrenovering', 'rörinfodring'],
-    'avloppsrelining': ['relining', 'avlopp', 'stamrenovering', 'rörinfodring', 'rör'],
+    'avloppsrelining': ['relining', 'avlopp', 'stamrenovering', 'rörinfodring'],
     'stamrenovering': ['stamrenovering', 'relining', 'rör', 'avlopp', 'vatten'],
-    'balkong': ['balkong', 'balkongrenovering', 'balkongplatta'],
-    'balkongrenovering': ['balkong', 'balkongrenovering', 'balkongplatta', 'betong'],
-    'membran': ['membran', 'tätskikt', 'vattentätning', 'parkering'],
-    'mattbyte': ['matta', 'textilgolv', 'nålfilt', 'golvmatta', 'byte', 'textil'],
-    'matta': ['matta', 'textilgolv', 'nålfilt', 'golvmatta', 'textil'],
+    'vattenledning': ['vattenledning', 'vattenledningar', 'rör', 'ledningar', '142'],
+    'vattenledningar': ['vattenledning', 'vattenledningar', 'rör', '142'],
+    'membran': ['membran', 'tätskikt', 'vattentätning'],
+    'värme': ['värme', 'uppvärmning', 'värmesystem'],
+    'el': ['el', 'elanläggning', 'elinstallation'],
+    'vatten': ['vatten', 'vattenledning', 'VA', '142'],
+    'rör': ['rör', 'rörarbeten', 'ledningar'],
 
-    // === ACTIONS / VERBS (Swedish support) ===
+    // === ACTIONS / VERBS ===
     'replacement': ['byte', 'utbyte', 'ersättning'],
     'replace': ['byte', 'utbyte', 'byta'],
-    'replacing': ['byte', 'utbyte', 'byta'],
     'byte': ['byte', 'utbyte', 'ersättning', 'byta'],
     'renovation': ['renovering', 'ombyggnad', 'upprustning'],
-    'renovate': ['renovering', 'renovera'],
-    'renovering': ['renovering', 'ombyggnad', 'upprustning', 'renovera'],
+    'renovering': ['renovering', 'ombyggnad', 'upprustning'],
     'installation': ['installation', 'montering', 'montage'],
-    'install': ['installation', 'montera', 'installera'],
-    'installing': ['installation', 'montering'],
     'repair': ['reparation', 'lagning', 'åtgärd'],
     'adjustment': ['justering', 'justeras', 'åtgärd'],
-    'justering': ['justering', 'justeras', 'åtgärd', 'justera'],
+    'justering': ['justering', 'justeras', 'åtgärd'],
     'omläggning': ['omläggning', 'läggning', 'byte', 'renovering'],
-    'new': ['ny', 'nytt', 'nyinstallation', 'nybyggnad'],
-    'nya': ['ny', 'nytt', 'nyinstallation', 'nybyggnad', 'byte'],
-    'utbyte': ['utbyte', 'byte', 'byta', 'ersättning'],
-    'uppgradering': ['uppgradering', 'byte', 'utbyte', 'modernisering'],
-    'putting': ['läggning', 'montering', 'byte'],
-    'old': ['gammal', 'befintlig', 'byte'],
+    'nya': ['ny', 'nytt', 'byte', 'nyinstallation'],
+    'new': ['ny', 'nytt', 'byte'],
+    'utbyte': ['utbyte', 'byte', 'byta'],
+    'uppgradering': ['uppgradering', 'byte', 'modernisering'],
+    'beläggning': ['beläggning', 'omläggning', 'läggning', 'golv', 'asfalt'],
   };
 
-  // STEP 1: Check for multi-word phrases first (more specific matches)
+  // STEP 1: Multi-word phrases
   const multiWordPhrases = [
-    'entrance door', 'entrance doors', 'heat pump', 'air to water', 'air-to-water',
-    'double glazed', 'triple glazed', 'whole garden', 'external wall', 'mineral wool',
-    'water pipe', 'water pipes', 'concrete curb', 'crushed stone', 'fönster och dörrar',
+    'heat pump', 'entrance door', 'entrance doors', 'air to water',
+    'double glazed', 'triple glazed', 'external wall', 'mineral wool',
+    'water pipe', 'concrete curb', 'crushed stone',
   ];
   for (const phrase of multiWordPhrases) {
     if (desc.includes(phrase) && translations[phrase]) {
@@ -457,102 +494,134 @@ function generateSearchTerms(description: string): string[] {
     }
   }
 
-  // STEP 2: Add translations for all matching terms (single words)
-  for (const [key, values] of Object.entries(translations)) {
-    // Skip multi-word phrases (already handled)
-    if (key.includes(' ') || key.includes('-')) continue;
+  // STEP 2: Split description into words and process each
+  const words = desc.split(/[\s,.\-\/\(\)]+/).filter(w => w.length >= 2);
+
+  for (const word of words) {
+    const cleanWord = word.toLowerCase();
     
-    // Check if this word appears in the description
-    const wordPattern = new RegExp(`\\b${key}\\b`, 'i');
-    if (wordPattern.test(desc)) {
-      terms.push(...values);
+    // 2a: Direct translation lookup
+    if (translations[cleanWord]) {
+      terms.push(...translations[cleanWord]);
+    }
+    
+    // 2b: Compound word decomposition
+    const decomposed = decompoundSwedish(cleanWord);
+    for (const part of decomposed) {
+      terms.push(part);
+      // Also look up translations for decomposed parts
+      if (translations[part]) {
+        terms.push(...translations[part]);
+      }
+    }
+    
+    // 2c: Add word itself if it contains Swedish chars (likely a valid term)
+    if (/[åäö]/.test(cleanWord)) {
+      terms.push(cleanWord);
     }
   }
 
-  // STEP 3: Add Swedish category codes if detected in context
-  if (desc.includes('grass') || desc.includes('lawn') || desc.includes('garden') || desc.includes('gräs')) {
-    terms.push('111', 'gräsytor');
+  // STEP 3: Context-based category boosting
+  if (desc.includes('asfalt') || desc.includes('asphalt') || desc.includes('beläggning')) {
+    terms.push('121', 'asfalt', 'omläggning', 'körbar', 'gångbar', 'beläggning');
   }
-  if (desc.includes('window') || desc.includes('door') || desc.includes('fönster') || desc.includes('dörr')) {
-    terms.push('204', 'fönster och dörrar');
+  if (desc.includes('gräs') || desc.includes('grass') || desc.includes('lawn')) {
+    terms.push('111', 'gräsytor', 'omläggning', 'kompletteringsådd');
   }
-  if (desc.includes('facade') || desc.includes('render') || desc.includes('cladding') || desc.includes('fasad')) {
-    terms.push('203', 'fasad');
+  if (desc.includes('busk') || desc.includes('shrub')) {
+    terms.push('112', 'planteringsytor', 'buskar', 'omplantering');
   }
-  if (desc.includes('bush') || desc.includes('shrub') || desc.includes('busk')) {
-    terms.push('112', 'planteringsytor', 'buskar');
+  if (desc.includes('kullersten') || desc.includes('gatsten') || desc.includes('plattor')) {
+    terms.push('123', 'sten', 'plattor');
   }
-  if (desc.includes('gravel') || desc.includes('stenmjöl')) {
-    terms.push('122', 'grus och stenmjöl');
+  if (desc.includes('kantst') || desc.includes('curb')) {
+    terms.push('124', 'kantstöd', 'kantsten');
   }
-  if (desc.includes('curb') || desc.includes('kantsten') || desc.includes('kantstöd')) {
-    terms.push('121', 'kantsten');
+  if (desc.includes('fönster') || desc.includes('window')) {
+    terms.push('204', '241', '242', '243', 'fönster', 'byte');
   }
-  if (desc.includes('pipe') || desc.includes('ledning') || desc.includes('vatten') || desc.includes('stamrenovering')) {
-    terms.push('131', 'ledningar', 'rör', 'vattenledning');
+  if (desc.includes('dörr') || desc.includes('door')) {
+    terms.push('204', '251', '252', '253', 'dörr', 'byte');
   }
-  if (desc.includes('tak') || desc.includes('roof') || desc.includes('takomläggning')) {
-    terms.push('tak', 'takläggning', 'taktäckning', 'plåt');
+  if (desc.includes('entré') || desc.includes('entre') || desc.includes('entrance')) {
+    terms.push('257', 'entréparti', 'entrédörr');
+  }
+  if (desc.includes('fasad') || desc.includes('facade')) {
+    terms.push('206', '207', '208', '209', 'fasad', 'puts');
+  }
+  if (desc.includes('puts') || desc.includes('render')) {
+    terms.push('215', '206', 'puts', 'putsning', 'putsfasad', 'målning');
+  }
+  if (desc.includes('tak') || desc.includes('roof')) {
+    terms.push('261', '262', '263', 'tak', 'takläggning', 'taktäckning', 'plåt', 'papp');
+  }
+  if (desc.includes('plåt') && desc.includes('tak')) {
+    terms.push('262', 'plåt', 'takplåt');
+  }
+  if (desc.includes('avvattning') || desc.includes('stuprör') || desc.includes('hängrän') || desc.includes('gutter')) {
+    terms.push('222', 'stuprör', 'hängrännor', 'takavvattning');
   }
   if (desc.includes('målning') || desc.includes('painting') || desc.includes('måla')) {
     terms.push('målning', 'strykning', 'ommålning');
   }
-  if (desc.includes('matta') || desc.includes('mattbyte') || desc.includes('carpet')) {
-    terms.push('textilgolv', 'nålfilt', 'golvmatta', 'matta');
+  if (desc.includes('matta') || desc.includes('matt') || desc.includes('carpet')) {
+    terms.push('textilgolv', 'nålfilt', 'golvmatta', 'matta', 'heltäckningsmatta');
   }
-  if (desc.includes('puts') || desc.includes('putsfasad') || desc.includes('render')) {
-    terms.push('puts', 'fasad', 'fasadrenovering', 'målning', 'tegelfasad');
+  if (desc.includes('innertak') || desc.includes('ceiling') || desc.includes('undertak')) {
+    terms.push('innertak', 'undertak', 'takskivor');
+  }
+  if (desc.includes('isolering') || desc.includes('insulation')) {
+    terms.push('isolering', 'tilläggsisolering', 'fasadisolering');
   }
   if (desc.includes('hiss') || desc.includes('elevator')) {
-    terms.push('hiss', 'elevator', 'hissar');
+    terms.push('hiss', 'hissar', 'elevator');
   }
-  if (desc.includes('ventilation') || desc.includes('aggregat')) {
+  if (desc.includes('ventilation') || desc.includes('aggregat') || desc.includes('fläkt')) {
     terms.push('ventilation', 'ventilationsaggregat', 'fläkt');
   }
   if (desc.includes('radiator') || desc.includes('element') || desc.includes('värme')) {
     terms.push('radiator', 'radiatorer', 'element', 'värme');
   }
-  if (desc.includes('belysning') || desc.includes('led') || desc.includes('lampor')) {
+  if (desc.includes('belysning') || desc.includes('led') || desc.includes('lampor') || desc.includes('armatur')) {
     terms.push('belysning', 'ljus', 'armaturer', 'LED');
   }
   if (desc.includes('balkong') || desc.includes('balcony')) {
-    terms.push('balkong', 'balkongrenovering', 'balkongplatta');
+    terms.push('232', '233', 'balkong', 'balkongplatta', 'balkongräcke');
   }
-  if (desc.includes('relining') || desc.includes('avlopp')) {
+  if (desc.includes('relining') || desc.includes('avlopp') || desc.includes('stam')) {
     terms.push('relining', 'avlopp', 'stamrenovering', 'rör');
   }
-  if (desc.includes('membran') || desc.includes('tätskikt') || desc.includes('parkering')) {
-    terms.push('membran', 'tätskikt', 'vattentätning');
+  if (desc.includes('membran') || desc.includes('tätskikt')) {
+    terms.push('membran', 'tätskikt', 'vattentätning', '264');
   }
-  if (desc.includes('entré') || desc.includes('entre') || desc.includes('ytterdörr')) {
-    terms.push('entrédörr', 'ytterdörr', 'dörr', '204');
+  if (desc.includes('sockel')) {
+    terms.push('221', 'sockel');
   }
-
-  // STEP 4: Also add individual words from the original description
-  const words = desc.split(/[\s,.\-\/\(\)]+/);
-  for (const word of words) {
-    if (word.length >= 3) {
-      const cleanWord = word.toLowerCase();
-      if (translations[cleanWord]) {
-        terms.push(...translations[cleanWord]);
-      }
-      // Also add the word itself if it looks like a Swedish term
-      if (/[åäö]/.test(cleanWord)) {
-        terms.push(cleanWord);
-      }
-    }
+  if (desc.includes('trappa') || desc.includes('stair')) {
+    terms.push('151', '228', 'trappa', 'trappor');
+  }
+  if (desc.includes('brand') || desc.includes('fire')) {
+    terms.push('brandlarm', 'brandsäkerhet', 'larm');
+  }
+  if (desc.includes('port') || desc.includes('gate') || desc.includes('garage')) {
+    terms.push('255', '256', 'port', 'portar', 'garageport');
+  }
+  if (desc.includes('lekplats') || desc.includes('playground')) {
+    terms.push('131', 'lekutrustning');
   }
 
-  // Return unique terms, minimum 2 chars
+  // Return unique terms
   const unique = [...new Set(terms.filter(t => t && t.trim().length >= 2))];
-  console.log(`Generated ${unique.length} search terms for: "${description}"`);
+  console.log(`Generated ${unique.length} search terms for: "${description}" → [${unique.slice(0, 15).join(', ')}...]`);
   return unique;
 }
 
 /**
- * FILTER BENCHMARKS IN MEMORY
- * Search both description AND category for any of the search terms
- * @param itemUnit - pass null to skip unit filtering (for unit mismatch detection)
+ * FILTER BENCHMARKS IN MEMORY - Enhanced with bidirectional prefix matching
+ * 
+ * This handles Swedish compound words by checking both directions:
+ * 1. benchmarkDesc contains searchTerm (original)
+ * 2. searchTerm shares a 4+ char prefix with any benchmark word (NEW)
  */
 function filterBenchmarkCandidates(
   allBenchmarks: BenchmarkPrice[],
@@ -561,28 +630,56 @@ function filterBenchmarkCandidates(
 ): BenchmarkPrice[] {
   const candidates: BenchmarkPrice[] = [];
   const seenIds = new Set<string>();
+  
+  // Pre-process search terms
+  const processedTerms = searchTerms.map(t => t.toLowerCase()).filter(t => t.length >= 2);
 
   for (const benchmark of allBenchmarks) {
-    // Skip if wrong unit (unless itemUnit is null for no-filter mode)
     if (itemUnit !== null && !unitsCompatible(itemUnit, benchmark.unit)) continue;
 
     const descLower = (benchmark.description || '').toLowerCase();
     const catLower = (benchmark.category || '').toLowerCase();
+    const combined = descLower + ' ' + catLower;
+    
+    // Pre-tokenize benchmark text for prefix matching
+    const benchWords = combined.split(/[\s\-\/\(\),]+/).filter(w => w.length >= 3);
+    
+    let matched = false;
 
-    for (const term of searchTerms) {
-      const t = term.toLowerCase();
-      if (!t) continue;
-      if (descLower.includes(t) || catLower.includes(t)) {
-        if (!seenIds.has(benchmark.id)) {
-          seenIds.add(benchmark.id);
-          candidates.push(benchmark);
-        }
+    for (const term of processedTerms) {
+      if (!term || term.length < 2) continue;
+
+      // Method 1: Direct substring match (original logic)
+      if (combined.includes(term)) {
+        matched = true;
         break;
       }
+
+      // Method 2: Prefix matching for compound words
+      // "asfaltbeläggning" as search term matches benchmark word "asfalt" (4+ char prefix)
+      // "putsfasad" as search term matches benchmark word "puts" (4+ char prefix)
+      if (term.length >= 4) {
+        for (const bw of benchWords) {
+          if (bw.length < 4) continue;
+          const minLen = Math.min(bw.length, term.length);
+          if (minLen >= 4) {
+            // Check if one starts with the other
+            if (term.startsWith(bw) || bw.startsWith(term)) {
+              matched = true;
+              break;
+            }
+          }
+        }
+        if (matched) break;
+      }
+    }
+
+    if (matched && !seenIds.has(benchmark.id)) {
+      seenIds.add(benchmark.id);
+      candidates.push(benchmark);
     }
   }
 
-  // Stable baseline ordering (actual relevance ranking is applied later)
   return candidates.sort((a, b) => a.id.localeCompare(b.id));
 }
 
@@ -598,19 +695,15 @@ function buildPercentageClarification(description: string, benchmarks: Benchmark
     .filter(Boolean);
   
   const uniquePercentages = [...new Set(percentages)].sort((a, b) => Number(a) - Number(b));
-  
   const descLower = description.toLowerCase();
   
   if (descLower.includes('kantstöd') || descLower.includes('kantsten') || descLower.includes('curb')) {
-    return `Percentage required: Available benchmarks use percentage of total length (${uniquePercentages.join('%, ')}%). Please specify either the total length so we can calculate the percentage, or convert your quantity to a percentage. Example: If total length is 3500 m and adjusting 320 m, that's ~9% → use 10%.`;
+    return `Percentage required: Available benchmarks use percentage of total length (${uniquePercentages.join('%, ')}%). Please specify either the total length so we can calculate the percentage, or convert your quantity to a percentage.`;
   }
   
-  return `Percentage required: Available benchmarks use percentage of gross area (bruttoytan): ${uniquePercentages.join('%, ')}%. Please specify either the total gross area so we can calculate the percentage, or convert your quantity to a percentage. Example: If total area is 2500 m² and adjusting 250 m², that's 10%.`;
+  return `Percentage required: Available benchmarks use percentage of gross area (bruttoytan): ${uniquePercentages.join('%, ')}%. Please specify either the total gross area, or convert your quantity to a percentage.`;
 }
 
-/**
- * Detect if all matching benchmarks require percentage-based input
- */
 function detectPercentageBasedBenchmarks(benchmarks: BenchmarkPrice[]): BenchmarkPrice[] {
   return benchmarks.filter(b => 
     b.description.includes('% av bruttoytan') || 
@@ -619,10 +712,6 @@ function detectPercentageBasedBenchmarks(benchmarks: BenchmarkPrice[]): Benchmar
   );
 }
 
-/**
- * Build specific clarification message based on AI reasoning and candidate context
- * This converts generic "no match" into actionable user guidance
- */
 function buildClarificationFromReasoning(
   aiReasoning: string, 
   item: CostItemInput,
@@ -631,75 +720,38 @@ function buildClarificationFromReasoning(
   const reasoningLower = aiReasoning.toLowerCase();
   const descLower = item.originalDescription.toLowerCase();
   
-  // PATTERN 1: Percentage-based benchmarks detected
-  if (
-    reasoningLower.includes('percentage') || 
-    reasoningLower.includes('%') ||
-    reasoningLower.includes('gross area') ||
-    reasoningLower.includes('bruttoytan')
-  ) {
-    // Find available percentages from candidates
-    const percentages = candidates
-      .map(c => {
-        const match = c.description.match(/(\d+)%/);
-        return match ? match[1] : null;
-      })
-      .filter(Boolean);
-    const uniquePercentages = [...new Set(percentages)].sort((a, b) => Number(a) - Number(b));
-    
-    if (uniquePercentages.length > 0) {
-      if (descLower.includes('kantstöd') || descLower.includes('kantsten') || descLower.includes('curb')) {
-        return `Percentage required: Benchmarks are priced per percentage of total length (${uniquePercentages.join('%, ')}%). Please either: (1) specify the total length so we can calculate the percentage, or (2) convert your quantity to a percentage. Example: If total length is 3500 m and adjusting 320 m, that's ~9% → use 10%.`;
-      }
-      return `Percentage required: Benchmarks are priced per percentage of gross area (${uniquePercentages.join('%, ')}%). Please either: (1) specify the total gross area so we can calculate the percentage, or (2) convert your quantity to a percentage. Example: If total area is 2500 m² and adjusting 250 m², that's 10%.`;
-    }
-  }
-  
-  // PATTERN 2: Unit mismatch or unit issues mentioned
+  // Unit mismatch
   if (reasoningLower.includes('unit') || reasoningLower.includes('units')) {
-    // Get unique units from candidates
     const candidateUnits = [...new Set(candidates.map(c => c.unit))];
     if (candidateUnits.length > 0 && !candidateUnits.some(u => unitsCompatible(item.unit, u))) {
       return `Unit mismatch: Your item uses "${item.unit}" but matching benchmarks use "${candidateUnits.slice(0, 3).join('", "')}". Please convert your quantity to the correct unit.`;
     }
   }
   
-  // PATTERN 3: "New" vs "replacement" confusion for windows/doors
-  if (
-    (descLower.includes('nya') || descLower.includes('new')) &&
-    (descLower.includes('fönster') || descLower.includes('dörr') || descLower.includes('window') || descLower.includes('door'))
-  ) {
-    // Check if candidates exist for replacement but not new installation
+  // Windows/doors new vs replacement
+  if ((descLower.includes('nya') || descLower.includes('new')) &&
+      (descLower.includes('fönster') || descLower.includes('dörr'))) {
     const hasReplacementBenchmark = candidates.some(c => 
-      c.description.toLowerCase().includes('byte') || 
-      c.description.toLowerCase().includes('replacement')
+      c.description.toLowerCase().includes('byte')
     );
-    
     if (hasReplacementBenchmark) {
-      // Check candidate units
       const candidateUnits = [...new Set(candidates.map(c => c.unit))];
-      const unitMessage = candidateUnits.length > 0 && candidateUnits[0] !== item.unit
-        ? ` Note: Benchmarks use "${candidateUnits[0]}" - please provide area in ${candidateUnits[0]} instead of "${item.unit}".`
+      const unitMsg = candidateUnits.length > 0 && !unitsCompatible(item.unit, candidateUnits[0])
+        ? ` Note: Benchmarks use "${candidateUnits[0]}" — please provide area in ${candidateUnits[0]} instead of "${item.unit}".`
         : '';
-      
-      return `No "new installation" benchmark found. Available benchmarks are for "replacement/byte" of windows and doors.${unitMessage} Please clarify if this is replacement work, or provide a manual price for new installation.`;
+      return `No "new installation" benchmark found. Available benchmarks are for "replacement/byte" of windows and doors.${unitMsg} Please clarify if this is replacement work, or provide a manual price for new installation.`;
     }
   }
   
-  // PATTERN 4: Check if candidates exist but just weren't matched - suggest closest
+  // Suggest closest candidate
   if (candidates.length > 0) {
     const topCandidate = candidates[0];
-    const topCandidateUnit = topCandidate.unit;
-    
-    // Check for unit mismatch with top candidate
-    if (!unitsCompatible(item.unit, topCandidateUnit)) {
-      return `Closest benchmark found uses "${topCandidateUnit}" instead of "${item.unit}". Please convert your quantity to ${topCandidateUnit} for accurate pricing. Benchmark: "${topCandidate.description}"`;
+    if (!unitsCompatible(item.unit, topCandidate.unit)) {
+      return `Closest benchmark found uses "${topCandidate.unit}" instead of "${item.unit}". Please convert your quantity to ${topCandidate.unit} for accurate pricing. Benchmark: "${topCandidate.description}"`;
     }
-    
     return `No exact match found. Closest benchmark: "${topCandidate.description}" (${topCandidate.avg_price} ${topCandidate.unit}). Please verify if this work type matches your scope, or provide manual pricing.`;
   }
   
-  // DEFAULT: Return the AI reasoning as the comment (it's already in English)
   return aiReasoning || "No benchmark match found. Manual pricing required.";
 }
 
@@ -708,14 +760,15 @@ type ScoredBenchmark = BenchmarkPrice & { _score: number };
 function scoreBenchmarkCandidate(
   benchmark: BenchmarkPrice,
   itemDescLower: string,
-  searchTerms: string[]
+  searchTerms: string[],
+  itemQuantity: number
 ): number {
   const desc = (benchmark.description || '').toLowerCase();
   const cat = (benchmark.category || '').toLowerCase();
 
   let score = 0;
 
-  // Core scoring: reward term hits (codes/longer terms weigh more)
+  // Core scoring: reward term hits
   for (const term of searchTerms) {
     const t = term.toLowerCase();
     if (!t) continue;
@@ -731,47 +784,102 @@ function scoreBenchmarkCandidate(
     if (inDesc && inCat) score += 3;
   }
 
-  // Behavior / scope hints
-  const wantsReplacement = /(replacement|replace|replacing|byte|utbyte)/.test(itemDescLower);
-  if (wantsReplacement && desc.includes('byte')) score += 8;
+  // SIZE BRACKET MATCHING - hugely important for REPAB
+  // Match quantity to the correct size bracket
+  const sizePatterns = [
+    { pattern: />(\d+)\s*m/, getMin: (m: RegExpMatchArray) => Number(m[1]) },
+    { pattern: /(\d+)-(\d+)\s*m/, getMin: (m: RegExpMatchArray) => Number(m[1]), getMax: (m: RegExpMatchArray) => Number(m[2]) },
+    { pattern: /<(\d+)\s*m/, getMax: (m: RegExpMatchArray) => Number(m[1]) },
+  ];
+  
+  for (const sp of sizePatterns) {
+    const m = desc.match(sp.pattern);
+    if (m) {
+      const min = sp.getMin ? sp.getMin(m) : 0;
+      const max = sp.getMax ? sp.getMax(m) : Infinity;
+      if (itemQuantity >= min && itemQuantity <= max) {
+        score += 25; // Strong bonus for correct size bracket
+      } else if (itemQuantity > max) {
+        score -= 5; // Small penalty for wrong bracket
+      } else {
+        score -= 10; // Larger penalty for much smaller quantity than bracket
+      }
+    }
+  }
 
-  // Penalize obvious non-replacement activities when user wants replacement
-  if (wantsReplacement && (desc.includes('strykning') || desc.includes('målning') || desc.includes('lack'))) {
+  // Penalize percentage-based benchmarks when user gives absolute quantity > 50
+  if (/\d+%\s*av\s*(bruttoytan|total)/.test(desc) && itemQuantity > 50) {
+    score -= 15;
+  }
+
+  // Behavior / scope hints
+  const wantsReplacement = /(replacement|replace|byte|utbyte|nya|new)/.test(itemDescLower);
+  if (wantsReplacement && desc.includes('byte')) score += 8;
+  if (wantsReplacement && (desc.includes('strykning') || desc.includes('målningsbättring'))) {
     score -= 12;
   }
 
   // Grass heuristics
-  if (/(grass|lawn|gräs|gräsytor|gräsmatta)/.test(itemDescLower)) {
+  if (/(gräs|gräsyta|gräsytor|grass|lawn)/.test(itemDescLower)) {
     if (desc.includes('gräsytor')) score += 8;
     if (desc.includes('omläggning')) score += 14;
+    // Renovering = omläggning (full replacement) not just seeding
+    if (itemDescLower.includes('renovering') && desc.includes('omläggning')) score += 10;
     if (desc.includes('kompletteringsådd')) score -= 8;
   }
 
+  // Asphalt heuristics
+  if (/(asfalt|asphalt|beläggning|parkering)/.test(itemDescLower)) {
+    if (desc.includes('asfalt')) score += 10;
+    // Parking = drivable surface
+    if (itemDescLower.includes('parkering') && desc.includes('körbar')) score += 15;
+    if (!itemDescLower.includes('parkering') && desc.includes('gångbar')) score += 5;
+  }
+
+  // Facade heuristics
+  if (/(fasad|puts|putsfasad|facade)/.test(itemDescLower)) {
+    if (desc.includes('putsfasad') || desc.includes('puts/betong')) score += 10;
+    if (desc.includes('fasad')) score += 5;
+    if (itemDescLower.includes('renovering') && (desc.includes('renovering') || desc.includes('målning'))) score += 8;
+  }
+
   // Windows heuristics
-  if (/(window|windows|fönster|fönsterbyte)/.test(itemDescLower)) {
+  if (/(fönster|window)/.test(itemDescLower)) {
     if (desc.includes('fönster')) score += 8;
-    const wantsTriple = /(triple|3-glas|treglas)/.test(itemDescLower);
-    if (wantsTriple && (desc.includes('3-glas') || desc.includes('treglas'))) score += 10;
+    if (itemDescLower.includes('fasadtyp 1') && desc.includes('fasadtyp 1')) score += 20;
+    if (itemDescLower.includes('fasadtyp 2') && desc.includes('fasadtyp 2')) score += 20;
+    // "nya fönster" = byte fönster in renovation context
+    if (itemDescLower.includes('nya') && desc.includes('byte fönster')) score += 10;
   }
 
-  // Doors heuristics
-  if (/(door|doors|dörr|entrance|entré|ytterdörr)/.test(itemDescLower)) {
-    if (desc.includes('dörr')) score += 8;
-    if (desc.includes('ytter')) score += 4;
-    if (desc.includes('entré')) score += 4;
+  // Roof heuristics
+  if (/(tak|takomläggning|roof)/.test(itemDescLower)) {
+    if (desc.includes('tak')) score += 5;
+    if (itemDescLower.includes('plåt') && desc.includes('plåt')) score += 15;
+    if (itemDescLower.includes('omläggning') && desc.includes('omläggning')) score += 10;
   }
 
-  // Carpet / textile flooring heuristics
-  if (/(carpet|carpets|textilgolv|nålfilt|matta)/.test(itemDescLower)) {
+  // Carpet / textile flooring
+  if (/(carpet|matta|mattbyte|textilgolv|nålfilt)/.test(itemDescLower)) {
     if (cat.includes('textilgolv') || desc.includes('textilgolv') || desc.includes('nålfilt')) score += 16;
     if (desc.includes('byte')) score += 6;
   }
 
-  // Facade insulation: prefer explicit "Tilläggsisolering fasad" rows
-  if (/(facade|fasad)/.test(itemDescLower) && /(insulation|isolering|tilläggsisol)/.test(itemDescLower)) {
-    if (desc.includes('tilläggsisolering fasad')) score += 40;
-    if (desc.includes('tilläggsisol')) score += 12;
+  // Facade insulation
+  if (/(fasad|facade)/.test(itemDescLower) && /(isolering|tilläggsisol|insulation)/.test(itemDescLower)) {
+    if (desc.includes('tilläggsisolering fasad') || desc.includes('tilläggsisol')) score += 40;
     if (desc.includes('renovering')) score -= 4;
+  }
+
+  // Interior painting
+  if (/(innervägg|innerväggar|inner)/.test(itemDescLower) && /(målning|painting)/.test(itemDescLower)) {
+    if (desc.includes('målning') && (desc.includes('inner') || desc.includes('vägg'))) score += 15;
+  }
+
+  // Gutter/drainage
+  if (/(takavvattning|stuprör|hängrän|gutter)/.test(itemDescLower)) {
+    if (desc.includes('stuprör') || desc.includes('hängrännor')) score += 12;
+    if (desc.includes('byte')) score += 6;
   }
 
   return score;
@@ -786,10 +894,9 @@ function rankBenchmarkCandidates(
 
   const scored: ScoredBenchmark[] = candidates.map((b) => ({
     ...b,
-    _score: scoreBenchmarkCandidate(b, itemDescLower, searchTerms),
+    _score: scoreBenchmarkCandidate(b, itemDescLower, searchTerms, item.quantity),
   }));
 
-  // Deterministic: score desc, then UUID asc
   scored.sort((a, b) => (b._score - a._score) || a.id.localeCompare(b.id));
   return scored;
 }
@@ -820,61 +927,77 @@ async function processCostItem(
   };
 
   try {
-    // STEP 1: Generate search terms (deterministic)
+    // STEP 1: Generate search terms
     const searchTerms = generateSearchTerms(item.originalDescription);
-    console.log(`[${item.originalDescription}] Search terms: ${searchTerms.slice(0, 10).join(', ')}`);
+    console.log(`[${item.originalDescription}] Search terms (${searchTerms.length}): ${searchTerms.slice(0, 15).join(', ')}`);
 
-    // STEP 2: Filter benchmarks in memory (unit-compatible + term hits)
+    // STEP 2: Filter benchmarks (unit-compatible + term/prefix hits)
     const candidates = filterBenchmarkCandidates(allBenchmarks, searchTerms, item.unit);
     console.log(`[${item.originalDescription}] Candidates: ${candidates.length} (unit: ${item.unit})`);
 
     if (candidates.length === 0) {
-      // Check if there are candidates WITHOUT unit filtering (unit mismatch detection)
-      const candidatesWithoutUnitFilter = filterBenchmarkCandidates(allBenchmarks, searchTerms, null);
+      // Check unit mismatch
+      const candidatesNoUnit = filterBenchmarkCandidates(allBenchmarks, searchTerms, null);
       
-      if (candidatesWithoutUnitFilter.length > 0) {
-        // Unit mismatch detected - provide specific error
-        const expectedUnits = [...new Set(candidatesWithoutUnitFilter.map(c => c.unit))];
+      if (candidatesNoUnit.length > 0) {
+        const expectedUnits = [...new Set(candidatesNoUnit.map(c => c.unit))];
         noMatchResult.matchReasoning = `Unit mismatch detected`;
         noMatchResult.aiComment = `Unit mismatch: Your item uses "${item.unit}" but matching benchmarks use "${expectedUnits.join('", "')}". Please convert your quantity to the correct unit (${expectedUnits[0]}).`;
         console.log(`[${item.originalDescription}] → NO MATCH (unit mismatch: ${item.unit} vs ${expectedUnits.join(', ')})`);
         return noMatchResult;
       }
       
-      noMatchResult.matchReasoning = `No benchmarks found matching description or with compatible unit (${item.unit})`;
-      console.log(`[${item.originalDescription}] → NO MATCH (no candidates)`);
+      noMatchResult.matchReasoning = `No benchmarks found matching description or compatible unit (${item.unit})`;
+      console.log(`[${item.originalDescription}] → NO MATCH (no candidates found)`);
       return noMatchResult;
     }
 
-    // STEP 2b: Check if all candidates are percentage-based (need clarification)
+    // Check percentage-only benchmarks
     const percentageBenchmarks = detectPercentageBasedBenchmarks(candidates);
-    if (percentageBenchmarks.length > 0 && percentageBenchmarks.length === candidates.length) {
-      // ALL matches require percentage input
+    const nonPercentageCandidates = candidates.filter(c => !percentageBenchmarks.includes(c));
+    
+    if (percentageBenchmarks.length > 0 && nonPercentageCandidates.length === 0) {
       const clarificationMsg = buildPercentageClarification(item.originalDescription, percentageBenchmarks);
       noMatchResult.matchReasoning = `Available benchmarks require percentage specification`;
       noMatchResult.aiComment = clarificationMsg;
-      console.log(`[${item.originalDescription}] → CLARIFICATION NEEDED (percentage-based benchmarks only)`);
+      console.log(`[${item.originalDescription}] → CLARIFICATION (percentage-based only)`);
       return noMatchResult;
     }
 
-    // STEP 3: Rank candidates deterministically by relevance (fixes UUID-top-25 issue)
+    // STEP 3: Rank candidates
     const ranked = rankBenchmarkCandidates(candidates, item, searchTerms);
-    const top = ranked.slice(0, 40); // keep prompt small but representative
+    const top = ranked.slice(0, 40);
 
     console.log(
-      `[${item.originalDescription}] Top candidates: ` +
-        top.slice(0, 5).map(c => `${c.category} | ${c.description} (score=${c._score})`).join(' || ')
+      `[${item.originalDescription}] Top 5: ` +
+        top.slice(0, 5).map(c => `${c.category} | ${c.description.substring(0, 60)} (score=${c._score})`).join(' || ')
     );
 
-    // STEP 4: AI selects best match from TOP ranked candidates
+    // STEP 4: AI selects best match
     const candidateList = top.map(b =>
-      `score=${b._score} | ID=${b.id} | ${b.category} | ${b.description} | unit=${b.unit} | avg=${b.avg_price}`
+      `score=${b._score} | ID=${b.id} | ${b.category} | ${b.description} | unit=${b.unit} | avg=${b.avg_price}${b.min_price ? ` | min=${b.min_price}` : ''}${b.max_price ? ` | max=${b.max_price}` : ''}`
     ).join('\n');
 
     const aiResult = await callAIDeterministic(
       apiKey,
       UNIFIED_MATCH_PROMPT,
-      `COST ITEM TO MATCH:\nDescription: "${item.originalDescription}"\nUnit: ${item.unit}\nQuantity: ${item.quantity}\n${item.originalUnitPrice ? `Original Price: ${item.originalUnitPrice}` : ''}\n${item.trade ? `Trade/Category: ${item.trade}` : ''}\n\nTARGET LANGUAGE: ${targetLanguage}\nPROJECT TYPE: ${project.projectType || 'construction'}\nPROJECT NAME: ${project.name || 'N/A'}\n\nIMPORTANT: The user description may be very brief (e.g., just "Buskar omplantering" or "Takomläggning"). Use your construction engineering knowledge to understand what work is actually involved, then find the best conceptual match from the benchmarks below.\n\nAVAILABLE BENCHMARKS (ranked by relevance; top ${top.length} of ${ranked.length}):\n${candidateList}\n\nSelect the BEST matching benchmark ID. Even if the match is not exact, if the work scope is fundamentally similar (e.g., facade renovation matching facade painting), select it with appropriate confidence (65-80%). Only return null if truly nothing is related.`
+      `COST ITEM TO MATCH:
+Description: "${item.originalDescription}"
+Unit: ${item.unit}
+Quantity: ${item.quantity}
+${item.originalUnitPrice ? `Original Price: ${item.originalUnitPrice} per ${item.unit}` : ''}
+${item.trade ? `Trade/Category: ${item.trade}` : ''}
+
+TARGET LANGUAGE: ${targetLanguage}
+PROJECT TYPE: ${project.projectType || 'maintenance/renovation'}
+PROJECT: ${project.name || 'N/A'}
+
+IMPORTANT: Select the benchmark whose SIZE BRACKET contains quantity ${item.quantity}. For example, if quantity is ${item.quantity}, pick the ">100 m²" or "1000-5000 m²" benchmark that covers this range — NOT a small-area benchmark.
+
+AVAILABLE BENCHMARKS (ranked by relevance; top ${top.length} of ${ranked.length} candidates):
+${candidateList}
+
+Select the BEST matching benchmark. Even partial matches (65-80% confidence) are valuable.`
     );
 
     console.log(`[${item.originalDescription}] AI result:`, JSON.stringify(aiResult));
@@ -884,19 +1007,11 @@ async function processCostItem(
     const reasoning = aiResult.reasoning || "";
     const translatedTerm = aiResult.translatedTerm || item.originalDescription;
 
-    // STEP 4: Validate match
     if (!matchedId || matchedId === 'null' || confidence < 40) {
       noMatchResult.matchConfidence = confidence;
       noMatchResult.matchReasoning = reasoning || "No confident match found";
       noMatchResult.interpretedScope = translatedTerm;
-      
-      // BUILD SPECIFIC CLARIFICATION MESSAGE based on AI reasoning
-      noMatchResult.aiComment = buildClarificationFromReasoning(
-        reasoning, 
-        item, 
-        top // pass the top candidates for context
-      );
-      
+      noMatchResult.aiComment = buildClarificationFromReasoning(reasoning, item, top);
       console.log(`[${item.originalDescription}] → NO MATCH (confidence: ${confidence}%)`);
       return noMatchResult;
     }
@@ -908,7 +1023,7 @@ async function processCostItem(
       return noMatchResult;
     }
 
-    // STEP 5: Calculate status based on price variance
+    // STEP 5: Calculate status
     let status = 'ok';
     if (item.originalUnitPrice && benchmark.avg_price) {
       const variance = ((item.originalUnitPrice - benchmark.avg_price) / benchmark.avg_price) * 100;
@@ -918,24 +1033,21 @@ async function processCostItem(
 
     const priceSource = `${benchmark.source || 'Benchmark'} - ${benchmark.category}: ${benchmark.description}`;
 
-    console.log(`[${item.originalDescription}] → MATCHED: ${benchmark.avg_price} (${confidence}% confidence)`);
-
-    // Generate English description for the interpreted scope
-    const englishScope = item.originalDescription;
+    console.log(`[${item.originalDescription}] → MATCHED: ${benchmark.avg_price} SEK/${benchmark.unit} (${confidence}% confidence)`);
 
     return {
       id: item.id,
       matchedBenchmarkId: benchmark.id,
       matchConfidence: confidence,
       matchReasoning: reasoning,
-      interpretedScope: englishScope, // Keep original English description, not Swedish
+      interpretedScope: item.originalDescription,
       recommendedUnitPrice: benchmark.avg_price,
       benchmarkMin: benchmark.min_price || benchmark.avg_price * 0.85,
       benchmarkTypical: benchmark.avg_price,
       benchmarkMax: benchmark.max_price || benchmark.avg_price * 1.15,
       priceSource: priceSource,
       status: status,
-      aiComment: `Matched with ${confidence}% confidence. ${reasoning}`, // English comment without Swedish terms
+      aiComment: `Matched with ${confidence}% confidence. ${reasoning}`,
     };
 
   } catch (error) {
@@ -958,7 +1070,6 @@ serve(async (req) => {
   try {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
-      console.error("LOVABLE_API_KEY is not configured");
       throw new Error("AI service not configured");
     }
 
@@ -966,7 +1077,7 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { items, project } = await req.json() as AnalysisRequest;
+    const { items, project } = await req.json() as { items: CostItemInput[]; project: ProjectContext };
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return new Response(
@@ -979,15 +1090,12 @@ serve(async (req) => {
     const targetLanguage = getLanguageForCountry(project.country);
 
     console.log(`Analyzing ${items.length} items for ${project.country} (${dbCountry})`);
-    console.log(`Target language: ${targetLanguage}`);
 
-    // STEP 1: Fetch ALL benchmarks for this country/currency (no 1000-row cap)
+    // Fetch ALL benchmarks
     const allBenchmarks = await fetchAllBenchmarks(supabase, dbCountry, project.currency);
-
     console.log(`Fetched ${allBenchmarks.length} benchmarks from database`);
 
     if (!allBenchmarks || allBenchmarks.length === 0) {
-      console.warn(`No benchmarks found for ${dbCountry}/${project.currency}`);
       const fallbackItems = items.map(item => ({
         id: item.id,
         matchedBenchmarkId: null,
@@ -1009,10 +1117,8 @@ serve(async (req) => {
       );
     }
 
-    // STEP 2: Sort items by ID for deterministic processing order
+    // Process sequentially for determinism
     const sortedItems = [...items].sort((a, b) => a.id.localeCompare(b.id));
-
-    // STEP 3: Process each item SEQUENTIALLY (no parallelism = no race conditions)
     const results: AnalysisResult[] = [];
 
     for (let i = 0; i < sortedItems.length; i++) {
@@ -1029,7 +1135,6 @@ serve(async (req) => {
 
       results.push(result);
 
-      // Rate limiting between items (consistent timing)
       if (i < sortedItems.length - 1) {
         await new Promise(r => setTimeout(r, 200));
       }
@@ -1039,12 +1144,9 @@ serve(async (req) => {
     const matchedCount = results.filter(r => r.matchedBenchmarkId).length;
 
     console.log("\n" + "=".repeat(60));
-    console.log("ANALYSIS COMPLETE");
+    console.log(`ANALYSIS COMPLETE in ${duration}s`);
+    console.log(`Processed: ${results.length} | Matched: ${matchedCount} | Rate: ${((matchedCount / results.length) * 100).toFixed(1)}%`);
     console.log("=".repeat(60));
-    console.log(`Duration: ${duration}s`);
-    console.log(`Processed: ${results.length}`);
-    console.log(`Matched: ${matchedCount}`);
-    console.log(`Match Rate: ${((matchedCount / results.length) * 100).toFixed(1)}%`);
 
     return new Response(
       JSON.stringify({ items: results }),
@@ -1053,8 +1155,6 @@ serve(async (req) => {
 
   } catch (error) {
     console.error("analyze-cost-items error:", error);
-    
-    // Surface rate limit and payment errors to client
     const errorMsg = error instanceof Error ? error.message : "Analysis failed";
     let status = 500;
     if (errorMsg.includes('429')) status = 429;
