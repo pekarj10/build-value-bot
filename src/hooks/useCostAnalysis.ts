@@ -91,6 +91,7 @@ export function useCostAnalysis() {
             matchConfidence: result.matchConfidence ?? null,
             matchReasoning: result.matchReasoning ?? null,
             priceSource: result.priceSource ?? null,
+            userExplanation: result.userExplanation ?? null,
           };
         }
 
