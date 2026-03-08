@@ -35,6 +35,7 @@ interface AnalysisResult {
   matchConfidence?: number | null;
   matchReasoning?: string | null;
   priceSource?: string | null;
+  userExplanation?: string | null;
 }
 
 export function useCostAnalysis() {
