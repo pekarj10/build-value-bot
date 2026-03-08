@@ -82,7 +82,8 @@ CRITICAL: Return EXACTLY this JSON format:
   "translatedTerm": "the term in target language (for matching only)",
   "matchedBenchmarkId": "exact-uuid-from-list-or-null",
   "confidence": 85,
-  "reasoning": "ENGLISH ONLY: Clear explanation without any UUIDs or benchmark IDs"
+  "reasoning": "ENGLISH ONLY: Clear explanation without any UUIDs or benchmark IDs",
+  "userExplanation": "A plain-English explanation for the end user (no database names, no category codes, no Swedish terms). Describe WHAT construction work this price covers, e.g. 'This price covers complete asphalt resurfacing for parking areas, including removal of old surface, base preparation, and machine-laid asphalt. The price is for areas between 1,000–5,000 m².' Always mention what's typically included in scope."
 }`;
 
 interface CostItemInput {
@@ -128,6 +129,7 @@ interface AnalysisResult {
   priceSource: string | null;
   status: string;
   aiComment: string;
+  userExplanation: string | null;
 }
 
 function mapCountryToDb(country: string): string {
@@ -1010,6 +1012,7 @@ async function processCostItem(
     priceSource: null,
     status: "clarification",
     aiComment: "No benchmark match found. Manual pricing required.",
+    userExplanation: null,
   };
 
   try {
@@ -1142,6 +1145,7 @@ Select the BEST matching benchmark. Even partial matches (65-80% confidence) are
       priceSource: priceSource,
       status: status,
       aiComment: `Matched with ${confidence}% confidence. ${cleanReasoning}`,
+      userExplanation: aiResult.userExplanation || null,
     };
 
   } catch (error) {

@@ -35,6 +35,7 @@ interface AnalysisResult {
   matchConfidence?: number | null;
   matchReasoning?: string | null;
   priceSource?: string | null;
+  userExplanation?: string | null;
 }
 
 export function useCostAnalysis() {
@@ -90,6 +91,7 @@ export function useCostAnalysis() {
             matchConfidence: result.matchConfidence ?? null,
             matchReasoning: result.matchReasoning ?? null,
             priceSource: result.priceSource ?? null,
+            userExplanation: result.userExplanation ?? null,
           };
         }
 
@@ -115,6 +117,7 @@ export function useCostAnalysis() {
           matchConfidence: null,
           matchReasoning: null,
           priceSource: null,
+          userExplanation: null,
         };
       });
 
@@ -180,6 +183,7 @@ export function useCostAnalysis() {
         matchConfidence: data.matchConfidence || null,
         matchReasoning: data.matchReasoning || null,
         priceSource: data.priceSource || null,
+        userExplanation: data.userExplanation || null,
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Processing failed';

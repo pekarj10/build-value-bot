@@ -98,6 +98,7 @@ export default function ProjectProcessing() {
           match_confidence: item.matchConfidence || null,
           match_reasoning: item.matchReasoning || null,
           price_source: item.priceSource || null,
+          user_explanation: item.userExplanation || null,
         });
 
         if (success) {

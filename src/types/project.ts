@@ -56,6 +56,7 @@ export interface CostItem {
   matchConfidence?: number | null;
   matchReasoning?: string | null;
   priceSource?: string | null;
+  userExplanation?: string | null;
   // Audit trail fields
   lastModifiedBy?: string | null;
   lastModifiedAt?: string | null;

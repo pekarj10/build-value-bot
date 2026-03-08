@@ -53,6 +53,7 @@ interface DbCostItem {
   match_confidence: number | null;
   match_reasoning: string | null;
   price_source: string | null;
+  user_explanation: string | null;
   // Audit trail fields
   last_modified_by: string | null;
   last_modified_at: string | null;
@@ -271,6 +272,7 @@ export function useProject() {
         matchConfidence: item.match_confidence ? Number(item.match_confidence) : null,
         matchReasoning: item.match_reasoning || null,
         priceSource: item.price_source || null,
+        userExplanation: item.user_explanation || null,
         // Audit trail fields
         lastModifiedBy: item.last_modified_by || null,
         lastModifiedAt: item.last_modified_at || null,
@@ -301,6 +303,7 @@ export function useProject() {
       match_confidence: number | null;
       match_reasoning: string | null;
       price_source: string | null;
+      user_explanation: string | null;
     }>
   ) => {
     try {

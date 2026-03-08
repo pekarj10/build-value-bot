@@ -283,6 +283,7 @@ export default function ProjectDetail() {
         match_confidence: updatedFields.matchConfidence || null,
         match_reasoning: updatedFields.matchReasoning || null,
         price_source: updatedFields.priceSource || null,
+        user_explanation: updatedFields.userExplanation || null,
       });
 
       // CRITICAL: Invalidate cached trust score so it recalculates
@@ -343,6 +344,7 @@ export default function ProjectDetail() {
         match_confidence: itemUpdates.matchConfidence || null,
         match_reasoning: itemUpdates.matchReasoning || null,
         price_source: itemUpdates.priceSource || null,
+        user_explanation: itemUpdates.userExplanation || null,
         // Clear user clarification when re-analyzing all items
         user_clarification: itemUpdates.userClarification === undefined ? null : itemUpdates.userClarification,
       });
@@ -496,6 +498,7 @@ export default function ProjectDetail() {
           match_confidence: analyzed.matchConfidence || null,
           match_reasoning: analyzed.matchReasoning || null,
           price_source: analyzed.priceSource || null,
+          user_explanation: analyzed.userExplanation || null,
           ...(clearUserClarifications ? { user_clarification: null } : {}),
         });
       }
@@ -629,6 +632,7 @@ export default function ProjectDetail() {
           match_confidence: analyzed.matchConfidence || null,
           match_reasoning: analyzed.matchReasoning || null,
           price_source: analyzed.priceSource || null,
+          user_explanation: analyzed.userExplanation || null,
         });
       }
       
