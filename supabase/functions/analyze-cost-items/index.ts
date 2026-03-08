@@ -443,6 +443,12 @@ function generateSearchTerms(description: string): string[] {
     'golv': ['golv', 'golvläggning', 'golvbeläggning'],
     'golvbyte': ['golv', 'byte', 'golvbeläggning'],
 
+    // === INTERIOR CEILINGS ===
+    'innertak': ['innertak', 'tak', 'undertak', 'takskivor', '335', '337', 'skivor', 'gipsskiva', 'spånskiva'],
+    'undertak': ['undertak', 'innertak', '229', '337', 'akustikplattor', 'plåt', 'träpanel', 'träskivor'],
+    'ceiling': ['innertak', 'undertak', 'tak', '335', '337'],
+    'takskivor': ['takskivor', 'innertak', '335'],
+
     // === WALLS / PAINTING ===
     'wall': ['vägg', 'väggar'],
     'walls': ['vägg', 'väggar'],
@@ -454,7 +460,6 @@ function generateSearchTerms(description: string): string[] {
     'painting': ['målning', 'ommålning', 'strykning', 'färg'],
     'målning': ['målning', 'ommålning', 'strykning', 'färg', 'måla'],
     'ommålning': ['ommålning', 'målning', 'strykning'],
-    'innertak': ['innertak', 'tak', 'undertak', 'takskivor'],
 
     // === HVAC / MEP ===
     'heat pump': ['värmepump', 'luft-vatten', 'bergvärme'],
@@ -467,20 +472,26 @@ function generateSearchTerms(description: string): string[] {
     'plumbing': ['VVS', 'rör', 'rörarbeten'],
     'electrical': ['el', 'elinstallation', 'elarbeten', 'elanläggning'],
     'belysning': ['belysning', 'ljus', 'lampor', 'LED', 'armaturer', 'el'],
-    'elcentral': ['elcentral', 'elskåp', 'elanläggning', 'elinstallation'],
-    'brandlarm': ['brandlarm', 'brandlarmsystem', 'brandsäkerhet', 'larm'],
+    'elcentral': ['elcentral', 'elskåp', 'elanläggning', 'elinstallation', 'elinstallationer', '6S1', '6S3', 'byte'],
+    'elanläggning': ['elanläggning', 'elinstallation', 'elinstallationer', 'elcentral', '6S1', '6S3'],
+    'elinstallation': ['elinstallation', 'elinstallationer', 'elanläggning', '6S1', '6S3', 'byte', 'led', 'lysrör'],
+    'brandlarm': ['brandlarm', 'brandlarmsystem', 'brandsäkerhet', 'larm', 'larmanläggning', '646', 'rökdetektor', 'centralutrustning'],
+    'brandlarmsystem': ['brandlarm', 'larmanläggning', '646', 'rökdetektor', 'centralutrustning', 'dörrhålare', 'sektioner'],
+    'larmanläggning': ['larmanläggning', 'brandlarm', '646', 'larm'],
+    'fire alarm': ['brandlarm', 'larmanläggning', '646', 'rökdetektor'],
     'hiss': ['hiss', 'hissrenovering', 'elevator', 'hissar'],
     'hissrenovering': ['hiss', 'hissrenovering', 'elevator', 'hissar', 'byte'],
-    'avlopp': ['avlopp', 'avloppsrör', 'relining', 'stamrenovering', 'rör'],
+    'avlopp': ['avlopp', 'avloppsrör', 'relining', 'stamrenovering', 'rör', '142', 'avloppsledningar'],
     'relining': ['relining', 'avlopp', 'stamrenovering', 'rörinfodring'],
     'avloppsrelining': ['relining', 'avlopp', 'stamrenovering', 'rörinfodring'],
-    'stamrenovering': ['stamrenovering', 'relining', 'rör', 'avlopp', 'vatten'],
-    'vattenledning': ['vattenledning', 'vattenledningar', 'rör', 'ledningar', '142'],
-    'vattenledningar': ['vattenledning', 'vattenledningar', 'rör', '142'],
+    'stamrenovering': ['stamrenovering', 'relining', 'rör', 'avlopp', 'vatten', '142', 'vattenledningar', 'avloppsledningar'],
+    'stambyte': ['stambyte', 'stamrenovering', 'vattenledningar', 'avloppsledningar', '142', 'rör'],
+    'vattenledning': ['vattenledning', 'vattenledningar', 'rör', 'ledningar', '142', 'stambyte'],
+    'vattenledningar': ['vattenledning', 'vattenledningar', 'rör', '142', 'stambyte', 'byte', 'avloppsledningar'],
     'membran': ['membran', 'tätskikt', 'vattentätning'],
     'värme': ['värme', 'uppvärmning', 'värmesystem'],
-    'el': ['el', 'elanläggning', 'elinstallation'],
-    'vatten': ['vatten', 'vattenledning', 'VA', '142'],
+    'el': ['el', 'elanläggning', 'elinstallation', 'elinstallationer'],
+    'vatten': ['vatten', 'vattenledning', 'VA', '142', 'vattenledningar'],
     'rör': ['rör', 'rörarbeten', 'ledningar'],
 
     // === ACTIONS / VERBS ===
