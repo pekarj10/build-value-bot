@@ -282,27 +282,35 @@ export default function TeamChat() {
                     {channelSearch ? 'No channels match your search' : 'No channels yet. Create one to start chatting!'}
                   </div>
                 ) : (
-                  filteredChannels.map(channel => (
-                    <button
-                      key={channel.id}
-                      onClick={() => selectChannel(channel.id)}
-                      className={cn(
-                        "w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm text-left transition-colors",
-                        activeChannelId === channel.id
-                          ? "bg-primary/10 text-primary font-medium"
-                          : "hover:bg-muted text-muted-foreground hover:text-foreground"
-                      )}
-                    >
-                      {channel.isGlobal ? (
-                        <Globe className="h-3.5 w-3.5 shrink-0" />
-                      ) : channel.projectId ? (
-                        <FolderOpen className="h-3.5 w-3.5 shrink-0" />
-                      ) : (
-                        <Hash className="h-3.5 w-3.5 shrink-0" />
-                      )}
-                      <span className="truncate flex-1">{channel.name}</span>
-                    </button>
-                  ))
+                  filteredChannels.map(channel => {
+                    const unread = unreadCounts[channel.id] || 0;
+                    return (
+                      <button
+                        key={channel.id}
+                        onClick={() => selectChannel(channel.id)}
+                        className={cn(
+                          "w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm text-left transition-colors",
+                          activeChannelId === channel.id
+                            ? "bg-primary/10 text-primary font-medium"
+                            : "hover:bg-muted text-muted-foreground hover:text-foreground"
+                        )}
+                      >
+                        {channel.isGlobal ? (
+                          <Globe className="h-3.5 w-3.5 shrink-0" />
+                        ) : channel.projectId ? (
+                          <FolderOpen className="h-3.5 w-3.5 shrink-0" />
+                        ) : (
+                          <Hash className="h-3.5 w-3.5 shrink-0" />
+                        )}
+                        <span className="truncate flex-1">{channel.name}</span>
+                        {unread > 0 && (
+                          <Badge className="h-5 min-w-5 flex items-center justify-center rounded-full px-1.5 text-[10px] font-bold bg-primary text-primary-foreground">
+                            {unread > 99 ? '99+' : unread}
+                          </Badge>
+                        )}
+                      </button>
+                    );
+                  })
                 )}
               </div>
             </ScrollArea>
