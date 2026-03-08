@@ -172,6 +172,7 @@ export default function TeamChat() {
 
     setInput('');
     setMentionQuery(null);
+    setTyping(false);
     setIsSending(true);
     const ok = await sendMessage(text);
     if (!ok) toast.error('Failed to send message');
