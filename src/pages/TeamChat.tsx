@@ -102,6 +102,8 @@ export default function TeamChat() {
     toggleReaction,
   } = useTeamChat();
 
+  const { onlineUsers, onlineInChannel, typingUsers, setTyping, totalOnline } = useChatPresence(activeChannelId);
+
   const [input, setInput] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [showNewChannel, setShowNewChannel] = useState(false);
