@@ -129,6 +129,7 @@ interface AnalysisResult {
   priceSource: string | null;
   status: string;
   aiComment: string;
+  userExplanation: string | null;
 }
 
 function mapCountryToDb(country: string): string {
