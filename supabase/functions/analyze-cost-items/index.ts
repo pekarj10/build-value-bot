@@ -344,8 +344,12 @@ function generateSearchTerms(description: string): string[] {
     'mineral wool': ['mineralull', 'stenull', 'glasull'],
     
     // === ROOFING ===
-    'roof': ['tak', 'takläggning', 'taktäckning', 'takarbeten'],
-    'roofing': ['tak', 'takläggning', 'taktäckning', 'takarbeten'],
+    'roof': ['tak', 'takläggning', 'taktäckning', 'takarbeten', 'takomläggning'],
+    'roofing': ['tak', 'takläggning', 'taktäckning', 'takarbeten', 'takomläggning'],
+    'tak': ['tak', 'takläggning', 'taktäckning', 'takomläggning', 'takarbeten', 'plåt'],
+    'takomläggning': ['tak', 'takläggning', 'taktäckning', 'takomläggning', 'plåttak', 'takplåt'],
+    'takavvattning': ['takavvattning', 'stuprör', 'hängrännor', 'dagvatten', 'avvattning'],
+    'plåt': ['plåt', 'plåttak', 'takplåt', 'plåtarbeten'],
     
     // === WINDOWS & DOORS ===
     'window': ['fönster', 'fönsterbyte', 'fönstermontering', '204', 'byte fönster'],
@@ -359,8 +363,10 @@ function generateSearchTerms(description: string): string[] {
     'entrance': ['entré', 'entrédörr', 'entréparti', 'ytterdörr', 'huvudentré'],
     'entrance door': ['entrédörr', 'ytterdörr', 'entré', 'dörr'],
     'entrance doors': ['entrédörr', 'ytterdörr', 'entré', 'dörr'],
+    'entredörrar': ['entrédörr', 'ytterdörr', 'entré', 'dörr', '204', 'byte dörr'],
+    'entrédörr': ['entrédörr', 'ytterdörr', 'entré', 'dörr', '204', 'byte dörr'],
     // Swedish window/door terms
-    'fönster': ['fönster', 'fönsterbyte', '204', 'byte', 'fönstermontering'],
+    'fönster': ['fönster', 'fönsterbyte', '204', 'byte', 'fönstermontering', 'fönster och dörrar'],
     'dörr': ['dörr', 'dörrmontering', 'dörrbyte', '204', 'byte'],
     'dörrar': ['dörr', 'dörrmontering', 'dörrbyte', '204', 'byte'],
 
@@ -378,6 +384,14 @@ function generateSearchTerms(description: string): string[] {
     'walls': ['vägg', 'väggar'],
     'drywall': ['gips', 'gipsskivor', 'gipsvägg'],
     'gypsum': ['gips', 'gipsskivor'],
+    'innervägg': ['innervägg', 'innerväggar', 'vägg', 'gips'],
+    'innerväggar': ['innervägg', 'innerväggar', 'vägg', 'gips', 'målning'],
+    'innertak': ['innertak', 'tak', 'undertak', 'takskivor'],
+
+    // === PAINTING ===
+    'målning': ['målning', 'ommålning', 'strykning', 'färg', 'måla'],
+    'painting': ['målning', 'ommålning', 'strykning', 'färg'],
+    'repainting': ['ommålning', 'målning', 'strykning'],
 
     // === HVAC / SYSTEMS ===
     'heat pump': ['värmepump', 'luft-vatten', 'bergvärme', 'värmepumpar'],
@@ -387,9 +401,26 @@ function generateSearchTerms(description: string): string[] {
     'air-to-water': ['luft-vatten', 'luft/vatten', 'luftvärmepump'],
     'heating': ['värme', 'uppvärmning', 'värmesystem', 'radiatorer'],
     'ventilation': ['ventilation', 'fläkt', 'ventilationsaggregat', 'luft'],
+    'ventilationsaggregat': ['ventilation', 'ventilationsaggregat', 'fläkt', 'luft', 'byte'],
+    'radiator': ['radiator', 'radiatorer', 'element', 'värme'],
+    'radiatorer': ['radiator', 'radiatorer', 'element', 'värme', 'byte'],
     'hvac': ['VVS', 'ventilation', 'värme', 'kyla'],
     'plumbing': ['VVS', 'rör', 'rörarbeten', 'rörmokare'],
     'electrical': ['el', 'elinstallation', 'elarbeten', 'elanläggning'],
+    'belysning': ['belysning', 'ljus', 'lampor', 'LED', 'armaturer', 'el'],
+    'elcentral': ['elcentral', 'elskåp', 'elanläggning', 'elinstallation'],
+    'brandlarm': ['brandlarm', 'brandlarmsystem', 'brandsäkerhet', 'larm'],
+    'hiss': ['hiss', 'hissrenovering', 'elevator', 'hissar'],
+    'hissrenovering': ['hiss', 'hissrenovering', 'elevator', 'hissar', 'byte'],
+    'avlopp': ['avlopp', 'avloppsrör', 'relining', 'stamrenovering', 'rör'],
+    'relining': ['relining', 'avlopp', 'stamrenovering', 'rörinfodring'],
+    'avloppsrelining': ['relining', 'avlopp', 'stamrenovering', 'rörinfodring', 'rör'],
+    'stamrenovering': ['stamrenovering', 'relining', 'rör', 'avlopp', 'vatten'],
+    'balkong': ['balkong', 'balkongrenovering', 'balkongplatta'],
+    'balkongrenovering': ['balkong', 'balkongrenovering', 'balkongplatta', 'betong'],
+    'membran': ['membran', 'tätskikt', 'vattentätning', 'parkering'],
+    'mattbyte': ['matta', 'textilgolv', 'nålfilt', 'golvmatta', 'byte', 'textil'],
+    'matta': ['matta', 'textilgolv', 'nålfilt', 'golvmatta', 'textil'],
 
     // === ACTIONS / VERBS (Swedish support) ===
     'replacement': ['byte', 'utbyte', 'ersättning'],
@@ -398,6 +429,7 @@ function generateSearchTerms(description: string): string[] {
     'byte': ['byte', 'utbyte', 'ersättning', 'byta'],
     'renovation': ['renovering', 'ombyggnad', 'upprustning'],
     'renovate': ['renovering', 'renovera'],
+    'renovering': ['renovering', 'ombyggnad', 'upprustning', 'renovera'],
     'installation': ['installation', 'montering', 'montage'],
     'install': ['installation', 'montera', 'installera'],
     'installing': ['installation', 'montering'],
@@ -407,6 +439,8 @@ function generateSearchTerms(description: string): string[] {
     'omläggning': ['omläggning', 'läggning', 'byte', 'renovering'],
     'new': ['ny', 'nytt', 'nyinstallation', 'nybyggnad'],
     'nya': ['ny', 'nytt', 'nyinstallation', 'nybyggnad', 'byte'],
+    'utbyte': ['utbyte', 'byte', 'byta', 'ersättning'],
+    'uppgradering': ['uppgradering', 'byte', 'utbyte', 'modernisering'],
     'putting': ['läggning', 'montering', 'byte'],
     'old': ['gammal', 'befintlig', 'byte'],
   };
