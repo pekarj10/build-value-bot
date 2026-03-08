@@ -303,6 +303,7 @@ export function useProject() {
       match_confidence: number | null;
       match_reasoning: string | null;
       price_source: string | null;
+      user_explanation: string | null;
     }>
   ) => {
     try {
