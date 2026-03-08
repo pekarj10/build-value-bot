@@ -138,6 +138,12 @@ export default function TeamChat() {
 
   const handleInputChange = (val: string) => {
     setInput(val);
+    // Signal typing
+    if (val.trim()) {
+      setTyping(true);
+    } else {
+      setTyping(false);
+    }
     // Detect @mention
     const cursor = inputRef.current?.selectionStart || val.length;
     const textBefore = val.substring(0, cursor);
