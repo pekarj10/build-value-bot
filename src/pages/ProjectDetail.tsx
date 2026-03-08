@@ -283,6 +283,7 @@ export default function ProjectDetail() {
         match_confidence: updatedFields.matchConfidence || null,
         match_reasoning: updatedFields.matchReasoning || null,
         price_source: updatedFields.priceSource || null,
+        user_explanation: updatedFields.userExplanation || null,
       });
 
       // CRITICAL: Invalidate cached trust score so it recalculates
