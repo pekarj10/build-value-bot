@@ -53,6 +53,7 @@ interface DbCostItem {
   match_confidence: number | null;
   match_reasoning: string | null;
   price_source: string | null;
+  user_explanation: string | null;
   // Audit trail fields
   last_modified_by: string | null;
   last_modified_at: string | null;
