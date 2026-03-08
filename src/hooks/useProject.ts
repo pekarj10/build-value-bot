@@ -272,6 +272,7 @@ export function useProject() {
         matchConfidence: item.match_confidence ? Number(item.match_confidence) : null,
         matchReasoning: item.match_reasoning || null,
         priceSource: item.price_source || null,
+        userExplanation: item.user_explanation || null,
         // Audit trail fields
         lastModifiedBy: item.last_modified_by || null,
         lastModifiedAt: item.last_modified_at || null,
