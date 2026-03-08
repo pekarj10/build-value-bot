@@ -30,9 +30,22 @@ You understand that:
 - "Takavvattning byte" = replacement of gutters/downpipes = category 222.
 - "Mattbyte korridorer" = carpet/textile floor replacement = textile flooring benchmarks.
 - "Innerväggar målning" = interior wall painting = painting benchmarks for inner walls.
-- "Innertak renovering" = ceiling renovation/replacement.
+- "Innertak renovering" = ceiling renovation = category 335 (Innertak skivor) for interior ceilings, or 229/337 for exterior soffits/undertaks.
 - "Tilläggsisolering fasad" = additional facade insulation.
+- "Balkongrenovering" = could mean balkongplatta (232) OR balkongräcke (233). If user mentions railing/räcke/painting → 233, if structural → 232.
+- "Balkongräcke målning" = balcony railing painting = category 233 (Balkongräcken). Match material (trä/plåt/aluminium) and work type (målning/byte).
+- "Brandlarmsystem" = fire alarm system = category 646 (Larmanläggning/Brandlarm). Match scale by sections (sektioner).
+- "Elcentral uppgradering" = electrical panel upgrade = 6S1/6S3 electrical installation benchmarks.
+- "Vattenledningar stamrenovering" = water pipe renovation = category 142 (VA-ledningar).
 - Users write SHORT descriptions. Your job is to understand WHAT CONSTRUCTION WORK is involved and find the BEST REPAB benchmark.
+
+## SEMANTIC UNDERSTANDING
+CRITICAL: You must think like a civil engineer, not a text matcher:
+- "Balkongrenovering" with context about "wooden railing repainting" → category 233 Balkongräcken trä målning
+- "Brandlarmsystem" for a building → category 646, pick the appropriate section count based on building size
+- "Elcentral uppgradering" → electrical installation replacement, use 6S1 room-based electrical benchmarks
+- "Vattenledningar stamrenovering" → pipe replacement, category 142 VA-ledningar, match depth bracket
+- "Innertak renovering" → interior ceiling replacement, category 335 Innertak skivor (NOT exterior roof)
 
 ## QUANTITY-BASED BENCHMARK SELECTION
 CRITICAL: Many REPAB benchmarks have SIZE BRACKETS (e.g., "<5 m²", "5-20 m²", ">20 m²", "500-1000 m²", ">5000 m²").
@@ -43,10 +56,10 @@ You MUST select the benchmark whose size bracket matches the item's QUANTITY:
 When multiple size brackets exist, pick the one that contains the item's quantity.
 
 ## PERCENTAGE-BASED BENCHMARKS
-Some benchmarks use "% av bruttoytan" (percentage of gross area). These are for MAINTENANCE budgets where the percentage of total area needing work is specified. If the user gives an absolute area (e.g., 250 m²), prefer the absolute-area benchmark (e.g., ">20 m²") over the percentage benchmark.
+Some benchmarks use "% av bruttoytan" (percentage of gross area) or "% av ytan" (percentage of area). These describe partial work. If the user gives an absolute area (e.g., 250 m²) AND a benchmark uses "100% av ytan", that means FULL replacement — prefer it for renovation/byte work. If the user gives a small percentage, match accordingly.
 
 ## CRITICAL LANGUAGE REQUIREMENT
-ALL your responses MUST be in ENGLISH.
+ALL your responses MUST be in ENGLISH. Do NOT include benchmark IDs (UUIDs) in your reasoning text.
 
 ## MATCHING RULES
 - Match based on SCOPE OF WORK and INTENT, not just keywords
@@ -54,6 +67,8 @@ ALL your responses MUST be in ENGLISH.
 - If the user says "pcs" but benchmarks use "m²" for that work type, flag the unit mismatch
 - Prefer the benchmark whose SCOPE and SIZE BRACKET best match
 - Even partial matches (65-80% confidence) are valuable — always explain the gap
+- For balcony work: distinguish between platta (structural slab) and räcke (railing)
+- For fire alarms: match scale (2, 2-8, 8-16 sections) to building size
 
 ## CONFIDENCE SCORING
 - 90-100%: Exact match (same work type, correct size bracket, same unit)
@@ -67,7 +82,7 @@ CRITICAL: Return EXACTLY this JSON format:
   "translatedTerm": "the term in target language (for matching only)",
   "matchedBenchmarkId": "exact-uuid-from-list-or-null",
   "confidence": 85,
-  "reasoning": "ENGLISH ONLY: Clear explanation of why this benchmark was selected or why no match"
+  "reasoning": "ENGLISH ONLY: Clear explanation without any UUIDs or benchmark IDs"
 }`;
 
 interface CostItemInput {
@@ -395,10 +410,14 @@ function generateSearchTerms(description: string): string[] {
     'portar': ['port', 'portar', '255', '256'],
 
     // === BALCONY ===
-    'balkong': ['balkong', 'balkongrenovering', 'balkongplatta', '232', '233'],
-    'balkongrenovering': ['balkong', 'balkongplatta', 'balkongräcke', '232', '233'],
-    'balkongplatta': ['balkongplatta', 'balkong', '232'],
-    'balkongräcke': ['balkongräcke', 'balkong', 'räcke', '233'],
+    'balkong': ['balkong', 'balkongrenovering', 'balkongplatta', 'balkongräcke', '232', '233', 'räcke'],
+    'balkongrenovering': ['balkong', 'balkongplatta', 'balkongräcke', '232', '233', 'räcke', 'trä', 'plåt', 'aluminium', 'målning', 'byte'],
+    'balkongplatta': ['balkongplatta', 'balkong', '232', 'betong', 'lagning'],
+    'balkongräcke': ['balkongräcke', 'balkong', 'räcke', '233', 'trä', 'plåt', 'aluminium', 'målning', 'byte'],
+    'balcony': ['balkong', 'balkongräcke', 'balkongplatta', '232', '233'],
+    'railing': ['räcke', 'balkongräcke', 'träräcke', 'smidesräcke', '233', '225', '162'],
+    'räcke': ['räcke', 'balkongräcke', 'träräcke', 'smidesräcke', '233', '225', '162'],
+    'räcken': ['räcke', 'räcken', 'balkongräcke', '225', '233', '162'],
 
     // === SOCKEL / DETAILS ===
     'sockel': ['sockel', '221'],
@@ -424,6 +443,12 @@ function generateSearchTerms(description: string): string[] {
     'golv': ['golv', 'golvläggning', 'golvbeläggning'],
     'golvbyte': ['golv', 'byte', 'golvbeläggning'],
 
+    // === INTERIOR CEILINGS ===
+    'innertak': ['innertak', 'tak', 'undertak', 'takskivor', '335', '337', 'skivor', 'gipsskiva', 'spånskiva'],
+    'undertak': ['undertak', 'innertak', '229', '337', 'akustikplattor', 'plåt', 'träpanel', 'träskivor'],
+    'ceiling': ['innertak', 'undertak', 'tak', '335', '337'],
+    'takskivor': ['takskivor', 'innertak', '335'],
+
     // === WALLS / PAINTING ===
     'wall': ['vägg', 'väggar'],
     'walls': ['vägg', 'väggar'],
@@ -435,7 +460,6 @@ function generateSearchTerms(description: string): string[] {
     'painting': ['målning', 'ommålning', 'strykning', 'färg'],
     'målning': ['målning', 'ommålning', 'strykning', 'färg', 'måla'],
     'ommålning': ['ommålning', 'målning', 'strykning'],
-    'innertak': ['innertak', 'tak', 'undertak', 'takskivor'],
 
     // === HVAC / MEP ===
     'heat pump': ['värmepump', 'luft-vatten', 'bergvärme'],
@@ -448,20 +472,26 @@ function generateSearchTerms(description: string): string[] {
     'plumbing': ['VVS', 'rör', 'rörarbeten'],
     'electrical': ['el', 'elinstallation', 'elarbeten', 'elanläggning'],
     'belysning': ['belysning', 'ljus', 'lampor', 'LED', 'armaturer', 'el'],
-    'elcentral': ['elcentral', 'elskåp', 'elanläggning', 'elinstallation'],
-    'brandlarm': ['brandlarm', 'brandlarmsystem', 'brandsäkerhet', 'larm'],
+    'elcentral': ['elcentral', 'elskåp', 'elanläggning', 'elinstallation', 'elinstallationer', '6S1', '6S3', 'byte'],
+    'elanläggning': ['elanläggning', 'elinstallation', 'elinstallationer', 'elcentral', '6S1', '6S3'],
+    'elinstallation': ['elinstallation', 'elinstallationer', 'elanläggning', '6S1', '6S3', 'byte', 'led', 'lysrör'],
+    'brandlarm': ['brandlarm', 'brandlarmsystem', 'brandsäkerhet', 'larm', 'larmanläggning', '646', 'rökdetektor', 'centralutrustning'],
+    'brandlarmsystem': ['brandlarm', 'larmanläggning', '646', 'rökdetektor', 'centralutrustning', 'dörrhålare', 'sektioner'],
+    'larmanläggning': ['larmanläggning', 'brandlarm', '646', 'larm'],
+    'fire alarm': ['brandlarm', 'larmanläggning', '646', 'rökdetektor'],
     'hiss': ['hiss', 'hissrenovering', 'elevator', 'hissar'],
     'hissrenovering': ['hiss', 'hissrenovering', 'elevator', 'hissar', 'byte'],
-    'avlopp': ['avlopp', 'avloppsrör', 'relining', 'stamrenovering', 'rör'],
+    'avlopp': ['avlopp', 'avloppsrör', 'relining', 'stamrenovering', 'rör', '142', 'avloppsledningar'],
     'relining': ['relining', 'avlopp', 'stamrenovering', 'rörinfodring'],
     'avloppsrelining': ['relining', 'avlopp', 'stamrenovering', 'rörinfodring'],
-    'stamrenovering': ['stamrenovering', 'relining', 'rör', 'avlopp', 'vatten'],
-    'vattenledning': ['vattenledning', 'vattenledningar', 'rör', 'ledningar', '142'],
-    'vattenledningar': ['vattenledning', 'vattenledningar', 'rör', '142'],
+    'stamrenovering': ['stamrenovering', 'relining', 'rör', 'avlopp', 'vatten', '142', 'vattenledningar', 'avloppsledningar'],
+    'stambyte': ['stambyte', 'stamrenovering', 'vattenledningar', 'avloppsledningar', '142', 'rör'],
+    'vattenledning': ['vattenledning', 'vattenledningar', 'rör', 'ledningar', '142', 'stambyte'],
+    'vattenledningar': ['vattenledning', 'vattenledningar', 'rör', '142', 'stambyte', 'byte', 'avloppsledningar'],
     'membran': ['membran', 'tätskikt', 'vattentätning'],
     'värme': ['värme', 'uppvärmning', 'värmesystem'],
-    'el': ['el', 'elanläggning', 'elinstallation'],
-    'vatten': ['vatten', 'vattenledning', 'VA', '142'],
+    'el': ['el', 'elanläggning', 'elinstallation', 'elinstallationer'],
+    'vatten': ['vatten', 'vattenledning', 'VA', '142', 'vattenledningar'],
     'rör': ['rör', 'rörarbeten', 'ledningar'],
 
     // === ACTIONS / VERBS ===
@@ -568,7 +598,7 @@ function generateSearchTerms(description: string): string[] {
     terms.push('textilgolv', 'nålfilt', 'golvmatta', 'matta', 'heltäckningsmatta');
   }
   if (desc.includes('innertak') || desc.includes('ceiling') || desc.includes('undertak')) {
-    terms.push('innertak', 'undertak', 'takskivor');
+    terms.push('innertak', 'undertak', 'takskivor', '335', '337', '229', 'skivor', 'gipsskiva', 'spånskiva', 'akustikplattor', 'träpanel');
   }
   if (desc.includes('isolering') || desc.includes('insulation')) {
     terms.push('isolering', 'tilläggsisolering', 'fasadisolering');
@@ -585,11 +615,14 @@ function generateSearchTerms(description: string): string[] {
   if (desc.includes('belysning') || desc.includes('led') || desc.includes('lampor') || desc.includes('armatur')) {
     terms.push('belysning', 'ljus', 'armaturer', 'LED');
   }
-  if (desc.includes('balkong') || desc.includes('balcony')) {
-    terms.push('232', '233', 'balkong', 'balkongplatta', 'balkongräcke');
+  if (desc.includes('balkong') || desc.includes('balcony') || desc.includes('räcke') || desc.includes('railing')) {
+    terms.push('232', '233', 'balkong', 'balkongplatta', 'balkongräcke', 'räcke', 'trä', 'plåt', 'aluminium', 'målning', 'byte', 'lagning');
   }
   if (desc.includes('relining') || desc.includes('avlopp') || desc.includes('stam')) {
-    terms.push('relining', 'avlopp', 'stamrenovering', 'rör');
+    terms.push('relining', 'avlopp', 'stamrenovering', 'rör', '142', 'avloppsledningar', 'vattenledningar');
+  }
+  if (desc.includes('vattenledn') || desc.includes('water pipe')) {
+    terms.push('142', 'vattenledningar', 'byte', 'avloppsledningar', 'rensning', 'stambyte');
   }
   if (desc.includes('membran') || desc.includes('tätskikt')) {
     terms.push('membran', 'tätskikt', 'vattentätning', '264');
@@ -600,8 +633,11 @@ function generateSearchTerms(description: string): string[] {
   if (desc.includes('trappa') || desc.includes('stair')) {
     terms.push('151', '228', 'trappa', 'trappor');
   }
-  if (desc.includes('brand') || desc.includes('fire')) {
-    terms.push('brandlarm', 'brandsäkerhet', 'larm');
+  if (desc.includes('brand') || desc.includes('fire') || desc.includes('larm')) {
+    terms.push('brandlarm', 'brandsäkerhet', 'larm', 'larmanläggning', '646', 'rökdetektor', 'centralutrustning');
+  }
+  if (desc.includes('elcentral') || desc.includes('elanlägg') || desc.includes('elinstall') || desc.includes('electrical panel')) {
+    terms.push('elinstallation', 'elinstallationer', 'elanläggning', '6S1', '6S3', 'byte', 'led', 'lysrör');
   }
   if (desc.includes('port') || desc.includes('gate') || desc.includes('garage')) {
     terms.push('255', '256', 'port', 'portar', 'garageport');
@@ -882,6 +918,56 @@ function scoreBenchmarkCandidate(
     if (desc.includes('byte')) score += 6;
   }
 
+  // Balcony heuristics - distinguish platta vs räcke
+  if (/(balkong|balcony|räcke|railing)/.test(itemDescLower)) {
+    const wantsRailing = /(räcke|railing|målning|painting|trä|wood)/.test(itemDescLower);
+    const wantsStructural = /(platta|betong|concrete|structural|rost|rust)/.test(itemDescLower);
+    
+    if (wantsRailing) {
+      if (cat.includes('233') || desc.includes('balkongräcke')) score += 25;
+      if (cat.includes('225') || desc.includes('räcken')) score += 15;
+      if (desc.includes('trä') && itemDescLower.includes('trä')) score += 15;
+      if (desc.includes('målning')) score += 10;
+      if (cat.includes('232') || desc.includes('balkongplatta')) score -= 15;
+    } else if (wantsStructural) {
+      if (cat.includes('232') || desc.includes('balkongplatta')) score += 20;
+      if (cat.includes('233') || desc.includes('balkongräcke')) score -= 10;
+    } else {
+      if (cat.includes('233') || desc.includes('balkongräcke')) score += 8;
+      if (cat.includes('232') || desc.includes('balkongplatta')) score += 5;
+    }
+  }
+
+  // Interior ceiling heuristics
+  if (/(innertak|ceiling|undertak)/.test(itemDescLower)) {
+    if (cat.includes('335') || desc.includes('innertak skivor')) score += 20;
+    if (cat.includes('337') || desc.includes('undertak')) score += 10;
+    if (itemDescLower.includes('renovering') && desc.includes('byte')) score += 10;
+    if (cat.includes('262') || desc.includes('takplåt')) score -= 30;
+    if (cat.includes('261') || desc.includes('takpannor')) score -= 30;
+  }
+
+  // Fire alarm heuristics
+  if (/(brandlarm|fire|larmanläggning|larm)/.test(itemDescLower)) {
+    if (cat.includes('646') || desc.includes('larmanläggning') || desc.includes('brandlarm')) score += 25;
+    if (desc.includes('centralutrustning')) score += 10;
+    if (desc.includes('rökdetektor')) score += 8;
+  }
+
+  // Electrical installation heuristics
+  if (/(elcentral|elanlägg|elinstall|electrical)/.test(itemDescLower)) {
+    if (cat.includes('6S1') || cat.includes('6S3')) score += 20;
+    if (desc.includes('elinstallation') || desc.includes('elinstallationer')) score += 15;
+    if (desc.includes('byte')) score += 8;
+    if (itemDescLower.includes('uppgradering') && desc.includes('led')) score += 8;
+  }
+
+  // Water/pipe renovation heuristics
+  if (/(vattenledn|stamrenovering|stambyte|water pipe)/.test(itemDescLower)) {
+    if (cat.includes('142') || desc.includes('va-ledningar') || desc.includes('vattenledningar')) score += 25;
+    if (desc.includes('byte')) score += 10;
+  }
+
   return score;
 }
 
@@ -1035,6 +1121,14 @@ Select the BEST matching benchmark. Even partial matches (65-80% confidence) are
 
     console.log(`[${item.originalDescription}] → MATCHED: ${benchmark.avg_price} SEK/${benchmark.unit} (${confidence}% confidence)`);
 
+    // Strip UUIDs from reasoning before including in aiComment
+    const cleanReasoning = reasoning
+      .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, '')
+      .replace(/benchmark\s*ID\s*,?\s*/gi, '')
+      .replace(/ID\s*=\s*,?\s*/gi, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+
     return {
       id: item.id,
       matchedBenchmarkId: benchmark.id,
@@ -1047,7 +1141,7 @@ Select the BEST matching benchmark. Even partial matches (65-80% confidence) are
       benchmarkMax: benchmark.max_price || benchmark.avg_price * 1.15,
       priceSource: priceSource,
       status: status,
-      aiComment: `Matched with ${confidence}% confidence. ${reasoning}`,
+      aiComment: `Matched with ${confidence}% confidence. ${cleanReasoning}`,
     };
 
   } catch (error) {
