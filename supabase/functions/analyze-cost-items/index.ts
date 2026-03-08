@@ -18,45 +18,64 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const UNIFIED_MATCH_PROMPT = `You are a SENIOR CIVIL ENGINEER and construction cost expert with 25+ years of experience in Swedish building maintenance (TDD/underhållsplan), renovation, and new construction. You think like a Swedish quantity surveyor (kalkylator) who deeply understands REPAB benchmark categories.
+const UNIFIED_MATCH_PROMPT = `You are a PRINCIPAL CIVIL ENGINEER and construction cost expert with 30+ years of experience in Swedish building maintenance (TDD/underhållsplan), renovation, and new construction. You have deep expertise in REPAB benchmark databases and think like a Swedish quantity surveyor (kalkylator) who can interpret even the briefest project descriptions.
 
-## YOUR EXPERTISE
+## YOUR CORE CAPABILITY
+You don't just match keywords — you REASON about construction work. When someone writes "balkongrenovering 45 st", you think:
+- What does balcony renovation typically involve? (structural repair, waterproofing, railing work, surface treatment)
+- 45 pieces suggests individual balconies, not square meters of slab
+- The unit "pcs/st" points toward railing-level work or per-balcony pricing
+- In Swedish maintenance plans, "renovering" often means comprehensive refurbishment
+
+You use DOMAIN KNOWLEDGE to bridge the gap between brief descriptions and specific benchmarks.
+
+## SWEDISH CONSTRUCTION DOMAIN EXPERTISE
 You understand that:
 - Brief user descriptions map to specific REPAB categories. "Asfaltbeläggning parkering" = asphalt resurfacing for parking = category 121.
 - "Buskar omplantering" = shrub replanting = category 112. Match to the SIZE-APPROPRIATE benchmark (>20 m² for large areas).
-- "Putsfasad renovering" = rendered facade renovation. This is facade repainting/re-rendering work = categories 206/215.
+- "Putsfasad renovering" = rendered facade renovation = categories 206/215.
 - "Nya fönster fasadtyp 1" = window replacement for facade type 1 = category 204/241-245.
 - "Takomläggning plåt" = metal roof re-roofing = category 262 (Plåt).
 - "Takavvattning byte" = replacement of gutters/downpipes = category 222.
 - "Mattbyte korridorer" = carpet/textile floor replacement = textile flooring benchmarks.
 - "Innerväggar målning" = interior wall painting = painting benchmarks for inner walls.
-- "Innertak renovering" = ceiling renovation = category 335 (Innertak skivor) for interior ceilings, or 229/337 for exterior soffits/undertaks.
+- "Innertak renovering" = ceiling renovation = category 335 (Innertak skivor) for interior ceilings.
 - "Tilläggsisolering fasad" = additional facade insulation.
-- "Balkongrenovering" = could mean balkongplatta (232) OR balkongräcke (233). If user mentions railing/räcke/painting → 233, if structural → 232.
-- "Balkongräcke målning" = balcony railing painting = category 233 (Balkongräcken). Match material (trä/plåt/aluminium) and work type (målning/byte).
-- "Brandlarmsystem" = fire alarm system = category 646 (Larmanläggning/Brandlarm). Match scale by sections (sektioner).
+- "Balkongrenovering" = could mean balkongplatta (232) OR balkongräcke (233). If user mentions railing/räcke/painting → 233, if structural → 232. If ambiguous with "pcs" unit → likely railing-level work (233).
+- "Balkongräcke målning" = balcony railing painting = category 233 (Balkongräcken).
+- "Brandlarmsystem" = fire alarm system = category 646 (Larmanläggning/Brandlarm).
 - "Elcentral uppgradering" = electrical panel upgrade = 6S1/6S3 electrical installation benchmarks.
 - "Vattenledningar stamrenovering" = water pipe renovation = category 142 (VA-ledningar).
-- Users write SHORT descriptions. Your job is to understand WHAT CONSTRUCTION WORK is involved and find the BEST REPAB benchmark.
+- "Hissrenovering" = elevator renovation = could be full replacement (710 Sammansatt Hissar komplett) or partial (711 Hisskorgar, 716 Hissar delar).
+- "Ventilationsaggregat" = ventilation/AHU unit = category 524 (UV-aggregat) for replacement.
 
-## SEMANTIC UNDERSTANDING
-CRITICAL: You must think like a civil engineer, not a text matcher:
-- "Balkongrenovering" with context about "wooden railing repainting" → category 233 Balkongräcken trä målning
-- "Brandlarmsystem" for a building → category 646, pick the appropriate section count based on building size
-- "Elcentral uppgradering" → electrical installation replacement, use 6S1 room-based electrical benchmarks
-- "Vattenledningar stamrenovering" → pipe replacement, category 142 VA-ledningar, match depth bracket
-- "Innertak renovering" → interior ceiling replacement, category 335 Innertak skivor (NOT exterior roof)
+## REASONING CHAIN
+For EVERY item, follow this chain:
+1. TRANSLATE: What does this Swedish description mean in construction terms?
+2. DECOMPOSE: What specific work activities does this involve?
+3. CATEGORIZE: Which REPAB category covers this work?
+4. SIZE: Which size bracket matches the quantity?
+5. MATERIAL: What material/type assumption is reasonable if not specified?
+6. SELECT: Pick the benchmark that best matches scope, unit, and quantity.
+7. EXPLAIN: Describe what the price covers in plain English for the end user.
 
 ## QUANTITY-BASED BENCHMARK SELECTION
 CRITICAL: Many REPAB benchmarks have SIZE BRACKETS (e.g., "<5 m²", "5-20 m²", ">20 m²", "500-1000 m²", ">5000 m²").
 You MUST select the benchmark whose size bracket matches the item's QUANTITY:
-- Item: 350 m² → select ">20 m²" or "20-100 m²" benchmark (NOT "<5 m²")
+- Item: 350 m² → select ">20 m²" or "100-500 m²" benchmark (NOT "<5 m²")
 - Item: 4500 m² → select "1000-5000 m²" benchmark (NOT "<20 m²")
-- Item: 2200 m² → select ">100 m²" or "1000-5000 m²" benchmark
 When multiple size brackets exist, pick the one that contains the item's quantity.
 
 ## PERCENTAGE-BASED BENCHMARKS
-Some benchmarks use "% av bruttoytan" (percentage of gross area) or "% av ytan" (percentage of area). These describe partial work. If the user gives an absolute area (e.g., 250 m²) AND a benchmark uses "100% av ytan", that means FULL replacement — prefer it for renovation/byte work. If the user gives a small percentage, match accordingly.
+Some benchmarks use "% av bruttoytan" (percentage of gross area). These describe partial work. If the user gives an absolute area (e.g., 250 m²) AND a benchmark uses "100% av ytan", that means FULL replacement — prefer it for renovation/byte work.
+
+## CROSS-REFERENCING
+When a description is ambiguous, use ALL available context:
+- Project type (maintenance plan = long-term replacements; renovation = immediate work)
+- Project name (e.g., "Stockholm Galleria" = commercial building → larger systems, commercial-grade)
+- Trade/sheet name (if provided, it narrows the category)
+- Original unit price (if provided, helps validate which benchmark is in the right price range)
+- Quantity + unit combination (45 pcs of "balkongrenovering" → per-balcony pricing, not slab m²)
 
 ## CRITICAL LANGUAGE REQUIREMENT
 ALL your responses MUST be in ENGLISH. Do NOT include benchmark IDs (UUIDs) in your reasoning text.
@@ -67,14 +86,12 @@ ALL your responses MUST be in ENGLISH. Do NOT include benchmark IDs (UUIDs) in y
 - If the user says "pcs" but benchmarks use "m²" for that work type, flag the unit mismatch
 - Prefer the benchmark whose SCOPE and SIZE BRACKET best match
 - Even partial matches (65-80% confidence) are valuable — always explain the gap
-- For balcony work: distinguish between platta (structural slab) and räcke (railing)
-- For fire alarms: match scale (2, 2-8, 8-16 sections) to building size
 
 ## CONFIDENCE SCORING
 - 90-100%: Exact match (same work type, correct size bracket, same unit)
-- 80-89%: Very close match (same work type, slightly different scope)
-- 70-79%: Good conceptual match (related work type)
-- 50-69%: Partial match (explain why)
+- 80-89%: Very close match (same work type, slightly different scope or material assumption)
+- 70-79%: Good conceptual match (related work type, reasonable assumption needed)
+- 50-69%: Partial match (explain what's missing)
 - 0-49%: No suitable match - return null
 
 CRITICAL: Return EXACTLY this JSON format:
@@ -82,8 +99,8 @@ CRITICAL: Return EXACTLY this JSON format:
   "translatedTerm": "the term in target language (for matching only)",
   "matchedBenchmarkId": "exact-uuid-from-list-or-null",
   "confidence": 85,
-  "reasoning": "ENGLISH ONLY: Clear explanation without any UUIDs or benchmark IDs",
-  "userExplanation": "A plain-English explanation for the end user (no database names, no category codes, no Swedish terms). Describe WHAT construction work this price covers, e.g. 'This price covers complete asphalt resurfacing for parking areas, including removal of old surface, base preparation, and machine-laid asphalt. The price is for areas between 1,000–5,000 m².' Always mention what's typically included in scope."
+  "reasoning": "ENGLISH ONLY: Clear explanation without any UUIDs or benchmark IDs. Explain your reasoning chain.",
+  "userExplanation": "A plain-English explanation for the end user (no database names, no category codes, no Swedish terms). Describe WHAT construction work this price covers, what's typically included in scope, and any assumptions made. E.g. 'This price covers complete balcony renovation including railing repainting with surface preparation and two coats of paint. The price assumes aluminum railings — if your railings are wooden or steel, the cost may differ slightly.'"
 }`;
 
 interface CostItemInput {
@@ -255,7 +272,7 @@ async function callAIDeterministic(
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+          model: "google/gemini-2.5-pro",
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt },
@@ -1055,7 +1072,7 @@ async function processCostItem(
 
     // STEP 3: Rank candidates
     const ranked = rankBenchmarkCandidates(candidates, item, searchTerms);
-    const top = ranked.slice(0, 40);
+    const top = ranked.slice(0, 60);
 
     console.log(
       `[${item.originalDescription}] Top 5: ` +
@@ -1074,19 +1091,22 @@ async function processCostItem(
 Description: "${item.originalDescription}"
 Unit: ${item.unit}
 Quantity: ${item.quantity}
-${item.originalUnitPrice ? `Original Price: ${item.originalUnitPrice} per ${item.unit}` : ''}
-${item.trade ? `Trade/Category: ${item.trade}` : ''}
+${item.originalUnitPrice ? `Original Price: ${item.originalUnitPrice} per ${item.unit} — use this to validate your match is in the right price range` : 'No original price provided'}
+${item.trade ? `Trade/Category hint: ${item.trade}` : ''}
+${item.sheetName ? `Sheet/section: ${item.sheetName}` : ''}
 
-TARGET LANGUAGE: ${targetLanguage}
-PROJECT TYPE: ${project.projectType || 'maintenance/renovation'}
-PROJECT: ${project.name || 'N/A'}
+PROJECT CONTEXT:
+- Name: ${project.name || 'N/A'}
+- Type: ${project.projectType || 'maintenance/renovation'}
+- Country: ${project.country}
+- Language: ${targetLanguage}
 
-IMPORTANT: Select the benchmark whose SIZE BRACKET contains quantity ${item.quantity}. For example, if quantity is ${item.quantity}, pick the ">100 m²" or "1000-5000 m²" benchmark that covers this range — NOT a small-area benchmark.
+REASONING INSTRUCTION: Think step by step. First translate and understand what "${item.originalDescription}" means as construction work. Then identify which REPAB category it belongs to. Then select the benchmark whose size bracket contains quantity ${item.quantity}. Explain your reasoning chain.
 
 AVAILABLE BENCHMARKS (ranked by relevance; top ${top.length} of ${ranked.length} candidates):
 ${candidateList}
 
-Select the BEST matching benchmark. Even partial matches (65-80% confidence) are valuable.`
+Select the BEST matching benchmark. Even partial matches (65-80% confidence) are valuable — explain any assumptions.`
     );
 
     console.log(`[${item.originalDescription}] AI result:`, JSON.stringify(aiResult));
