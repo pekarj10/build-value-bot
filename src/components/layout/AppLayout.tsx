@@ -15,7 +15,8 @@ import {
   User,
   Shield,
   Menu,
-  X
+  X,
+  MessageSquare
 } from 'lucide-react';
 import {
   DropdownMenu,
