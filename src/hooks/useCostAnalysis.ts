@@ -183,6 +183,7 @@ export function useCostAnalysis() {
         matchConfidence: data.matchConfidence || null,
         matchReasoning: data.matchReasoning || null,
         priceSource: data.priceSource || null,
+        userExplanation: data.userExplanation || null,
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Processing failed';
