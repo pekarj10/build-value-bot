@@ -217,12 +217,29 @@ const Settings = () => {
             <CardDescription>Customize how Unit Rate looks for you</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label>Theme</Label>
-                <p className="text-sm text-muted-foreground">Choose between light and dark mode</p>
+            <div className="space-y-3">
+              <Label>Theme</Label>
+              <p className="text-sm text-muted-foreground">Choose between light and dark mode, or follow your system preference</p>
+              <div className="flex gap-3 pt-1">
+                {([
+                  { value: "light", label: "Light", icon: Sun },
+                  { value: "dark", label: "Dark", icon: Moon },
+                  { value: "system", label: "System", icon: Monitor },
+                ] as const).map(({ value, label, icon: Icon }) => (
+                  <button
+                    key={value}
+                    onClick={() => setTheme(value)}
+                    className={`flex flex-col items-center gap-2 rounded-lg border-2 px-6 py-4 transition-base text-sm font-medium ${
+                      theme === value
+                        ? "border-primary bg-primary/5 text-primary"
+                        : "border-border bg-card text-muted-foreground hover:border-primary/40 hover:bg-muted/50"
+                    }`}
+                  >
+                    <Icon className="h-5 w-5" />
+                    {label}
+                  </button>
+                ))}
               </div>
-              <Button variant="outline" disabled>System Default</Button>
             </div>
           </CardContent>
         </Card>
