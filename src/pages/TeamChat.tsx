@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { AppLayout, PageHeader } from '@/components/layout/AppLayout';
 import { useTeamChat, ChatMessage } from '@/hooks/useTeamChat';
+import { useChatPresence } from '@/hooks/useChatPresence';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -101,6 +102,8 @@ export default function TeamChat() {
     toggleReaction,
   } = useTeamChat();
 
+  const { onlineUsers, onlineInChannel, typingUsers, setTyping, totalOnline } = useChatPresence(activeChannelId);
+
   const [input, setInput] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [showNewChannel, setShowNewChannel] = useState(false);
@@ -135,6 +138,12 @@ export default function TeamChat() {
 
   const handleInputChange = (val: string) => {
     setInput(val);
+    // Signal typing
+    if (val.trim()) {
+      setTyping(true);
+    } else {
+      setTyping(false);
+    }
     // Detect @mention
     const cursor = inputRef.current?.selectionStart || val.length;
     const textBefore = val.substring(0, cursor);
@@ -163,6 +172,7 @@ export default function TeamChat() {
 
     setInput('');
     setMentionQuery(null);
+    setTyping(false);
     setIsSending(true);
     const ok = await sendMessage(text);
     if (!ok) toast.error('Failed to send message');
@@ -236,10 +246,18 @@ export default function TeamChat() {
           {/* Channel sidebar */}
           <div className="w-64 border-r flex flex-col shrink-0">
             <div className="p-3 border-b space-y-2">
-              <h3 className="font-semibold text-sm flex items-center gap-2">
-                <MessageSquare className="h-4 w-4" />
-                Channels
-              </h3>
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-sm flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4" />
+                  Channels
+                </h3>
+                {totalOnline > 0 && (
+                  <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                    <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+                    {totalOnline} online
+                  </span>
+                )}
+              </div>
               {channels.length > 5 && (
                 <div className="relative">
                   <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
@@ -308,6 +326,12 @@ export default function TeamChat() {
                   </span>
                 )}
                 <div className="ml-auto flex items-center gap-2">
+                  {onlineInChannel > 0 && (
+                    <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                      <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                      {onlineInChannel} here
+                    </span>
+                  )}
                   {activeChannel.isGlobal && (
                     <Badge variant="secondary" className="text-[10px]">
                       <Globe className="h-3 w-3 mr-1" />
@@ -458,6 +482,23 @@ export default function TeamChat() {
             {/* Input with @mention dropdown */}
             {activeChannelId && (
               <div className="p-3 border-t relative">
+                {/* Typing indicator */}
+                {typingUsers.length > 0 && (
+                  <div className="absolute -top-6 left-3 right-3 text-xs text-muted-foreground flex items-center gap-1.5 animate-pulse">
+                    <span className="flex gap-0.5">
+                      <span className="h-1 w-1 rounded-full bg-muted-foreground animate-bounce [animation-delay:0ms]" />
+                      <span className="h-1 w-1 rounded-full bg-muted-foreground animate-bounce [animation-delay:150ms]" />
+                      <span className="h-1 w-1 rounded-full bg-muted-foreground animate-bounce [animation-delay:300ms]" />
+                    </span>
+                    <span>
+                      {typingUsers.length === 1
+                        ? `${typingUsers[0]} is typing...`
+                        : typingUsers.length === 2
+                          ? `${typingUsers[0]} and ${typingUsers[1]} are typing...`
+                          : `${typingUsers[0]} and ${typingUsers.length - 1} others are typing...`}
+                    </span>
+                  </div>
+                )}
                 {/* Mention autocomplete */}
                 {mentionQuery !== null && filteredMentions.length > 0 && (
                   <div className="absolute bottom-full left-3 right-3 mb-1 bg-popover border rounded-md shadow-lg z-10 overflow-hidden">
