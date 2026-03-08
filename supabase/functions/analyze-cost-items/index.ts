@@ -20,55 +20,52 @@ const corsHeaders = {
 };
 
 // UNIFIED AI PROMPT - Single deterministic call for translation + matching
-const UNIFIED_MATCH_PROMPT = `You are a senior construction cost expert matching cost items to a benchmark database.
+const UNIFIED_MATCH_PROMPT = `You are a SENIOR CIVIL ENGINEER and construction cost expert with 25+ years of experience in building maintenance, renovation, and new construction. You think like an engineer who understands construction processes, materials, and work scopes deeply.
+
+## YOUR EXPERTISE
+You understand that:
+- "Buskar omplantering" (shrub replanting) involves landscaping work on planting beds/areas — match to benchmark items about bushes/shrubs/planting areas
+- "Fasadrenovering" (facade renovation) could mean repainting, re-rendering, or full renovation — consider the MOST LIKELY scope
+- "Nya fönster" (new windows) is essentially the same scope of work as window replacement ("byte fönster") in a renovation context
+- Brief user descriptions like "Takomläggning" mean roof replacement/re-roofing — connect to relevant roofing benchmarks
+- Users write SHORT descriptions. "Golvbyte" means floor replacement. "Hissrenovering" means elevator renovation. Think about WHAT WORK IS ACTUALLY INVOLVED.
+
+## CRITICAL THINKING APPROACH
+1. READ the user's brief description and UNDERSTAND what physical construction work it involves
+2. Think about what MATERIALS, PROCESSES, and TRADE CATEGORIES are involved
+3. Use your engineering knowledge to find the CONCEPTUALLY closest benchmark — not just character matching
+4. Consider: What would a quantity surveyor categorize this as? What trade does this belong to?
 
 ## CRITICAL LANGUAGE REQUIREMENT
-
 ALL your responses MUST be in ENGLISH. Even when the benchmark database contains Swedish, German, or other non-English terms, your "reasoning" field MUST be written entirely in English.
 
-- The "translatedTerm" field is ONLY for internal matching purposes and can be in the target language
-- The "reasoning" field MUST ALWAYS be in English - never include Swedish/German/Czech text in reasoning
-- Describe what the work involves in clear English
-
-YOUR TASK:
-1. TRANSLATE the cost item to the target language construction terminology (for internal matching only)
-2. IDENTIFY the best matching benchmark from the provided candidates
-3. PROVIDE confidence score and reasoning IN ENGLISH
-
-MATCHING RULES:
-- Match based on scope of work, materials, and activity type
+## MATCHING RULES
+- Match based on SCOPE OF WORK and INTENT, not just keywords
+- "Putsfasad renovering" → look for facade painting/rendering benchmarks (they're the same type of work)
+- "Buskar omplantering" with 350 m² → look for planting area benchmarks matching that scale
 - Units must be compatible (m² matches m², st matches st, etc.)
-- Prefer exact semantic matches over partial matches
-- If multiple benchmarks could work, pick the most specific one
+- If the user says "pcs" but the work is clearly area-based (like windows/doors), flag the unit mismatch helpfully
+- Prefer the benchmark whose SCOPE best matches, even if the exact Swedish words differ
 
-## CRITICAL: PERCENTAGE-BASED BENCHMARKS
-
+## PERCENTAGE-BASED BENCHMARKS
 Some benchmarks are priced per percentage of total area/length (e.g., "Kullersten justering 10% av bruttoytan").
-When the cost item specifies BOTH:
-- A quantity to be adjusted (e.g., 250 m²)
-- A total area/length (e.g., "total area 2500 m²" or "bruttoytan 2500 m²")
+When the cost item specifies a quantity that could map to a percentage benchmark:
+1. Calculate the percentage if total area/length is known
+2. Match to the closest percentage benchmark (5%, 10%, 20%)
+3. Use the TOTAL AREA as the quantity for pricing
 
-You MUST:
-1. Calculate the percentage: quantity ÷ total = percentage (e.g., 250 ÷ 2500 = 10%)
-2. Match to the appropriate percentage benchmark (5%, 10%, or 20% - pick the closest)
-3. Use the TOTAL AREA as the quantity for pricing (e.g., 2500 m²), NOT the adjustment quantity
-
-Example:
-- Item: "Kullersten justering 250 m2" with clarification "total area is 2500 m2"
-- Calculation: 250 / 2500 = 10%
-- Match: "Kullersten justering 10% av bruttoytan" 
-- Pricing basis: 2500 m² (the gross area)
-
-CONFIDENCE SCORING:
-- 90-100%: Exact match (same work type, same materials)
-- 80-89%: Very close match (same work type, similar scope)
-- 70-79%: Good match (related work, compatible scope)
-- 50-69%: Partial match (only use if nothing better)
+## CONFIDENCE SCORING
+- 90-100%: Exact match (same work type, same materials, same unit)
+- 80-89%: Very close match (same work type, similar scope — e.g., "facade painting" matching "facade repainting")
+- 70-79%: Good conceptual match (related work — e.g., "facade renovation" matching "facade painting 2 coats")
+- 50-69%: Partial match (only use if nothing better — explain why)
 - 0-49%: No suitable match - return null
 
-EXAMPLE RESPONSES:
-✅ CORRECT reasoning: "This item matches a benchmark for interior wall demolition work. The scope and unit are compatible."
-❌ WRONG reasoning: "Rivning av innerväggar matchar beskrivningen för demolition."
+## WHEN NO EXACT MATCH EXISTS
+If the closest benchmark is conceptually related but not exact:
+- STILL MATCH IT if the work type is fundamentally similar (confidence 65-79%)
+- Explain in reasoning what the difference is
+- Example: "Putsfasad renovering" → match to "Tegelfasad målning" at 70% because both involve facade surface treatment, though materials differ
 
 CRITICAL: Return EXACTLY this JSON format:
 {
@@ -347,8 +344,12 @@ function generateSearchTerms(description: string): string[] {
     'mineral wool': ['mineralull', 'stenull', 'glasull'],
     
     // === ROOFING ===
-    'roof': ['tak', 'takläggning', 'taktäckning', 'takarbeten'],
-    'roofing': ['tak', 'takläggning', 'taktäckning', 'takarbeten'],
+    'roof': ['tak', 'takläggning', 'taktäckning', 'takarbeten', 'takomläggning'],
+    'roofing': ['tak', 'takläggning', 'taktäckning', 'takarbeten', 'takomläggning'],
+    'tak': ['tak', 'takläggning', 'taktäckning', 'takomläggning', 'takarbeten', 'plåt'],
+    'takomläggning': ['tak', 'takläggning', 'taktäckning', 'takomläggning', 'plåttak', 'takplåt'],
+    'takavvattning': ['takavvattning', 'stuprör', 'hängrännor', 'dagvatten', 'avvattning'],
+    'plåt': ['plåt', 'plåttak', 'takplåt', 'plåtarbeten'],
     
     // === WINDOWS & DOORS ===
     'window': ['fönster', 'fönsterbyte', 'fönstermontering', '204', 'byte fönster'],
@@ -362,8 +363,10 @@ function generateSearchTerms(description: string): string[] {
     'entrance': ['entré', 'entrédörr', 'entréparti', 'ytterdörr', 'huvudentré'],
     'entrance door': ['entrédörr', 'ytterdörr', 'entré', 'dörr'],
     'entrance doors': ['entrédörr', 'ytterdörr', 'entré', 'dörr'],
+    'entredörrar': ['entrédörr', 'ytterdörr', 'entré', 'dörr', '204', 'byte dörr'],
+    'entrédörr': ['entrédörr', 'ytterdörr', 'entré', 'dörr', '204', 'byte dörr'],
     // Swedish window/door terms
-    'fönster': ['fönster', 'fönsterbyte', '204', 'byte', 'fönstermontering'],
+    'fönster': ['fönster', 'fönsterbyte', '204', 'byte', 'fönstermontering', 'fönster och dörrar'],
     'dörr': ['dörr', 'dörrmontering', 'dörrbyte', '204', 'byte'],
     'dörrar': ['dörr', 'dörrmontering', 'dörrbyte', '204', 'byte'],
 
@@ -381,6 +384,14 @@ function generateSearchTerms(description: string): string[] {
     'walls': ['vägg', 'väggar'],
     'drywall': ['gips', 'gipsskivor', 'gipsvägg'],
     'gypsum': ['gips', 'gipsskivor'],
+    'innervägg': ['innervägg', 'innerväggar', 'vägg', 'gips'],
+    'innerväggar': ['innervägg', 'innerväggar', 'vägg', 'gips', 'målning'],
+    'innertak': ['innertak', 'tak', 'undertak', 'takskivor'],
+
+    // === PAINTING ===
+    'målning': ['målning', 'ommålning', 'strykning', 'färg', 'måla'],
+    'painting': ['målning', 'ommålning', 'strykning', 'färg'],
+    'repainting': ['ommålning', 'målning', 'strykning'],
 
     // === HVAC / SYSTEMS ===
     'heat pump': ['värmepump', 'luft-vatten', 'bergvärme', 'värmepumpar'],
@@ -390,9 +401,26 @@ function generateSearchTerms(description: string): string[] {
     'air-to-water': ['luft-vatten', 'luft/vatten', 'luftvärmepump'],
     'heating': ['värme', 'uppvärmning', 'värmesystem', 'radiatorer'],
     'ventilation': ['ventilation', 'fläkt', 'ventilationsaggregat', 'luft'],
+    'ventilationsaggregat': ['ventilation', 'ventilationsaggregat', 'fläkt', 'luft', 'byte'],
+    'radiator': ['radiator', 'radiatorer', 'element', 'värme'],
+    'radiatorer': ['radiator', 'radiatorer', 'element', 'värme', 'byte'],
     'hvac': ['VVS', 'ventilation', 'värme', 'kyla'],
     'plumbing': ['VVS', 'rör', 'rörarbeten', 'rörmokare'],
     'electrical': ['el', 'elinstallation', 'elarbeten', 'elanläggning'],
+    'belysning': ['belysning', 'ljus', 'lampor', 'LED', 'armaturer', 'el'],
+    'elcentral': ['elcentral', 'elskåp', 'elanläggning', 'elinstallation'],
+    'brandlarm': ['brandlarm', 'brandlarmsystem', 'brandsäkerhet', 'larm'],
+    'hiss': ['hiss', 'hissrenovering', 'elevator', 'hissar'],
+    'hissrenovering': ['hiss', 'hissrenovering', 'elevator', 'hissar', 'byte'],
+    'avlopp': ['avlopp', 'avloppsrör', 'relining', 'stamrenovering', 'rör'],
+    'relining': ['relining', 'avlopp', 'stamrenovering', 'rörinfodring'],
+    'avloppsrelining': ['relining', 'avlopp', 'stamrenovering', 'rörinfodring', 'rör'],
+    'stamrenovering': ['stamrenovering', 'relining', 'rör', 'avlopp', 'vatten'],
+    'balkong': ['balkong', 'balkongrenovering', 'balkongplatta'],
+    'balkongrenovering': ['balkong', 'balkongrenovering', 'balkongplatta', 'betong'],
+    'membran': ['membran', 'tätskikt', 'vattentätning', 'parkering'],
+    'mattbyte': ['matta', 'textilgolv', 'nålfilt', 'golvmatta', 'byte', 'textil'],
+    'matta': ['matta', 'textilgolv', 'nålfilt', 'golvmatta', 'textil'],
 
     // === ACTIONS / VERBS (Swedish support) ===
     'replacement': ['byte', 'utbyte', 'ersättning'],
@@ -401,6 +429,7 @@ function generateSearchTerms(description: string): string[] {
     'byte': ['byte', 'utbyte', 'ersättning', 'byta'],
     'renovation': ['renovering', 'ombyggnad', 'upprustning'],
     'renovate': ['renovering', 'renovera'],
+    'renovering': ['renovering', 'ombyggnad', 'upprustning', 'renovera'],
     'installation': ['installation', 'montering', 'montage'],
     'install': ['installation', 'montera', 'installera'],
     'installing': ['installation', 'montering'],
@@ -410,6 +439,8 @@ function generateSearchTerms(description: string): string[] {
     'omläggning': ['omläggning', 'läggning', 'byte', 'renovering'],
     'new': ['ny', 'nytt', 'nyinstallation', 'nybyggnad'],
     'nya': ['ny', 'nytt', 'nyinstallation', 'nybyggnad', 'byte'],
+    'utbyte': ['utbyte', 'byte', 'byta', 'ersättning'],
+    'uppgradering': ['uppgradering', 'byte', 'utbyte', 'modernisering'],
     'putting': ['läggning', 'montering', 'byte'],
     'old': ['gammal', 'befintlig', 'byte'],
   };
@@ -457,8 +488,44 @@ function generateSearchTerms(description: string): string[] {
   if (desc.includes('curb') || desc.includes('kantsten') || desc.includes('kantstöd')) {
     terms.push('121', 'kantsten');
   }
-  if (desc.includes('pipe') || desc.includes('ledning') || desc.includes('vatten')) {
-    terms.push('131', 'ledningar', 'rör');
+  if (desc.includes('pipe') || desc.includes('ledning') || desc.includes('vatten') || desc.includes('stamrenovering')) {
+    terms.push('131', 'ledningar', 'rör', 'vattenledning');
+  }
+  if (desc.includes('tak') || desc.includes('roof') || desc.includes('takomläggning')) {
+    terms.push('tak', 'takläggning', 'taktäckning', 'plåt');
+  }
+  if (desc.includes('målning') || desc.includes('painting') || desc.includes('måla')) {
+    terms.push('målning', 'strykning', 'ommålning');
+  }
+  if (desc.includes('matta') || desc.includes('mattbyte') || desc.includes('carpet')) {
+    terms.push('textilgolv', 'nålfilt', 'golvmatta', 'matta');
+  }
+  if (desc.includes('puts') || desc.includes('putsfasad') || desc.includes('render')) {
+    terms.push('puts', 'fasad', 'fasadrenovering', 'målning', 'tegelfasad');
+  }
+  if (desc.includes('hiss') || desc.includes('elevator')) {
+    terms.push('hiss', 'elevator', 'hissar');
+  }
+  if (desc.includes('ventilation') || desc.includes('aggregat')) {
+    terms.push('ventilation', 'ventilationsaggregat', 'fläkt');
+  }
+  if (desc.includes('radiator') || desc.includes('element') || desc.includes('värme')) {
+    terms.push('radiator', 'radiatorer', 'element', 'värme');
+  }
+  if (desc.includes('belysning') || desc.includes('led') || desc.includes('lampor')) {
+    terms.push('belysning', 'ljus', 'armaturer', 'LED');
+  }
+  if (desc.includes('balkong') || desc.includes('balcony')) {
+    terms.push('balkong', 'balkongrenovering', 'balkongplatta');
+  }
+  if (desc.includes('relining') || desc.includes('avlopp')) {
+    terms.push('relining', 'avlopp', 'stamrenovering', 'rör');
+  }
+  if (desc.includes('membran') || desc.includes('tätskikt') || desc.includes('parkering')) {
+    terms.push('membran', 'tätskikt', 'vattentätning');
+  }
+  if (desc.includes('entré') || desc.includes('entre') || desc.includes('ytterdörr')) {
+    terms.push('entrédörr', 'ytterdörr', 'dörr', '204');
   }
 
   // STEP 4: Also add individual words from the original description
@@ -807,7 +874,7 @@ async function processCostItem(
     const aiResult = await callAIDeterministic(
       apiKey,
       UNIFIED_MATCH_PROMPT,
-      `COST ITEM TO MATCH:\nDescription: "${item.originalDescription}"\nUnit: ${item.unit}\nQuantity: ${item.quantity}\n${item.originalUnitPrice ? `Original Price: ${item.originalUnitPrice}` : ''}\n\nTARGET LANGUAGE: ${targetLanguage}\nPROJECT TYPE: ${project.projectType || 'construction'}\n\nAVAILABLE BENCHMARKS (ranked by deterministic relevance; showing top ${top.length} of ${ranked.length}):\n${candidateList}\n\nSelect the BEST matching benchmark ID from the list above, or return null if none are suitable.`
+      `COST ITEM TO MATCH:\nDescription: "${item.originalDescription}"\nUnit: ${item.unit}\nQuantity: ${item.quantity}\n${item.originalUnitPrice ? `Original Price: ${item.originalUnitPrice}` : ''}\n${item.trade ? `Trade/Category: ${item.trade}` : ''}\n\nTARGET LANGUAGE: ${targetLanguage}\nPROJECT TYPE: ${project.projectType || 'construction'}\nPROJECT NAME: ${project.name || 'N/A'}\n\nIMPORTANT: The user description may be very brief (e.g., just "Buskar omplantering" or "Takomläggning"). Use your construction engineering knowledge to understand what work is actually involved, then find the best conceptual match from the benchmarks below.\n\nAVAILABLE BENCHMARKS (ranked by relevance; top ${top.length} of ${ranked.length}):\n${candidateList}\n\nSelect the BEST matching benchmark ID. Even if the match is not exact, if the work scope is fundamentally similar (e.g., facade renovation matching facade painting), select it with appropriate confidence (65-80%). Only return null if truly nothing is related.`
     );
 
     console.log(`[${item.originalDescription}] AI result:`, JSON.stringify(aiResult));
@@ -818,7 +885,7 @@ async function processCostItem(
     const translatedTerm = aiResult.translatedTerm || item.originalDescription;
 
     // STEP 4: Validate match
-    if (!matchedId || matchedId === 'null' || confidence < 50) {
+    if (!matchedId || matchedId === 'null' || confidence < 40) {
       noMatchResult.matchConfidence = confidence;
       noMatchResult.matchReasoning = reasoning || "No confident match found";
       noMatchResult.interpretedScope = translatedTerm;

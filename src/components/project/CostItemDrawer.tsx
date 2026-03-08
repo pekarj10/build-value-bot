@@ -131,9 +131,10 @@ export function CostItemDrawer({
   };
 
   // Get sanitized content for regular users (respects view mode)
+  const hasRecommendedPrice = !!(item.recommendedUnitPrice && item.recommendedUnitPrice > 0);
   const displayAnalysisNote = effectiveIsAdmin 
     ? (item.aiComment || 'No analysis notes available.')
-    : sanitizeAnalysisNoteForUser(item.aiComment, item.matchConfidence, projectCountry, currency);
+    : sanitizeAnalysisNoteForUser(item.aiComment, item.matchConfidence, projectCountry, currency, hasRecommendedPrice);
 
   const displayInterpretedScope = getUserFriendlyScope(
     item.originalDescription,
@@ -192,14 +193,22 @@ export function CostItemDrawer({
           </TabsList>
 
           <TabsContent value="details" className="mt-4 space-y-6">
-          {/* Clarification Question - shown prominently if present */}
-          {needsClarification && hasClarificationQuestion && !item.userClarification && (
+          {/* Clarification section - shown for items needing clarification */}
+          {needsClarification && !item.userClarification && (
             <div className="p-4 bg-warning/10 border border-warning/30 rounded-lg space-y-3">
               <div className="flex items-start gap-3">
                 <HelpCircle className="h-5 w-5 text-warning shrink-0 mt-0.5" />
                 <div>
-                  <p className="font-medium text-warning-foreground">Clarification Needed</p>
-                  <p className="text-sm mt-1">{item.clarificationQuestion}</p>
+                  <p className="font-medium text-warning-foreground">Additional Information Needed</p>
+                  {hasClarificationQuestion ? (
+                    <p className="text-sm mt-1">{item.clarificationQuestion}</p>
+                  ) : (
+                    <p className="text-sm mt-1 text-muted-foreground">
+                      {!hasRecommendedPrice 
+                        ? 'We couldn\'t determine a price for this item. Please describe the work scope in more detail (e.g. materials, area size, specific work type) or set a manual price below.'
+                        : 'Please provide more details about this item to improve the price estimate.'}
+                    </p>
+                  )}
                 </div>
               </div>
               
@@ -207,7 +216,7 @@ export function CostItemDrawer({
                 <Textarea
                   value={clarification}
                   onChange={(e) => setClarification(e.target.value)}
-                  placeholder="Provide additional details..."
+                  placeholder="E.g. 'This is repainting of plaster facade, approx 400m², including scaffolding'"
                   rows={3}
                   disabled={isProcessingClarification}
                 />
