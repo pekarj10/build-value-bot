@@ -454,6 +454,7 @@ export function useTeamChat() {
     isLoadingChannels,
     isLoadingMessages,
     mentionableUsers,
+    unreadCounts,
     selectChannel,
     sendMessage,
     createChannel,
