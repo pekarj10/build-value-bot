@@ -95,6 +95,7 @@ export default function TeamChat() {
     isLoadingChannels,
     isLoadingMessages,
     mentionableUsers,
+    unreadCounts,
     selectChannel,
     sendMessage,
     createChannel,
