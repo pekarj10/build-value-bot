@@ -410,10 +410,14 @@ function generateSearchTerms(description: string): string[] {
     'portar': ['port', 'portar', '255', '256'],
 
     // === BALCONY ===
-    'balkong': ['balkong', 'balkongrenovering', 'balkongplatta', '232', '233'],
-    'balkongrenovering': ['balkong', 'balkongplatta', 'balkongräcke', '232', '233'],
-    'balkongplatta': ['balkongplatta', 'balkong', '232'],
-    'balkongräcke': ['balkongräcke', 'balkong', 'räcke', '233'],
+    'balkong': ['balkong', 'balkongrenovering', 'balkongplatta', 'balkongräcke', '232', '233', 'räcke'],
+    'balkongrenovering': ['balkong', 'balkongplatta', 'balkongräcke', '232', '233', 'räcke', 'trä', 'plåt', 'aluminium', 'målning', 'byte'],
+    'balkongplatta': ['balkongplatta', 'balkong', '232', 'betong', 'lagning'],
+    'balkongräcke': ['balkongräcke', 'balkong', 'räcke', '233', 'trä', 'plåt', 'aluminium', 'målning', 'byte'],
+    'balcony': ['balkong', 'balkongräcke', 'balkongplatta', '232', '233'],
+    'railing': ['räcke', 'balkongräcke', 'träräcke', 'smidesräcke', '233', '225', '162'],
+    'räcke': ['räcke', 'balkongräcke', 'träräcke', 'smidesräcke', '233', '225', '162'],
+    'räcken': ['räcke', 'räcken', 'balkongräcke', '225', '233', '162'],
 
     // === SOCKEL / DETAILS ===
     'sockel': ['sockel', '221'],
