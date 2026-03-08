@@ -364,6 +364,7 @@ export type Database = {
           unit: string
           updated_at: string
           user_clarification: string | null
+          user_explanation: string | null
           user_override_price: number | null
         }
         Insert: {
@@ -394,6 +395,7 @@ export type Database = {
           unit: string
           updated_at?: string
           user_clarification?: string | null
+          user_explanation?: string | null
           user_override_price?: number | null
         }
         Update: {
@@ -424,6 +426,7 @@ export type Database = {
           unit?: string
           updated_at?: string
           user_clarification?: string | null
+          user_explanation?: string | null
           user_override_price?: number | null
         }
         Relationships: [
