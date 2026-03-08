@@ -42,7 +42,25 @@ export function useTeamChat() {
   const [isLoadingChannels, setIsLoadingChannels] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [mentionableUsers, setMentionableUsers] = useState<{ id: string; name: string; email: string }[]>([]);
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+
+  // Last-read timestamps stored in localStorage
+  const getLastRead = useCallback((channelId: string): string | null => {
+    try {
+      const data = JSON.parse(localStorage.getItem('chat_last_read') || '{}');
+      return data[channelId] || null;
+    } catch { return null; }
+  }, []);
+
+  const setLastRead = useCallback((channelId: string) => {
+    try {
+      const data = JSON.parse(localStorage.getItem('chat_last_read') || '{}');
+      data[channelId] = new Date().toISOString();
+      localStorage.setItem('chat_last_read', JSON.stringify(data));
+      setUnreadCounts(prev => ({ ...prev, [channelId]: 0 }));
+    } catch {}
+  }, []);
 
   // Load channels
   const loadChannels = useCallback(async () => {
@@ -67,7 +85,7 @@ export function useTeamChat() {
         }
       }
 
-      setChannels((data || []).map(c => ({
+      const channelList = (data || []).map(c => ({
         id: c.id,
         name: c.name,
         description: c.description,
@@ -76,13 +94,33 @@ export function useTeamChat() {
         isGlobal: c.is_global,
         createdBy: c.created_by,
         createdAt: c.created_at,
-      })));
+      }));
+      setChannels(channelList);
+
+      // Compute unread counts per channel
+      const counts: Record<string, number> = {};
+      for (const ch of channelList) {
+        const lastRead = getLastRead(ch.id);
+        let query = supabase
+          .from('chat_messages')
+          .select('id', { count: 'exact', head: true })
+          .eq('channel_id', ch.id);
+        if (lastRead) {
+          query = query.gt('created_at', lastRead);
+        }
+        if (user) {
+          query = query.neq('user_id', user.id);
+        }
+        const { count } = await query;
+        counts[ch.id] = count || 0;
+      }
+      setUnreadCounts(counts);
     } catch (err) {
       console.error('Failed to load channels:', err);
     } finally {
       setIsLoadingChannels(false);
     }
-  }, []);
+  }, [getLastRead, user]);
 
   // Load mentionable users (all profiles)
   const loadMentionableUsers = useCallback(async () => {
@@ -184,8 +222,9 @@ export function useTeamChat() {
 
   const selectChannel = useCallback((channelId: string) => {
     setActiveChannelId(channelId);
+    setLastRead(channelId);
     loadMessages(channelId);
-  }, [loadMessages]);
+  }, [loadMessages, setLastRead]);
 
   // Subscribe to realtime messages
   useEffect(() => {
@@ -415,6 +454,7 @@ export function useTeamChat() {
     isLoadingChannels,
     isLoadingMessages,
     mentionableUsers,
+    unreadCounts,
     selectChannel,
     sendMessage,
     createChannel,
