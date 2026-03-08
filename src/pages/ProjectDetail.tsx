@@ -344,6 +344,7 @@ export default function ProjectDetail() {
         match_confidence: itemUpdates.matchConfidence || null,
         match_reasoning: itemUpdates.matchReasoning || null,
         price_source: itemUpdates.priceSource || null,
+        user_explanation: itemUpdates.userExplanation || null,
         // Clear user clarification when re-analyzing all items
         user_clarification: itemUpdates.userClarification === undefined ? null : itemUpdates.userClarification,
       });
