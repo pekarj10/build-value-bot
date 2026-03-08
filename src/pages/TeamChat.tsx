@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { AppLayout, PageHeader } from '@/components/layout/AppLayout';
-import { useTeamChat, ChatChannel, ChatMessage } from '@/hooks/useTeamChat';
+import { useTeamChat, ChatMessage } from '@/hooks/useTeamChat';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,7 +8,6 @@ import { Card } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Dialog,
@@ -30,6 +29,7 @@ import {
   MessageSquare,
   Trash2,
   Users,
+  Search,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format, isToday, isYesterday } from 'date-fns';
@@ -46,6 +46,20 @@ function getInitials(name?: string, email?: string): string {
   if (name) return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   if (email) return email.substring(0, 2).toUpperCase();
   return 'U';
+}
+
+function formatDateSeparator(dateStr: string): string {
+  const date = new Date(dateStr);
+  if (isToday(date)) return 'Today';
+  if (isYesterday(date)) return 'Yesterday';
+  return format(date, 'EEEE, MMMM d');
+}
+
+function shouldShowDateSeparator(messages: ChatMessage[], index: number): boolean {
+  if (index === 0) return true;
+  const curr = new Date(messages[index].createdAt).toDateString();
+  const prev = new Date(messages[index - 1].createdAt).toDateString();
+  return curr !== prev;
 }
 
 export default function TeamChat() {
@@ -68,6 +82,7 @@ export default function TeamChat() {
   const [newChannelName, setNewChannelName] = useState('');
   const [newChannelDesc, setNewChannelDesc] = useState('');
   const [newChannelGlobal, setNewChannelGlobal] = useState(true);
+  const [channelSearch, setChannelSearch] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -110,6 +125,9 @@ export default function TeamChat() {
   };
 
   const activeChannel = channels.find(c => c.id === activeChannelId);
+  const filteredChannels = channelSearch
+    ? channels.filter(c => c.name.toLowerCase().includes(channelSearch.toLowerCase()))
+    : channels;
 
   return (
     <AppLayout>
@@ -129,11 +147,22 @@ export default function TeamChat() {
         <Card className="flex h-[calc(100vh-220px)] min-h-[500px] overflow-hidden">
           {/* Channel sidebar */}
           <div className="w-64 border-r flex flex-col shrink-0">
-            <div className="p-3 border-b">
+            <div className="p-3 border-b space-y-2">
               <h3 className="font-semibold text-sm flex items-center gap-2">
                 <MessageSquare className="h-4 w-4" />
                 Channels
               </h3>
+              {channels.length > 5 && (
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                  <Input
+                    value={channelSearch}
+                    onChange={(e) => setChannelSearch(e.target.value)}
+                    placeholder="Search..."
+                    className="h-7 text-xs pl-7"
+                  />
+                </div>
+              )}
             </div>
             <ScrollArea className="flex-1">
               <div className="p-2 space-y-0.5">
@@ -141,12 +170,12 @@ export default function TeamChat() {
                   Array.from({ length: 3 }).map((_, i) => (
                     <Skeleton key={i} className="h-10 w-full" />
                   ))
-                ) : channels.length === 0 ? (
+                ) : filteredChannels.length === 0 ? (
                   <div className="p-4 text-center text-sm text-muted-foreground">
-                    No channels yet. Create one to start chatting!
+                    {channelSearch ? 'No channels match your search' : 'No channels yet. Create one to start chatting!'}
                   </div>
                 ) : (
-                  channels.map(channel => (
+                  filteredChannels.map(channel => (
                     <button
                       key={channel.id}
                       onClick={() => selectChannel(channel.id)}
@@ -164,7 +193,7 @@ export default function TeamChat() {
                       ) : (
                         <Hash className="h-3.5 w-3.5 shrink-0" />
                       )}
-                      <span className="truncate">{channel.name}</span>
+                      <span className="truncate flex-1">{channel.name}</span>
                     </button>
                   ))
                 )}
@@ -190,18 +219,20 @@ export default function TeamChat() {
                     {activeChannel.description}
                   </span>
                 )}
-                {activeChannel.isGlobal && (
-                  <Badge variant="secondary" className="text-[10px] ml-auto">
-                    <Globe className="h-3 w-3 mr-1" />
-                    Global
-                  </Badge>
-                )}
-                {activeChannel.projectName && (
-                  <Badge variant="outline" className="text-[10px] ml-auto">
-                    <FolderOpen className="h-3 w-3 mr-1" />
-                    {activeChannel.projectName}
-                  </Badge>
-                )}
+                <div className="ml-auto flex items-center gap-2">
+                  {activeChannel.isGlobal && (
+                    <Badge variant="secondary" className="text-[10px]">
+                      <Globe className="h-3 w-3 mr-1" />
+                      Global
+                    </Badge>
+                  )}
+                  {activeChannel.projectName && (
+                    <Badge variant="outline" className="text-[10px]">
+                      <FolderOpen className="h-3 w-3 mr-1" />
+                      {activeChannel.projectName}
+                    </Badge>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="p-3 border-b">
@@ -226,51 +257,64 @@ export default function TeamChat() {
                   <p className="text-sm">No messages yet. Be the first to say something!</p>
                 </div>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-1">
                   {messages.map((msg, i) => {
                     const isOwnMessage = msg.userId === user?.id;
-                    const showAvatar = i === 0 || messages[i - 1]?.userId !== msg.userId;
+                    const showAvatar = i === 0 || messages[i - 1]?.userId !== msg.userId ||
+                      shouldShowDateSeparator(messages, i);
+                    const showDate = shouldShowDateSeparator(messages, i);
 
                     return (
-                      <div key={msg.id} className={cn("group flex gap-3", !showAvatar && "ml-10")}>
-                        {showAvatar && (
-                          <Avatar className="h-8 w-8 shrink-0">
-                            <AvatarFallback className={cn(
-                              "text-xs",
-                              isOwnMessage ? "bg-primary text-primary-foreground" : "bg-muted"
-                            )}>
-                              {getInitials(msg.userName, msg.userEmail)}
-                            </AvatarFallback>
-                          </Avatar>
+                      <div key={msg.id}>
+                        {showDate && (
+                          <div className="flex items-center gap-3 my-4">
+                            <div className="flex-1 h-px bg-border" />
+                            <span className="text-[10px] text-muted-foreground font-medium px-2">
+                              {formatDateSeparator(msg.createdAt)}
+                            </span>
+                            <div className="flex-1 h-px bg-border" />
+                          </div>
                         )}
-                        <div className="flex-1 min-w-0">
+                        <div className={cn("group flex gap-3 py-1 hover:bg-muted/30 rounded px-2 -mx-2", !showAvatar && "ml-10")}>
                           {showAvatar && (
-                            <div className="flex items-baseline gap-2 mb-0.5">
-                              <span className="text-sm font-medium">
-                                {msg.userName || msg.userEmail || 'Unknown'}
-                              </span>
-                              <span className="text-[10px] text-muted-foreground">
-                                {formatMessageTime(msg.createdAt)}
-                              </span>
-                              {msg.editedAt && (
-                                <span className="text-[10px] text-muted-foreground italic">(edited)</span>
+                            <Avatar className="h-8 w-8 shrink-0 mt-0.5">
+                              <AvatarFallback className={cn(
+                                "text-xs",
+                                isOwnMessage ? "bg-primary text-primary-foreground" : "bg-muted"
+                              )}>
+                                {getInitials(msg.userName, msg.userEmail)}
+                              </AvatarFallback>
+                            </Avatar>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            {showAvatar && (
+                              <div className="flex items-baseline gap-2 mb-0.5">
+                                <span className="text-sm font-medium">
+                                  {msg.userName || msg.userEmail || 'Unknown'}
+                                </span>
+                                <span className="text-[10px] text-muted-foreground">
+                                  {formatMessageTime(msg.createdAt)}
+                                </span>
+                                {msg.editedAt && (
+                                  <span className="text-[10px] text-muted-foreground italic">(edited)</span>
+                                )}
+                              </div>
+                            )}
+                            <div className="flex items-start gap-1">
+                              <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+                                {msg.content}
+                              </p>
+                              {isOwnMessage && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                                  onClick={() => deleteMessage(msg.id)}
+                                >
+                                  <Trash2 className="h-3 w-3 text-destructive" />
+                                </Button>
                               )}
                             </div>
-                          )}
-                          <div className="flex items-start gap-1">
-                            <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
-                              {msg.content}
-                            </p>
-                            {isOwnMessage && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                                onClick={() => deleteMessage(msg.id)}
-                              >
-                                <Trash2 className="h-3 w-3 text-destructive" />
-                              </Button>
-                            )}
                           </div>
                         </div>
                       </div>

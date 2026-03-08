@@ -190,7 +190,7 @@ function SidebarContent({
         </DropdownMenu>
         
         <div className="mt-3 rounded-lg bg-sidebar-accent/50 p-3">
-          <p className="text-xs text-sidebar-foreground/70">Version 1.0.0</p>
+          <p className="text-xs text-sidebar-foreground/70">Version 2.0.0-beta</p>
         </div>
       </div>
     </div>

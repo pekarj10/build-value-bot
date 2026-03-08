@@ -14,11 +14,15 @@ import {
   Zap,
   HelpCircle,
   TrendingUp,
-  BarChart3
+  BarChart3,
+  RotateCcw
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CostItem, Project } from '@/types/project';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
+import { useAIChatPersistence } from '@/hooks/useAIChatPersistence';
+import { toast } from 'sonner';
 
 interface Message {
   id: string;
@@ -74,7 +78,6 @@ async function streamChat({
   });
 
   if (!resp.ok || !resp.body) {
-    // Try to parse error
     const errorData = await resp.json().catch(() => ({ error: "Stream failed" }));
     throw new Error(errorData.error || `Stream error ${resp.status}`);
   }
@@ -135,20 +138,50 @@ async function streamChat({
   onDone();
 }
 
+const WELCOME_MESSAGE = (projectName: string) =>
+  `Hello! I'm your AI Cost Analyst. I'm here to help analyze cost items for **${projectName}**.\n\nI can:\n- Analyze items needing clarification\n- Explain pricing recommendations\n- Compare costs to market benchmarks\n- Answer questions about specific items\n\nHow can I help you today?`;
+
 export function AIChatPanel({ project, items, onItemsUpdate, className }: AIChatPanelProps) {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: 'welcome',
-      role: 'assistant',
-      content: `Hello! I'm your AI Cost Analyst. I'm here to help analyze cost items for **${project.name}**.\n\nI can:\n- Analyze items needing clarification\n- Explain pricing recommendations\n- Compare costs to market benchmarks\n- Answer questions about specific items\n\nHow can I help you today?`,
-      timestamp: new Date(),
-    }
-  ]);
+  const { user } = useAuth();
+  const { loadOrCreateConversation, persistMessage, clearConversation, isLoadingHistory } = useAIChatPersistence(project.id, user?.id);
+
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [selectedItemContext, setSelectedItemContext] = useState<CostItem | null>(null);
+  const [convId, setConvId] = useState<string | null>(null);
+  const [initialized, setInitialized] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Load persisted conversation on mount
+  useEffect(() => {
+    if (!user?.id || initialized) return;
+    
+    (async () => {
+      const { id, messages: persisted } = await loadOrCreateConversation();
+      setConvId(id);
+      
+      if (persisted.length > 0) {
+        setMessages(persisted.map(m => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          timestamp: new Date(m.createdAt),
+          itemUpdates: m.itemUpdates,
+        })));
+      } else {
+        // Show welcome message
+        setMessages([{
+          id: 'welcome',
+          role: 'assistant',
+          content: WELCOME_MESSAGE(project.name),
+          timestamp: new Date(),
+        }]);
+      }
+      setInitialized(true);
+    })();
+  }, [user?.id, initialized, loadOrCreateConversation, project.name]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -157,6 +190,19 @@ export function AIChatPanel({ project, items, onItemsUpdate, className }: AIChat
   useEffect(() => {
     scrollToBottom();
   }, [messages, isLoading, scrollToBottom]);
+
+  const handleNewConversation = async () => {
+    await clearConversation();
+    const { id } = await loadOrCreateConversation();
+    setConvId(id);
+    setMessages([{
+      id: 'welcome',
+      role: 'assistant',
+      content: WELCOME_MESSAGE(project.name),
+      timestamp: new Date(),
+    }]);
+    toast.success('Started new conversation');
+  };
 
   const handleSend = async (prompt?: string) => {
     const messageText = prompt || input.trim();
@@ -172,6 +218,11 @@ export function AIChatPanel({ project, items, onItemsUpdate, className }: AIChat
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
+
+    // Persist user message
+    if (convId) {
+      persistMessage(convId, 'user', messageText);
+    }
 
     try {
       const isAnalyzeAll = messageText.toLowerCase().includes('analyze all') || 
@@ -279,6 +330,11 @@ export function AIChatPanel({ project, items, onItemsUpdate, className }: AIChat
           itemUpdates: itemUpdates.length > 0 ? itemUpdates : undefined,
         };
         setMessages(prev => [...prev, assistantMessage]);
+
+        // Persist assistant message
+        if (convId) {
+          persistMessage(convId, 'assistant', response, itemUpdates.length > 0 ? itemUpdates : undefined);
+        }
       } else {
         // Streaming chat
         const chatHistory = messages.filter(m => m.id !== 'welcome').map(m => ({
@@ -322,12 +378,16 @@ export function AIChatPanel({ project, items, onItemsUpdate, className }: AIChat
             },
             itemsSummary: summary,
             onDelta: upsertAssistant,
-            onDone: () => {},
+            onDone: () => {
+              // Persist final assistant message
+              if (convId && assistantSoFar) {
+                persistMessage(convId, 'assistant', assistantSoFar);
+              }
+            },
           });
         } catch (streamError) {
           console.warn('Streaming failed, falling back to non-streaming:', streamError);
           
-          // Fallback to non-streaming
           const { data, error } = await supabase.functions.invoke('ai-chat', {
             body: { 
               messages: [
@@ -345,14 +405,12 @@ export function AIChatPanel({ project, items, onItemsUpdate, className }: AIChat
           });
 
           if (error) {
-            console.log('ai-chat function not available, using fallback');
             response = generateFallbackResponse(messageText, items, project);
           } else {
             response = data?.response || data?.message || "I couldn't generate a response. Please try again.";
           }
           
           setMessages(prev => {
-            // Remove any partial streaming message
             const filtered = prev.filter(m => m.id !== assistantId);
             return [...filtered, {
               id: assistantId,
@@ -361,6 +419,11 @@ export function AIChatPanel({ project, items, onItemsUpdate, className }: AIChat
               timestamp: new Date(),
             }];
           });
+
+          // Persist fallback
+          if (convId) {
+            persistMessage(convId, 'assistant', response!);
+          }
         }
       }
     } catch (error) {
@@ -394,6 +457,15 @@ export function AIChatPanel({ project, items, onItemsUpdate, className }: AIChat
     }
   };
 
+  if (isLoadingHistory) {
+    return (
+      <Card className={cn("flex flex-col h-full items-center justify-center", className)}>
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground mt-2">Loading conversation...</p>
+      </Card>
+    );
+  }
+
   return (
     <Card className={cn("flex flex-col h-full", className)}>
       {/* Header */}
@@ -409,10 +481,23 @@ export function AIChatPanel({ project, items, onItemsUpdate, className }: AIChat
             </p>
           </div>
         </div>
-        <Badge variant="outline" className="text-xs">
-          <Sparkles className="h-3 w-3 mr-1" />
-          Powered by AI
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs h-7"
+            onClick={handleNewConversation}
+            disabled={isLoading}
+            title="Start new conversation"
+          >
+            <RotateCcw className="h-3 w-3 mr-1" />
+            New Chat
+          </Button>
+          <Badge variant="outline" className="text-xs">
+            <Sparkles className="h-3 w-3 mr-1" />
+            Powered by AI
+          </Badge>
+        </div>
       </div>
 
       {/* Quick Actions */}
@@ -577,7 +662,17 @@ function buildItemsSummary(items: CostItem[]): string {
     return acc;
   }, {} as Record<string, number>);
 
-  return JSON.stringify({ byStatus, byTrade, totalItems: items.length });
+  // Include top items with prices for better context
+  const topItems = items.slice(0, 20).map(i => ({
+    desc: i.originalDescription?.slice(0, 60),
+    qty: i.quantity,
+    unit: i.unit,
+    price: i.userOverridePrice || i.recommendedUnitPrice || i.originalUnitPrice,
+    status: i.status,
+    trade: i.trade,
+  }));
+
+  return JSON.stringify({ byStatus, byTrade, totalItems: items.length, sampleItems: topItems });
 }
 
 function generateFallbackResponse(question: string, items: CostItem[], project: Project): string {
