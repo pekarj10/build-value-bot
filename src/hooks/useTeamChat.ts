@@ -24,6 +24,14 @@ export interface ChatMessage {
   content: string;
   createdAt: string;
   editedAt: string | null;
+  reactions: ReactionGroup[];
+}
+
+export interface ReactionGroup {
+  emoji: string;
+  count: number;
+  userIds: string[];
+  reacted: boolean; // current user reacted
 }
 
 export function useTeamChat() {
@@ -33,6 +41,7 @@ export function useTeamChat() {
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   const [isLoadingChannels, setIsLoadingChannels] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [mentionableUsers, setMentionableUsers] = useState<{ id: string; name: string; email: string }[]>([]);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   // Load channels
@@ -46,7 +55,6 @@ export function useTeamChat() {
 
       if (error) throw error;
 
-      // Get project names for project channels
       const projectIds = (data || []).filter(c => c.project_id).map(c => c.project_id!);
       let projectNames: Record<string, string> = {};
       if (projectIds.length > 0) {
@@ -76,6 +84,45 @@ export function useTeamChat() {
     }
   }, []);
 
+  // Load mentionable users (all profiles)
+  const loadMentionableUsers = useCallback(async () => {
+    try {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, full_name, email')
+        .limit(200);
+      if (data) {
+        setMentionableUsers(data.map(p => ({
+          id: p.id,
+          name: p.full_name || p.email || 'Unknown',
+          email: p.email || '',
+        })));
+      }
+    } catch (err) {
+      console.error('Failed to load mentionable users:', err);
+    }
+  }, []);
+
+  // Group reactions from raw rows
+  const groupReactions = useCallback((rows: { emoji: string; user_id: string }[]): ReactionGroup[] => {
+    const map = new Map<string, { count: number; userIds: string[] }>();
+    for (const r of rows) {
+      const existing = map.get(r.emoji);
+      if (existing) {
+        existing.count++;
+        existing.userIds.push(r.user_id);
+      } else {
+        map.set(r.emoji, { count: 1, userIds: [r.user_id] });
+      }
+    }
+    return Array.from(map.entries()).map(([emoji, data]) => ({
+      emoji,
+      count: data.count,
+      userIds: data.userIds,
+      reacted: data.userIds.includes(user?.id || ''),
+    }));
+  }, [user?.id]);
+
   // Load messages for active channel
   const loadMessages = useCallback(async (channelId: string) => {
     setIsLoadingMessages(true);
@@ -89,7 +136,6 @@ export function useTeamChat() {
 
       if (error) throw error;
 
-      // Fetch user profiles for message authors
       const userIds = [...new Set((data || []).map(m => m.user_id))];
       let profileMap: Record<string, { email: string | null; full_name: string | null }> = {};
       if (userIds.length > 0) {
@@ -102,6 +148,22 @@ export function useTeamChat() {
         }
       }
 
+      // Load reactions for all messages
+      const messageIds = (data || []).map(m => m.id);
+      let reactionsMap: Record<string, { emoji: string; user_id: string }[]> = {};
+      if (messageIds.length > 0) {
+        const { data: reactions } = await supabase
+          .from('message_reactions')
+          .select('message_id, emoji, user_id')
+          .in('message_id', messageIds);
+        if (reactions) {
+          for (const r of reactions) {
+            if (!reactionsMap[r.message_id]) reactionsMap[r.message_id] = [];
+            reactionsMap[r.message_id].push({ emoji: r.emoji, user_id: r.user_id });
+          }
+        }
+      }
+
       setMessages((data || []).map(m => ({
         id: m.id,
         channelId: m.channel_id,
@@ -111,15 +173,15 @@ export function useTeamChat() {
         content: m.content,
         createdAt: m.created_at,
         editedAt: m.edited_at,
+        reactions: groupReactions(reactionsMap[m.id] || []),
       })));
     } catch (err) {
       console.error('Failed to load messages:', err);
     } finally {
       setIsLoadingMessages(false);
     }
-  }, []);
+  }, [groupReactions]);
 
-  // Set active channel and load messages
   const selectChannel = useCallback((channelId: string) => {
     setActiveChannelId(channelId);
     loadMessages(channelId);
@@ -129,7 +191,6 @@ export function useTeamChat() {
   useEffect(() => {
     if (!activeChannelId) return;
 
-    // Clean up previous subscription
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
     }
@@ -146,10 +207,8 @@ export function useTeamChat() {
         },
         async (payload) => {
           const msg = payload.new as any;
-          // Don't add if it's our own message (already added optimistically)
           if (msg.user_id === user?.id) return;
 
-          // Fetch profile for the new message author
           const { data: profile } = await supabase
             .from('profiles')
             .select('email, full_name')
@@ -165,6 +224,7 @@ export function useTeamChat() {
             content: msg.content,
             createdAt: msg.created_at,
             editedAt: msg.edited_at,
+            reactions: [],
           }]);
         }
       )
@@ -198,7 +258,6 @@ export function useTeamChat() {
     const optimisticId = crypto.randomUUID();
     const now = new Date().toISOString();
 
-    // Optimistic update
     setMessages(prev => [...prev, {
       id: optimisticId,
       channelId: activeChannelId,
@@ -208,6 +267,7 @@ export function useTeamChat() {
       content,
       createdAt: now,
       editedAt: null,
+      reactions: [],
     }]);
 
     try {
@@ -223,7 +283,6 @@ export function useTeamChat() {
 
       if (error) throw error;
 
-      // Replace optimistic message with real one
       setMessages(prev => prev.map(m => m.id === optimisticId ? {
         ...m,
         id: data.id,
@@ -233,7 +292,6 @@ export function useTeamChat() {
       return true;
     } catch (err) {
       console.error('Failed to send message:', err);
-      // Remove optimistic message on failure
       setMessages(prev => prev.filter(m => m.id !== optimisticId));
       return false;
     }
@@ -287,10 +345,68 @@ export function useTeamChat() {
     }
   }, []);
 
-  // Init: load channels
+  // Toggle reaction on a message
+  const toggleReaction = useCallback(async (messageId: string, emoji: string) => {
+    if (!user) return;
+
+    const msg = messages.find(m => m.id === messageId);
+    if (!msg) return;
+
+    const existingReaction = msg.reactions.find(r => r.emoji === emoji);
+    const alreadyReacted = existingReaction?.reacted || false;
+
+    // Optimistic update
+    setMessages(prev => prev.map(m => {
+      if (m.id !== messageId) return m;
+      let newReactions: ReactionGroup[];
+      if (alreadyReacted) {
+        newReactions = m.reactions.map(r => {
+          if (r.emoji !== emoji) return r;
+          const newUserIds = r.userIds.filter(id => id !== user.id);
+          return newUserIds.length === 0
+            ? null as any
+            : { ...r, count: r.count - 1, userIds: newUserIds, reacted: false };
+        }).filter(Boolean);
+      } else {
+        const found = m.reactions.find(r => r.emoji === emoji);
+        if (found) {
+          newReactions = m.reactions.map(r =>
+            r.emoji === emoji
+              ? { ...r, count: r.count + 1, userIds: [...r.userIds, user.id], reacted: true }
+              : r
+          );
+        } else {
+          newReactions = [...m.reactions, { emoji, count: 1, userIds: [user.id], reacted: true }];
+        }
+      }
+      return { ...m, reactions: newReactions };
+    }));
+
+    try {
+      if (alreadyReacted) {
+        await supabase
+          .from('message_reactions')
+          .delete()
+          .eq('message_id', messageId)
+          .eq('user_id', user.id)
+          .eq('emoji', emoji);
+      } else {
+        await supabase
+          .from('message_reactions')
+          .insert({ message_id: messageId, user_id: user.id, emoji });
+      }
+    } catch (err) {
+      console.error('Failed to toggle reaction:', err);
+      // Reload to get correct state
+      if (activeChannelId) loadMessages(activeChannelId);
+    }
+  }, [user, messages, activeChannelId, loadMessages]);
+
+  // Init
   useEffect(() => {
     loadChannels();
-  }, [loadChannels]);
+    loadMentionableUsers();
+  }, [loadChannels, loadMentionableUsers]);
 
   return {
     channels,
@@ -298,10 +414,12 @@ export function useTeamChat() {
     activeChannelId,
     isLoadingChannels,
     isLoadingMessages,
+    mentionableUsers,
     selectChannel,
     sendMessage,
     createChannel,
     deleteMessage,
+    toggleReaction,
     loadChannels,
   };
 }

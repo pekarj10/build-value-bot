@@ -22,8 +22,9 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-import { Users, Mail, Trash2, Crown, Loader2, Copy, Check } from 'lucide-react';
+import { Users, Mail, Trash2, Crown, Loader2, MessageSquare } from 'lucide-react';
 import { z } from 'zod';
 
 const emailSchema = z.string().email('Please enter a valid email address');
@@ -68,14 +69,31 @@ export function ShareProjectDialog({
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [createChatChannel, setCreateChatChannel] = useState(true);
+  const [hasProjectChannel, setHasProjectChannel] = useState(false);
 
   useEffect(() => {
     if (open) {
       loadMembers();
       loadInvitations();
+      checkProjectChannel();
     }
   }, [open, projectId]);
+
+  const checkProjectChannel = async () => {
+    try {
+      const { data } = await supabase
+        .from('chat_channels')
+        .select('id')
+        .eq('project_id', projectId)
+        .limit(1)
+        .maybeSingle();
+      setHasProjectChannel(!!data);
+      if (data) setCreateChatChannel(false);
+    } catch {
+      // ignore
+    }
+  };
 
   const loadMembers = async () => {
     setIsLoading(true);
@@ -87,7 +105,6 @@ export function ShareProjectDialog({
 
       if (error) throw error;
 
-      // Fetch profile info for each member
       const memberProfiles: Member[] = [];
       for (const m of data || []) {
         const { data: profile } = await supabase
@@ -136,6 +153,23 @@ export function ShareProjectDialog({
     }
   };
 
+  const handleCreateProjectChannel = async () => {
+    if (!user) return;
+    try {
+      await supabase.from('chat_channels').insert({
+        name: projectName,
+        description: `Discussion channel for ${projectName}`,
+        project_id: projectId,
+        created_by: user.id,
+        is_global: false,
+      });
+      setHasProjectChannel(true);
+      toast.success(`Chat channel created for "${projectName}"`);
+    } catch (err) {
+      console.error('Failed to create project channel:', err);
+    }
+  };
+
   const handleInvite = async () => {
     const result = emailSchema.safeParse(email);
     if (!result.success) {
@@ -150,7 +184,6 @@ export function ShareProjectDialog({
 
     setIsSending(true);
     try {
-      // Check if user already exists
       const { data: existingProfile } = await supabase
         .from('profiles')
         .select('id')
@@ -158,7 +191,6 @@ export function ShareProjectDialog({
         .maybeSingle();
 
       if (existingProfile) {
-        // User exists — add as member directly
         const { error } = await supabase.from('project_members').insert({
           project_id: projectId,
           user_id: existingProfile.id,
@@ -174,11 +206,14 @@ export function ShareProjectDialog({
           }
         } else {
           toast.success(`${email} added as ${role}`);
+          // Create project chat channel if requested
+          if (createChatChannel && !hasProjectChannel) {
+            await handleCreateProjectChannel();
+          }
           setEmail('');
           loadMembers();
         }
       } else {
-        // User doesn't exist — create invitation
         const { error } = await supabase.from('project_invitations').insert({
           project_id: projectId,
           email,
@@ -194,6 +229,10 @@ export function ShareProjectDialog({
           }
         } else {
           toast.success(`Invitation sent to ${email}`);
+          // Create project chat channel if requested
+          if (createChatChannel && !hasProjectChannel) {
+            await handleCreateProjectChannel();
+          }
           setEmail('');
           loadInvitations();
         }
@@ -308,6 +347,27 @@ export function ShareProjectDialog({
                 )}
               </Button>
             </div>
+
+            {/* Create chat channel checkbox */}
+            {!hasProjectChannel && (
+              <div className="flex items-center gap-2 p-2 rounded-md bg-muted/50">
+                <Checkbox
+                  id="create-chat"
+                  checked={createChatChannel}
+                  onCheckedChange={(v) => setCreateChatChannel(!!v)}
+                />
+                <Label htmlFor="create-chat" className="text-sm cursor-pointer flex items-center gap-1.5">
+                  <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
+                  Create a project chat channel for team discussion
+                </Label>
+              </div>
+            )}
+            {hasProjectChannel && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <MessageSquare className="h-3.5 w-3.5" />
+                Project chat channel already exists
+              </div>
+            )}
           </div>
         )}
 
