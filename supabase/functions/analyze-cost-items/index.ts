@@ -1055,7 +1055,7 @@ async function processCostItem(
 
     // STEP 3: Rank candidates
     const ranked = rankBenchmarkCandidates(candidates, item, searchTerms);
-    const top = ranked.slice(0, 40);
+    const top = ranked.slice(0, 60);
 
     console.log(
       `[${item.originalDescription}] Top 5: ` +
