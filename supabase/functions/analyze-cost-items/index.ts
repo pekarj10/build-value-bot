@@ -488,8 +488,44 @@ function generateSearchTerms(description: string): string[] {
   if (desc.includes('curb') || desc.includes('kantsten') || desc.includes('kantstöd')) {
     terms.push('121', 'kantsten');
   }
-  if (desc.includes('pipe') || desc.includes('ledning') || desc.includes('vatten')) {
-    terms.push('131', 'ledningar', 'rör');
+  if (desc.includes('pipe') || desc.includes('ledning') || desc.includes('vatten') || desc.includes('stamrenovering')) {
+    terms.push('131', 'ledningar', 'rör', 'vattenledning');
+  }
+  if (desc.includes('tak') || desc.includes('roof') || desc.includes('takomläggning')) {
+    terms.push('tak', 'takläggning', 'taktäckning', 'plåt');
+  }
+  if (desc.includes('målning') || desc.includes('painting') || desc.includes('måla')) {
+    terms.push('målning', 'strykning', 'ommålning');
+  }
+  if (desc.includes('matta') || desc.includes('mattbyte') || desc.includes('carpet')) {
+    terms.push('textilgolv', 'nålfilt', 'golvmatta', 'matta');
+  }
+  if (desc.includes('puts') || desc.includes('putsfasad') || desc.includes('render')) {
+    terms.push('puts', 'fasad', 'fasadrenovering', 'målning', 'tegelfasad');
+  }
+  if (desc.includes('hiss') || desc.includes('elevator')) {
+    terms.push('hiss', 'elevator', 'hissar');
+  }
+  if (desc.includes('ventilation') || desc.includes('aggregat')) {
+    terms.push('ventilation', 'ventilationsaggregat', 'fläkt');
+  }
+  if (desc.includes('radiator') || desc.includes('element') || desc.includes('värme')) {
+    terms.push('radiator', 'radiatorer', 'element', 'värme');
+  }
+  if (desc.includes('belysning') || desc.includes('led') || desc.includes('lampor')) {
+    terms.push('belysning', 'ljus', 'armaturer', 'LED');
+  }
+  if (desc.includes('balkong') || desc.includes('balcony')) {
+    terms.push('balkong', 'balkongrenovering', 'balkongplatta');
+  }
+  if (desc.includes('relining') || desc.includes('avlopp')) {
+    terms.push('relining', 'avlopp', 'stamrenovering', 'rör');
+  }
+  if (desc.includes('membran') || desc.includes('tätskikt') || desc.includes('parkering')) {
+    terms.push('membran', 'tätskikt', 'vattentätning');
+  }
+  if (desc.includes('entré') || desc.includes('entre') || desc.includes('ytterdörr')) {
+    terms.push('entrédörr', 'ytterdörr', 'dörr', '204');
   }
 
   // STEP 4: Also add individual words from the original description
