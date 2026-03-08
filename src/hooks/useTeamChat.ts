@@ -42,7 +42,25 @@ export function useTeamChat() {
   const [isLoadingChannels, setIsLoadingChannels] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [mentionableUsers, setMentionableUsers] = useState<{ id: string; name: string; email: string }[]>([]);
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+
+  // Last-read timestamps stored in localStorage
+  const getLastRead = useCallback((channelId: string): string | null => {
+    try {
+      const data = JSON.parse(localStorage.getItem('chat_last_read') || '{}');
+      return data[channelId] || null;
+    } catch { return null; }
+  }, []);
+
+  const setLastRead = useCallback((channelId: string) => {
+    try {
+      const data = JSON.parse(localStorage.getItem('chat_last_read') || '{}');
+      data[channelId] = new Date().toISOString();
+      localStorage.setItem('chat_last_read', JSON.stringify(data));
+      setUnreadCounts(prev => ({ ...prev, [channelId]: 0 }));
+    } catch {}
+  }, []);
 
   // Load channels
   const loadChannels = useCallback(async () => {
