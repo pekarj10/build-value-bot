@@ -134,7 +134,7 @@ export function CostItemDrawer({
   const hasRecommendedPrice = !!(item.recommendedUnitPrice && item.recommendedUnitPrice > 0);
   const displayAnalysisNote = effectiveIsAdmin 
     ? (item.aiComment || 'No analysis notes available.')
-    : sanitizeAnalysisNoteForUser(item.aiComment, item.matchConfidence, projectCountry, currency, hasRecommendedPrice);
+    : sanitizeAnalysisNoteForUser(item.aiComment, item.matchConfidence, projectCountry, currency, hasRecommendedPrice, item.userExplanation);
 
   const displayInterpretedScope = getUserFriendlyScope(
     item.originalDescription,
