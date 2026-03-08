@@ -918,6 +918,56 @@ function scoreBenchmarkCandidate(
     if (desc.includes('byte')) score += 6;
   }
 
+  // Balcony heuristics - distinguish platta vs räcke
+  if (/(balkong|balcony|räcke|railing)/.test(itemDescLower)) {
+    const wantsRailing = /(räcke|railing|målning|painting|trä|wood)/.test(itemDescLower);
+    const wantsStructural = /(platta|betong|concrete|structural|rost|rust)/.test(itemDescLower);
+    
+    if (wantsRailing) {
+      if (cat.includes('233') || desc.includes('balkongräcke')) score += 25;
+      if (cat.includes('225') || desc.includes('räcken')) score += 15;
+      if (desc.includes('trä') && itemDescLower.includes('trä')) score += 15;
+      if (desc.includes('målning')) score += 10;
+      if (cat.includes('232') || desc.includes('balkongplatta')) score -= 15;
+    } else if (wantsStructural) {
+      if (cat.includes('232') || desc.includes('balkongplatta')) score += 20;
+      if (cat.includes('233') || desc.includes('balkongräcke')) score -= 10;
+    } else {
+      if (cat.includes('233') || desc.includes('balkongräcke')) score += 8;
+      if (cat.includes('232') || desc.includes('balkongplatta')) score += 5;
+    }
+  }
+
+  // Interior ceiling heuristics
+  if (/(innertak|ceiling|undertak)/.test(itemDescLower)) {
+    if (cat.includes('335') || desc.includes('innertak skivor')) score += 20;
+    if (cat.includes('337') || desc.includes('undertak')) score += 10;
+    if (itemDescLower.includes('renovering') && desc.includes('byte')) score += 10;
+    if (cat.includes('262') || desc.includes('takplåt')) score -= 30;
+    if (cat.includes('261') || desc.includes('takpannor')) score -= 30;
+  }
+
+  // Fire alarm heuristics
+  if (/(brandlarm|fire|larmanläggning|larm)/.test(itemDescLower)) {
+    if (cat.includes('646') || desc.includes('larmanläggning') || desc.includes('brandlarm')) score += 25;
+    if (desc.includes('centralutrustning')) score += 10;
+    if (desc.includes('rökdetektor')) score += 8;
+  }
+
+  // Electrical installation heuristics
+  if (/(elcentral|elanlägg|elinstall|electrical)/.test(itemDescLower)) {
+    if (cat.includes('6S1') || cat.includes('6S3')) score += 20;
+    if (desc.includes('elinstallation') || desc.includes('elinstallationer')) score += 15;
+    if (desc.includes('byte')) score += 8;
+    if (itemDescLower.includes('uppgradering') && desc.includes('led')) score += 8;
+  }
+
+  // Water/pipe renovation heuristics
+  if (/(vattenledn|stamrenovering|stambyte|water pipe)/.test(itemDescLower)) {
+    if (cat.includes('142') || desc.includes('va-ledningar') || desc.includes('vattenledningar')) score += 25;
+    if (desc.includes('byte')) score += 10;
+  }
+
   return score;
 }
 
