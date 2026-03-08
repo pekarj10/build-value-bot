@@ -222,8 +222,9 @@ export function useTeamChat() {
 
   const selectChannel = useCallback((channelId: string) => {
     setActiveChannelId(channelId);
+    setLastRead(channelId);
     loadMessages(channelId);
-  }, [loadMessages]);
+  }, [loadMessages, setLastRead]);
 
   // Subscribe to realtime messages
   useEffect(() => {
