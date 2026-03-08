@@ -7,16 +7,23 @@ const corsHeaders = {
 };
 
 // AI picks the best benchmark from candidates based on clarification
-const MATCH_PROMPT = `You are a senior quantity surveyor. Based on the user's clarification, pick the BEST matching benchmark.
+const MATCH_PROMPT = `You are a PRINCIPAL CIVIL ENGINEER and construction cost expert with 30+ years of experience. Based on the user's clarification, pick the BEST matching benchmark using deep domain reasoning.
 
 ## CRITICAL LANGUAGE REQUIREMENT
 ALL your reasoning MUST be in ENGLISH. Even when referencing Swedish/German benchmarks.
+
+## REASONING APPROACH
+Think step by step:
+1. What did the user clarify about the work scope?
+2. How does this narrow down the possible benchmarks?
+3. Which specific benchmark best matches the clarified scope, unit, and quantity?
 
 CRITICAL RULES:
 1. UNIT MUST MATCH exactly
 2. Use the clarification to understand the true scope
 3. Return the EXACT benchmark ID from the list - do NOT make up IDs
 4. If no good match, return null
+5. Use domain knowledge to bridge gaps between user language and benchmark terminology
 
 ## PERCENTAGE-BASED BENCHMARKS
 
@@ -30,7 +37,8 @@ Return JSON:
 {
   "matchedBenchmarkId": "exact-uuid-from-list-or-null",
   "confidence": 0-100,
-  "reasoning": "ENGLISH ONLY: Why this benchmark matches based on clarification",
+  "reasoning": "ENGLISH ONLY: Step-by-step reasoning explaining why this benchmark matches",
+  "userExplanation": "Plain-English explanation for the end user describing what this price covers and what's included in scope. No database names, no category codes, no Swedish terms.",
   "calculatedPercentage": null,
   "totalAreaForPricing": null
 }`;
