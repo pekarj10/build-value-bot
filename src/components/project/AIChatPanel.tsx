@@ -459,20 +459,27 @@ export function AIChatPanel({ project, items, onItemsUpdate, className }: AIChat
                   ? "bg-muted/50" 
                   : "bg-primary text-primary-foreground"
               )}>
-                <div className="prose prose-sm dark:prose-invert max-w-none">
-                  {message.content.split('\n').map((line, i) => {
-                    if (line.startsWith('## ')) {
-                      return <h4 key={i} className="font-semibold mt-2 mb-1">{line.replace('## ', '')}</h4>;
-                    }
-                    if (line.startsWith('### ')) {
-                      return <h5 key={i} className="font-medium mt-2 mb-1 text-sm">{line.replace('### ', '')}</h5>;
-                    }
-                    if (line.startsWith('- ')) {
-                      return <p key={i} className="ml-2 my-0.5">{line}</p>;
-                    }
-                    if (line.trim() === '') return null;
-                    return <p key={i} className="my-1">{line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/<strong>(.*?)<\/strong>/g, (_, text) => text)}</p>;
-                  })}
+                <div className={cn(
+                  "prose prose-sm dark:prose-invert max-w-none",
+                  message.role === 'user' && "prose-invert"
+                )}>
+                  <ReactMarkdown
+                    components={{
+                      h1: ({ children }) => <h3 className="font-bold text-base mt-3 mb-1">{children}</h3>,
+                      h2: ({ children }) => <h4 className="font-semibold mt-2 mb-1">{children}</h4>,
+                      h3: ({ children }) => <h5 className="font-medium mt-2 mb-1 text-sm">{children}</h5>,
+                      p: ({ children }) => <p className="my-1 leading-relaxed">{children}</p>,
+                      ul: ({ children }) => <ul className="ml-4 my-1 space-y-0.5 list-disc">{children}</ul>,
+                      ol: ({ children }) => <ol className="ml-4 my-1 space-y-0.5 list-decimal">{children}</ol>,
+                      li: ({ children }) => <li className="my-0.5">{children}</li>,
+                      strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                      em: ({ children }) => <em className="italic">{children}</em>,
+                      code: ({ children }) => <code className="bg-muted/50 px-1 py-0.5 rounded text-xs font-mono">{children}</code>,
+                      blockquote: ({ children }) => <blockquote className="border-l-2 border-primary/30 pl-3 my-2 italic text-muted-foreground">{children}</blockquote>,
+                    }}
+                  >
+                    {message.content}
+                  </ReactMarkdown>
                 </div>
                 {message.itemUpdates && message.itemUpdates.length > 0 && (
                   <div className="mt-3 pt-3 border-t space-y-1">
