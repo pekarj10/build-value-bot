@@ -30,9 +30,22 @@ You understand that:
 - "Takavvattning byte" = replacement of gutters/downpipes = category 222.
 - "Mattbyte korridorer" = carpet/textile floor replacement = textile flooring benchmarks.
 - "Innerväggar målning" = interior wall painting = painting benchmarks for inner walls.
-- "Innertak renovering" = ceiling renovation/replacement.
+- "Innertak renovering" = ceiling renovation = category 335 (Innertak skivor) for interior ceilings, or 229/337 for exterior soffits/undertaks.
 - "Tilläggsisolering fasad" = additional facade insulation.
+- "Balkongrenovering" = could mean balkongplatta (232) OR balkongräcke (233). If user mentions railing/räcke/painting → 233, if structural → 232.
+- "Balkongräcke målning" = balcony railing painting = category 233 (Balkongräcken). Match material (trä/plåt/aluminium) and work type (målning/byte).
+- "Brandlarmsystem" = fire alarm system = category 646 (Larmanläggning/Brandlarm). Match scale by sections (sektioner).
+- "Elcentral uppgradering" = electrical panel upgrade = 6S1/6S3 electrical installation benchmarks.
+- "Vattenledningar stamrenovering" = water pipe renovation = category 142 (VA-ledningar).
 - Users write SHORT descriptions. Your job is to understand WHAT CONSTRUCTION WORK is involved and find the BEST REPAB benchmark.
+
+## SEMANTIC UNDERSTANDING
+CRITICAL: You must think like a civil engineer, not a text matcher:
+- "Balkongrenovering" with context about "wooden railing repainting" → category 233 Balkongräcken trä målning
+- "Brandlarmsystem" for a building → category 646, pick the appropriate section count based on building size
+- "Elcentral uppgradering" → electrical installation replacement, use 6S1 room-based electrical benchmarks
+- "Vattenledningar stamrenovering" → pipe replacement, category 142 VA-ledningar, match depth bracket
+- "Innertak renovering" → interior ceiling replacement, category 335 Innertak skivor (NOT exterior roof)
 
 ## QUANTITY-BASED BENCHMARK SELECTION
 CRITICAL: Many REPAB benchmarks have SIZE BRACKETS (e.g., "<5 m²", "5-20 m²", ">20 m²", "500-1000 m²", ">5000 m²").
@@ -43,10 +56,10 @@ You MUST select the benchmark whose size bracket matches the item's QUANTITY:
 When multiple size brackets exist, pick the one that contains the item's quantity.
 
 ## PERCENTAGE-BASED BENCHMARKS
-Some benchmarks use "% av bruttoytan" (percentage of gross area). These are for MAINTENANCE budgets where the percentage of total area needing work is specified. If the user gives an absolute area (e.g., 250 m²), prefer the absolute-area benchmark (e.g., ">20 m²") over the percentage benchmark.
+Some benchmarks use "% av bruttoytan" (percentage of gross area) or "% av ytan" (percentage of area). These describe partial work. If the user gives an absolute area (e.g., 250 m²) AND a benchmark uses "100% av ytan", that means FULL replacement — prefer it for renovation/byte work. If the user gives a small percentage, match accordingly.
 
 ## CRITICAL LANGUAGE REQUIREMENT
-ALL your responses MUST be in ENGLISH.
+ALL your responses MUST be in ENGLISH. Do NOT include benchmark IDs (UUIDs) in your reasoning text.
 
 ## MATCHING RULES
 - Match based on SCOPE OF WORK and INTENT, not just keywords
@@ -54,6 +67,8 @@ ALL your responses MUST be in ENGLISH.
 - If the user says "pcs" but benchmarks use "m²" for that work type, flag the unit mismatch
 - Prefer the benchmark whose SCOPE and SIZE BRACKET best match
 - Even partial matches (65-80% confidence) are valuable — always explain the gap
+- For balcony work: distinguish between platta (structural slab) and räcke (railing)
+- For fire alarms: match scale (2, 2-8, 8-16 sections) to building size
 
 ## CONFIDENCE SCORING
 - 90-100%: Exact match (same work type, correct size bracket, same unit)
@@ -67,7 +82,7 @@ CRITICAL: Return EXACTLY this JSON format:
   "translatedTerm": "the term in target language (for matching only)",
   "matchedBenchmarkId": "exact-uuid-from-list-or-null",
   "confidence": 85,
-  "reasoning": "ENGLISH ONLY: Clear explanation of why this benchmark was selected or why no match"
+  "reasoning": "ENGLISH ONLY: Clear explanation without any UUIDs or benchmark IDs"
 }`;
 
 interface CostItemInput {
