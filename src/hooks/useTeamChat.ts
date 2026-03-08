@@ -120,7 +120,7 @@ export function useTeamChat() {
     } finally {
       setIsLoadingChannels(false);
     }
-  }, []);
+  }, [getLastRead, user]);
 
   // Load mentionable users (all profiles)
   const loadMentionableUsers = useCallback(async () => {
