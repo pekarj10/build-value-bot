@@ -131,9 +131,10 @@ export function CostItemDrawer({
   };
 
   // Get sanitized content for regular users (respects view mode)
+  const hasRecommendedPrice = !!(item.recommendedUnitPrice && item.recommendedUnitPrice > 0);
   const displayAnalysisNote = effectiveIsAdmin 
     ? (item.aiComment || 'No analysis notes available.')
-    : sanitizeAnalysisNoteForUser(item.aiComment, item.matchConfidence, projectCountry, currency);
+    : sanitizeAnalysisNoteForUser(item.aiComment, item.matchConfidence, projectCountry, currency, hasRecommendedPrice);
 
   const displayInterpretedScope = getUserFriendlyScope(
     item.originalDescription,

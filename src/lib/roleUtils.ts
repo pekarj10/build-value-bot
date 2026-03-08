@@ -15,55 +15,76 @@ export function sanitizeAnalysisNoteForUser(
   aiComment: string | null | undefined,
   confidence: number | null | undefined,
   region: string,
-  currency: string
+  currency: string,
+  hasRecommendedPrice: boolean = true
 ): string {
   if (!aiComment) {
-    return 'Price analysis based on market data for this region.';
+    return hasRecommendedPrice 
+      ? 'Price analysis based on market data for this region.'
+      : 'No matching market data found. Please provide additional details or set a manual price.';
   }
 
+  // If there's no recommended price, the comment should guide the user to action
+  if (!hasRecommendedPrice) {
+    // Extract actionable guidance from the AI comment
+    const lowerComment = aiComment.toLowerCase();
+    
+    // Unit mismatch - keep the guidance, just sanitize database references
+    if (lowerComment.includes('unit mismatch')) {
+      return aiComment
+        .replace(/benchmark[s]?/gi, 'market data')
+        .replace(/REPAB/gi, 'database');
+    }
+    
+    // Percentage required - keep the guidance
+    if (lowerComment.includes('percentage required') || lowerComment.includes('% av')) {
+      return aiComment
+        .replace(/benchmark[s]?/gi, 'market data')
+        .replace(/bruttoytan/gi, 'gross area')
+        .replace(/REPAB/gi, 'database');
+    }
+    
+    // Closest benchmark mentioned - simplify for user
+    if (lowerComment.includes('closest benchmark') || lowerComment.includes('no exact match')) {
+      return 'No exact match found in our database for this item. Please use the clarification box below to describe the work in more detail, or set a manual price.';
+    }
+    
+    // Generic no-match
+    return 'We could not find a matching price in our database. Please provide more details about this work item using the clarification box, or set a manual price.';
+  }
+
+  // HAS a recommended price - show confidence-based message
   // Patterns to detect proprietary information
   const proprietaryPatterns = [
     /REPAB/gi,
-    /Gräsytor/gi,
-    /omläggning/gi,
-    /Betongarbeten/gi,
-    /Markarbeten/gi,
-    /Plåtarbeten/gi,
-    /Målning/gi,
-    /VVS-arbeten/gi,
-    /Elarbeten/gi,
-    /Träarbeten/gi,
-    // Swedish benchmark terms
     /\b[A-ZÅÄÖ][a-zåäö]+arbeten\b/g,
     /\b[A-ZÅÄÖ][a-zåäö]+ytor\b/g,
-    // Match patterns like "Matched to [Swedish term]"
     /Matched to [^.()]+(?:\([^)]+\))?/gi,
-    // Database IDs and internal references
     /benchmark_id[:\s]+[a-f0-9-]+/gi,
     /source[:\s]*["']?[A-Z]+["']?/gi,
   ];
 
-  // Check if content contains proprietary info
   let hasProprietary = proprietaryPatterns.some(pattern => pattern.test(aiComment));
   
   if (hasProprietary) {
-    // Generate a sanitized version
-    const confidenceText = confidence ? `${Math.round(confidence)}% confidence` : 'high confidence';
-    return `Based on our comprehensive database (${confidenceText}), the recommended price falls within the typical market range for this type of work in the ${region} area. The analysis considers regional pricing factors and comparable project data.`;
+    const confidenceText = confidence && confidence >= 50 ? `${Math.round(confidence)}% match confidence` : '';
+    const confSuffix = confidenceText ? ` (${confidenceText})` : '';
+    return `Price matched from our database${confSuffix}. The recommended price reflects typical market rates for this type of work in the ${region} area.`;
   }
 
-  // Additional cleanup - remove any remaining Swedish terms or database references
+  // Cleanup remaining technical terms
   let sanitized = aiComment
-    .replace(/\([^)]*%\s*confidence\)/gi, '') // Remove inline confidence
+    .replace(/\([^)]*%\s*confidence\)/gi, '')
     .replace(/matched\s+to\s+/gi, 'comparable to ')
+    .replace(/Matched with \d+% confidence\.\s*/gi, '')
     .replace(/benchmark\s+(data|database|source)/gi, 'market data')
     .replace(/REPAB/gi, 'industry standards')
     .trim();
 
-  // If it still looks technical, replace entirely
   if (sanitized.length < 20 || /[åäöÅÄÖ]/.test(sanitized)) {
-    const confidenceText = confidence ? `${Math.round(confidence)}% confidence` : 'analyzed';
-    return `Based on market analysis (${confidenceText}), this price is within the expected range for ${region}.`;
+    const confidenceText = confidence && confidence >= 50 ? `${Math.round(confidence)}% match confidence` : '';
+    const confSuffix = confidenceText ? ` (${confidenceText})` : '';
+    return `Price matched from market data${confSuffix} for the ${region} region.`;
   }
 
   return sanitized;
