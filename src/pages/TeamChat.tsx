@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { AppLayout, PageHeader } from '@/components/layout/AppLayout';
 import { useTeamChat, ChatMessage } from '@/hooks/useTeamChat';
 import { useAuth } from '@/hooks/useAuth';
@@ -17,6 +17,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -30,10 +35,13 @@ import {
   Trash2,
   Users,
   Search,
+  SmilePlus,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format, isToday, isYesterday } from 'date-fns';
 import { toast } from 'sonner';
+
+const QUICK_EMOJIS = ['👍', '❤️', '😂', '🎉', '🔥', '👀', '✅', '💯'];
 
 function formatMessageTime(dateStr: string): string {
   const date = new Date(dateStr);
@@ -62,6 +70,21 @@ function shouldShowDateSeparator(messages: ChatMessage[], index: number): boolea
   return curr !== prev;
 }
 
+// Render message content with @mentions highlighted
+function renderContent(content: string) {
+  const parts = content.split(/(@\w[\w\s]*?(?=\s@|\s|$))/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('@')) {
+      return (
+        <span key={i} className="bg-primary/15 text-primary rounded px-1 font-medium">
+          {part}
+        </span>
+      );
+    }
+    return part;
+  });
+}
+
 export default function TeamChat() {
   const { user, isAdmin } = useAuth();
   const {
@@ -70,10 +93,12 @@ export default function TeamChat() {
     activeChannelId,
     isLoadingChannels,
     isLoadingMessages,
+    mentionableUsers,
     selectChannel,
     sendMessage,
     createChannel,
     deleteMessage,
+    toggleReaction,
   } = useTeamChat();
 
   const [input, setInput] = useState('');
@@ -83,31 +108,94 @@ export default function TeamChat() {
   const [newChannelDesc, setNewChannelDesc] = useState('');
   const [newChannelGlobal, setNewChannelGlobal] = useState(true);
   const [channelSearch, setChannelSearch] = useState('');
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionIndex, setMentionIndex] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-scroll on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Auto-select first channel
   useEffect(() => {
     if (!activeChannelId && channels.length > 0) {
       selectChannel(channels[0].id);
     }
   }, [channels, activeChannelId, selectChannel]);
 
+  // Mention filtering
+  const filteredMentions = useMemo(() => {
+    if (mentionQuery === null) return [];
+    const q = mentionQuery.toLowerCase();
+    return mentionableUsers
+      .filter(u => u.id !== user?.id)
+      .filter(u => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))
+      .slice(0, 5);
+  }, [mentionQuery, mentionableUsers, user?.id]);
+
+  const handleInputChange = (val: string) => {
+    setInput(val);
+    // Detect @mention
+    const cursor = inputRef.current?.selectionStart || val.length;
+    const textBefore = val.substring(0, cursor);
+    const atMatch = textBefore.match(/@(\w*)$/);
+    if (atMatch) {
+      setMentionQuery(atMatch[1]);
+      setMentionIndex(0);
+    } else {
+      setMentionQuery(null);
+    }
+  };
+
+  const insertMention = (userName: string) => {
+    const cursor = inputRef.current?.selectionStart || input.length;
+    const textBefore = input.substring(0, cursor);
+    const textAfter = input.substring(cursor);
+    const newBefore = textBefore.replace(/@\w*$/, `@${userName} `);
+    setInput(newBefore + textAfter);
+    setMentionQuery(null);
+    inputRef.current?.focus();
+  };
+
   const handleSend = async () => {
     const text = input.trim();
     if (!text || isSending) return;
 
     setInput('');
+    setMentionQuery(null);
     setIsSending(true);
     const ok = await sendMessage(text);
     if (!ok) toast.error('Failed to send message');
     setIsSending(false);
     inputRef.current?.focus();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (mentionQuery !== null && filteredMentions.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setMentionIndex(prev => Math.min(prev + 1, filteredMentions.length - 1));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setMentionIndex(prev => Math.max(prev - 1, 0));
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        insertMention(filteredMentions[mentionIndex].name);
+        return;
+      }
+      if (e.key === 'Escape') {
+        setMentionQuery(null);
+        return;
+      }
+    }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
   };
 
   const handleCreateChannel = async () => {
@@ -301,20 +389,62 @@ export default function TeamChat() {
                               </div>
                             )}
                             <div className="flex items-start gap-1">
-                              <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
-                                {msg.content}
+                              <p className="text-sm leading-relaxed whitespace-pre-wrap break-words flex-1">
+                                {renderContent(msg.content)}
                               </p>
-                              {isOwnMessage && (
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                                  onClick={() => deleteMessage(msg.id)}
-                                >
-                                  <Trash2 className="h-3 w-3 text-destructive" />
-                                </Button>
-                              )}
+                              <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-6 w-6">
+                                      <SmilePlus className="h-3 w-3 text-muted-foreground" />
+                                    </Button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-auto p-2" side="top" align="end">
+                                    <div className="flex gap-1">
+                                      {QUICK_EMOJIS.map(emoji => (
+                                        <button
+                                          key={emoji}
+                                          onClick={() => toggleReaction(msg.id, emoji)}
+                                          className="hover:bg-muted p-1 rounded text-base transition-colors"
+                                        >
+                                          {emoji}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </PopoverContent>
+                                </Popover>
+                                {isOwnMessage && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6"
+                                    onClick={() => deleteMessage(msg.id)}
+                                  >
+                                    <Trash2 className="h-3 w-3 text-destructive" />
+                                  </Button>
+                                )}
+                              </div>
                             </div>
+                            {/* Reactions */}
+                            {msg.reactions.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {msg.reactions.map(r => (
+                                  <button
+                                    key={r.emoji}
+                                    onClick={() => toggleReaction(msg.id, r.emoji)}
+                                    className={cn(
+                                      "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs border transition-colors",
+                                      r.reacted
+                                        ? "bg-primary/10 border-primary/30 text-primary"
+                                        : "bg-muted/50 border-border hover:bg-muted"
+                                    )}
+                                  >
+                                    <span>{r.emoji}</span>
+                                    <span className="font-medium">{r.count}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -325,21 +455,39 @@ export default function TeamChat() {
               )}
             </ScrollArea>
 
-            {/* Input */}
+            {/* Input with @mention dropdown */}
             {activeChannelId && (
-              <div className="p-3 border-t">
+              <div className="p-3 border-t relative">
+                {/* Mention autocomplete */}
+                {mentionQuery !== null && filteredMentions.length > 0 && (
+                  <div className="absolute bottom-full left-3 right-3 mb-1 bg-popover border rounded-md shadow-lg z-10 overflow-hidden">
+                    {filteredMentions.map((u, idx) => (
+                      <button
+                        key={u.id}
+                        onClick={() => insertMention(u.name)}
+                        className={cn(
+                          "w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors",
+                          idx === mentionIndex ? "bg-accent" : "hover:bg-muted"
+                        )}
+                      >
+                        <Avatar className="h-5 w-5">
+                          <AvatarFallback className="text-[8px]">
+                            {getInitials(u.name, u.email)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="font-medium">{u.name}</span>
+                        {u.email && <span className="text-xs text-muted-foreground">{u.email}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <div className="flex gap-2">
                   <Input
                     ref={inputRef}
                     value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSend();
-                      }
-                    }}
-                    placeholder={`Message #${activeChannel?.name || 'channel'}...`}
+                    onChange={(e) => handleInputChange(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder={`Message #${activeChannel?.name || 'channel'}... (type @ to mention)`}
                     disabled={isSending}
                     className="flex-1"
                   />
