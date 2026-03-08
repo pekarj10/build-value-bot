@@ -85,7 +85,7 @@ export function useTeamChat() {
         }
       }
 
-      setChannels((data || []).map(c => ({
+      const channelList = (data || []).map(c => ({
         id: c.id,
         name: c.name,
         description: c.description,
@@ -94,7 +94,27 @@ export function useTeamChat() {
         isGlobal: c.is_global,
         createdBy: c.created_by,
         createdAt: c.created_at,
-      })));
+      }));
+      setChannels(channelList);
+
+      // Compute unread counts per channel
+      const counts: Record<string, number> = {};
+      for (const ch of channelList) {
+        const lastRead = getLastRead(ch.id);
+        let query = supabase
+          .from('chat_messages')
+          .select('id', { count: 'exact', head: true })
+          .eq('channel_id', ch.id);
+        if (lastRead) {
+          query = query.gt('created_at', lastRead);
+        }
+        if (user) {
+          query = query.neq('user_id', user.id);
+        }
+        const { count } = await query;
+        counts[ch.id] = count || 0;
+      }
+      setUnreadCounts(counts);
     } catch (err) {
       console.error('Failed to load channels:', err);
     } finally {
