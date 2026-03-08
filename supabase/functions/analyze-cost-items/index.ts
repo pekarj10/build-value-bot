@@ -1144,6 +1144,7 @@ Select the BEST matching benchmark. Even partial matches (65-80% confidence) are
       priceSource: priceSource,
       status: status,
       aiComment: `Matched with ${confidence}% confidence. ${cleanReasoning}`,
+      userExplanation: aiResult.userExplanation || null,
     };
 
   } catch (error) {
