@@ -815,7 +815,7 @@ async function processCostItem(
     const translatedTerm = aiResult.translatedTerm || item.originalDescription;
 
     // STEP 4: Validate match
-    if (!matchedId || matchedId === 'null' || confidence < 50) {
+    if (!matchedId || matchedId === 'null' || confidence < 40) {
       noMatchResult.matchConfidence = confidence;
       noMatchResult.matchReasoning = reasoning || "No confident match found";
       noMatchResult.interpretedScope = translatedTerm;
