@@ -382,7 +382,8 @@ Based on the clarification, pick the BEST matching benchmark. Return the EXACT I
         matchReasoning: reasoning,
         priceSource: priceSource,
         status: status,
-        aiComment: `Based on your clarification "${clarification}", matched to ${matchedBenchmark.description} with ${confidence}% confidence. ${reasoning}`
+        aiComment: `Based on your clarification "${clarification}", matched to ${matchedBenchmark.description} with ${confidence}% confidence. ${reasoning}`,
+        userExplanation: matchResult.userExplanation || null
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
