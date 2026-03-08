@@ -804,7 +804,7 @@ async function processCostItem(
     const aiResult = await callAIDeterministic(
       apiKey,
       UNIFIED_MATCH_PROMPT,
-      `COST ITEM TO MATCH:\nDescription: "${item.originalDescription}"\nUnit: ${item.unit}\nQuantity: ${item.quantity}\n${item.originalUnitPrice ? `Original Price: ${item.originalUnitPrice}` : ''}\n\nTARGET LANGUAGE: ${targetLanguage}\nPROJECT TYPE: ${project.projectType || 'construction'}\n\nAVAILABLE BENCHMARKS (ranked by deterministic relevance; showing top ${top.length} of ${ranked.length}):\n${candidateList}\n\nSelect the BEST matching benchmark ID from the list above, or return null if none are suitable.`
+      `COST ITEM TO MATCH:\nDescription: "${item.originalDescription}"\nUnit: ${item.unit}\nQuantity: ${item.quantity}\n${item.originalUnitPrice ? `Original Price: ${item.originalUnitPrice}` : ''}\n${item.trade ? `Trade/Category: ${item.trade}` : ''}\n\nTARGET LANGUAGE: ${targetLanguage}\nPROJECT TYPE: ${project.projectType || 'construction'}\nPROJECT NAME: ${project.name || 'N/A'}\n\nIMPORTANT: The user description may be very brief (e.g., just "Buskar omplantering" or "Takomläggning"). Use your construction engineering knowledge to understand what work is actually involved, then find the best conceptual match from the benchmarks below.\n\nAVAILABLE BENCHMARKS (ranked by relevance; top ${top.length} of ${ranked.length}):\n${candidateList}\n\nSelect the BEST matching benchmark ID. Even if the match is not exact, if the work scope is fundamentally similar (e.g., facade renovation matching facade painting), select it with appropriate confidence (65-80%). Only return null if truly nothing is related.`
     );
 
     console.log(`[${item.originalDescription}] AI result:`, JSON.stringify(aiResult));
