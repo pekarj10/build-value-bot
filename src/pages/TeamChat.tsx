@@ -498,7 +498,7 @@ export default function TeamChat() {
                           : `${typingUsers[0]} and ${typingUsers.length - 1} others are typing...`}
                     </span>
                   </div>
-                )
+                )}
                 {/* Mention autocomplete */}
                 {mentionQuery !== null && filteredMentions.length > 0 && (
                   <div className="absolute bottom-full left-3 right-3 mb-1 bg-popover border rounded-md shadow-lg z-10 overflow-hidden">
