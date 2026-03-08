@@ -482,6 +482,23 @@ export default function TeamChat() {
             {/* Input with @mention dropdown */}
             {activeChannelId && (
               <div className="p-3 border-t relative">
+                {/* Typing indicator */}
+                {typingUsers.length > 0 && (
+                  <div className="absolute -top-6 left-3 right-3 text-xs text-muted-foreground flex items-center gap-1.5 animate-pulse">
+                    <span className="flex gap-0.5">
+                      <span className="h-1 w-1 rounded-full bg-muted-foreground animate-bounce [animation-delay:0ms]" />
+                      <span className="h-1 w-1 rounded-full bg-muted-foreground animate-bounce [animation-delay:150ms]" />
+                      <span className="h-1 w-1 rounded-full bg-muted-foreground animate-bounce [animation-delay:300ms]" />
+                    </span>
+                    <span>
+                      {typingUsers.length === 1
+                        ? `${typingUsers[0]} is typing...`
+                        : typingUsers.length === 2
+                          ? `${typingUsers[0]} and ${typingUsers[1]} are typing...`
+                          : `${typingUsers[0]} and ${typingUsers.length - 1} others are typing...`}
+                    </span>
+                  </div>
+                )
                 {/* Mention autocomplete */}
                 {mentionQuery !== null && filteredMentions.length > 0 && (
                   <div className="absolute bottom-full left-3 right-3 mb-1 bg-popover border rounded-md shadow-lg z-10 overflow-hidden">
