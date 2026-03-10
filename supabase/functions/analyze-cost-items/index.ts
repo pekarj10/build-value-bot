@@ -77,13 +77,28 @@ When a description is ambiguous, use ALL available context:
 - Original unit price (if provided, helps validate which benchmark is in the right price range)
 - Quantity + unit combination (45 pcs of "balkongrenovering" → per-balcony pricing, not slab m²)
 
+## PRICE-RANGE VALIDATION (CRITICAL)
+When the user provides an original unit price, use it as a SANITY CHECK:
+- If your best match's benchmark price differs by MORE THAN 5x from the original price, your match is likely WRONG SCOPE.
+- Example: "Balkongrenovering" at 28,000 SEK/pcs → a benchmark at 2,780 SEK is railing painting, NOT full renovation. Look for "Sammansatt Balkong renovation" at ~39,000 SEK/st instead.
+- Example: "Brandlarmsystem" at 850,000 SEK → a benchmark at 58,500 is a component, not a whole-building system. Return null with explanation rather than a wildly wrong match.
+- When price differs >5x, check if there's a "Sammansatt" (composite/complete) benchmark that covers the full scope of work.
+- NEVER return a match with >5x price discrepancy without explicitly acknowledging and justifying the difference in your reasoning.
+
+## UNIT FLEXIBILITY
+When the item uses different units than available benchmarks (e.g., "pcs" vs "m²"):
+- Still attempt to find the BEST conceptual match
+- Explain the unit difference in your reasoning
+- If the benchmark uses a different unit, calculate what the equivalent per-item cost would be and check if it's reasonable
+- For composite/whole-system items priced per piece, look for "Sammansatt" category benchmarks first
+
 ## CRITICAL LANGUAGE REQUIREMENT
 ALL your responses MUST be in ENGLISH. Do NOT include benchmark IDs (UUIDs) in your reasoning text.
 
 ## MATCHING RULES
 - Match based on SCOPE OF WORK and INTENT, not just keywords
-- Units must be compatible (m² matches m², st matches st, etc.)
-- If the user says "pcs" but benchmarks use "m²" for that work type, flag the unit mismatch
+- Units should be compatible, but don't reject matches solely on unit differences — explain the gap instead
+- For whole-system items (fire alarms, elevators, HVAC units), prefer "Sammansatt" or system-level benchmarks over component-level ones
 - Prefer the benchmark whose SCOPE and SIZE BRACKET best match
 - Even partial matches (65-80% confidence) are valuable — always explain the gap
 
@@ -99,8 +114,8 @@ CRITICAL: Return EXACTLY this JSON format:
   "translatedTerm": "the term in target language (for matching only)",
   "matchedBenchmarkId": "exact-uuid-from-list-or-null",
   "confidence": 85,
-  "reasoning": "ENGLISH ONLY: Clear explanation without any UUIDs or benchmark IDs. Explain your reasoning chain.",
-  "userExplanation": "A plain-English explanation for the end user (no database names, no category codes, no Swedish terms). Describe WHAT construction work this price covers, what's typically included in scope, and any assumptions made. E.g. 'This price covers complete balcony renovation including railing repainting with surface preparation and two coats of paint. The price assumes aluminum railings — if your railings are wooden or steel, the cost may differ slightly.'"
+  "reasoning": "ENGLISH ONLY: Clear explanation without any UUIDs or benchmark IDs. Explain your reasoning chain. If original price was provided and differs significantly from the match, explain WHY.",
+  "userExplanation": "A plain-English explanation for the end user (no database names, no category codes, no Swedish terms). Describe WHAT construction work this price covers, what's typically included in scope, and any assumptions made."
 }`;
 
 interface CostItemInput {
