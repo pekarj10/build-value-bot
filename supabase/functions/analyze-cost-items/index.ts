@@ -1235,26 +1235,54 @@ serve(async (req) => {
       );
     }
 
-    // Process sequentially for determinism
+    // Process in parallel batches of 4 for speed, sorted for deterministic ordering
+    const BATCH_SIZE = 4;
     const sortedItems = [...items].sort((a, b) => a.id.localeCompare(b.id));
-    const results: AnalysisResult[] = [];
+    const results: AnalysisResult[] = new Array(sortedItems.length);
 
-    for (let i = 0; i < sortedItems.length; i++) {
-      const item = sortedItems[i];
-      console.log(`\n[${i + 1}/${sortedItems.length}] Processing: "${item.originalDescription}"`);
+    for (let batchStart = 0; batchStart < sortedItems.length; batchStart += BATCH_SIZE) {
+      const batchEnd = Math.min(batchStart + BATCH_SIZE, sortedItems.length);
+      const batch = sortedItems.slice(batchStart, batchEnd);
+      
+      console.log(`\n--- Batch ${Math.floor(batchStart / BATCH_SIZE) + 1}/${Math.ceil(sortedItems.length / BATCH_SIZE)}: items ${batchStart + 1}-${batchEnd} of ${sortedItems.length} ---`);
 
-      const result = await processCostItem(
-        LOVABLE_API_KEY,
-        item,
-        allBenchmarks,
-        project,
-        targetLanguage
-      );
+      const batchPromises = batch.map((item, idx) => {
+        const globalIdx = batchStart + idx;
+        console.log(`  [${globalIdx + 1}/${sortedItems.length}] Processing: "${item.originalDescription}"`);
+        return processCostItem(
+          LOVABLE_API_KEY,
+          item,
+          allBenchmarks,
+          project,
+          targetLanguage
+        ).catch(err => {
+          console.error(`  [${globalIdx + 1}] Failed: ${err instanceof Error ? err.message : err}`);
+          return {
+            id: item.id,
+            matchedBenchmarkId: null,
+            matchConfidence: 0,
+            matchReasoning: `Error: ${err instanceof Error ? err.message : 'Unknown'}`,
+            interpretedScope: item.originalDescription,
+            recommendedUnitPrice: null,
+            benchmarkMin: null,
+            benchmarkTypical: null,
+            benchmarkMax: null,
+            priceSource: null,
+            status: "clarification",
+            aiComment: "Analysis failed for this item. Please retry or enter manual pricing.",
+            userExplanation: null,
+          } as AnalysisResult;
+        });
+      });
 
-      results.push(result);
+      const batchResults = await Promise.all(batchPromises);
+      batchResults.forEach((result, idx) => {
+        results[batchStart + idx] = result;
+      });
 
-      if (i < sortedItems.length - 1) {
-        await new Promise(r => setTimeout(r, 200));
+      // Small delay between batches to avoid rate limiting
+      if (batchEnd < sortedItems.length) {
+        await new Promise(r => setTimeout(r, 300));
       }
     }
 
