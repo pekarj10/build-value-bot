@@ -77,13 +77,28 @@ When a description is ambiguous, use ALL available context:
 - Original unit price (if provided, helps validate which benchmark is in the right price range)
 - Quantity + unit combination (45 pcs of "balkongrenovering" → per-balcony pricing, not slab m²)
 
+## PRICE-RANGE VALIDATION (CRITICAL)
+When the user provides an original unit price, use it as a SANITY CHECK:
+- If your best match's benchmark price differs by MORE THAN 5x from the original price, your match is likely WRONG SCOPE.
+- Example: "Balkongrenovering" at 28,000 SEK/pcs → a benchmark at 2,780 SEK is railing painting, NOT full renovation. Look for "Sammansatt Balkong renovation" at ~39,000 SEK/st instead.
+- Example: "Brandlarmsystem" at 850,000 SEK → a benchmark at 58,500 is a component, not a whole-building system. Return null with explanation rather than a wildly wrong match.
+- When price differs >5x, check if there's a "Sammansatt" (composite/complete) benchmark that covers the full scope of work.
+- NEVER return a match with >5x price discrepancy without explicitly acknowledging and justifying the difference in your reasoning.
+
+## UNIT FLEXIBILITY
+When the item uses different units than available benchmarks (e.g., "pcs" vs "m²"):
+- Still attempt to find the BEST conceptual match
+- Explain the unit difference in your reasoning
+- If the benchmark uses a different unit, calculate what the equivalent per-item cost would be and check if it's reasonable
+- For composite/whole-system items priced per piece, look for "Sammansatt" category benchmarks first
+
 ## CRITICAL LANGUAGE REQUIREMENT
 ALL your responses MUST be in ENGLISH. Do NOT include benchmark IDs (UUIDs) in your reasoning text.
 
 ## MATCHING RULES
 - Match based on SCOPE OF WORK and INTENT, not just keywords
-- Units must be compatible (m² matches m², st matches st, etc.)
-- If the user says "pcs" but benchmarks use "m²" for that work type, flag the unit mismatch
+- Units should be compatible, but don't reject matches solely on unit differences — explain the gap instead
+- For whole-system items (fire alarms, elevators, HVAC units), prefer "Sammansatt" or system-level benchmarks over component-level ones
 - Prefer the benchmark whose SCOPE and SIZE BRACKET best match
 - Even partial matches (65-80% confidence) are valuable — always explain the gap
 
@@ -99,8 +114,8 @@ CRITICAL: Return EXACTLY this JSON format:
   "translatedTerm": "the term in target language (for matching only)",
   "matchedBenchmarkId": "exact-uuid-from-list-or-null",
   "confidence": 85,
-  "reasoning": "ENGLISH ONLY: Clear explanation without any UUIDs or benchmark IDs. Explain your reasoning chain.",
-  "userExplanation": "A plain-English explanation for the end user (no database names, no category codes, no Swedish terms). Describe WHAT construction work this price covers, what's typically included in scope, and any assumptions made. E.g. 'This price covers complete balcony renovation including railing repainting with surface preparation and two coats of paint. The price assumes aluminum railings — if your railings are wooden or steel, the cost may differ slightly.'"
+  "reasoning": "ENGLISH ONLY: Clear explanation without any UUIDs or benchmark IDs. Explain your reasoning chain. If original price was provided and differs significantly from the match, explain WHY.",
+  "userExplanation": "A plain-English explanation for the end user (no database names, no category codes, no Swedish terms). Describe WHAT construction work this price covers, what's typically included in scope, and any assumptions made."
 }`;
 
 interface CostItemInput {
@@ -429,14 +444,15 @@ function generateSearchTerms(description: string): string[] {
     'portar': ['port', 'portar', '255', '256'],
 
     // === BALCONY ===
-    'balkong': ['balkong', 'balkongrenovering', 'balkongplatta', 'balkongräcke', '232', '233', 'räcke'],
-    'balkongrenovering': ['balkong', 'balkongplatta', 'balkongräcke', '232', '233', 'räcke', 'trä', 'plåt', 'aluminium', 'målning', 'byte'],
+    'balkong': ['balkong', 'balkongrenovering', 'balkongplatta', 'balkongräcke', '232', '233', '230', 'sammansatt', 'räcke'],
+    'balkongrenovering': ['balkong', 'balkongplatta', 'balkongräcke', '232', '233', '230', 'sammansatt', 'räcke', 'trä', 'plåt', 'aluminium', 'målning', 'byte', 'renov', 'betong', 'indragna', 'utanpåliggande'],
     'balkongplatta': ['balkongplatta', 'balkong', '232', 'betong', 'lagning'],
     'balkongräcke': ['balkongräcke', 'balkong', 'räcke', '233', 'trä', 'plåt', 'aluminium', 'målning', 'byte'],
-    'balcony': ['balkong', 'balkongräcke', 'balkongplatta', '232', '233'],
+    'balcony': ['balkong', 'balkongräcke', 'balkongplatta', '232', '233', '230', 'sammansatt'],
     'railing': ['räcke', 'balkongräcke', 'träräcke', 'smidesräcke', '233', '225', '162'],
     'räcke': ['räcke', 'balkongräcke', 'träräcke', 'smidesräcke', '233', '225', '162'],
     'räcken': ['räcke', 'räcken', 'balkongräcke', '225', '233', '162'],
+    'sammansatt': ['sammansatt', '230', 'balkong', 'hiss', 'komplett'],
 
     // === SOCKEL / DETAILS ===
     'sockel': ['sockel', '221'],
@@ -937,12 +953,21 @@ function scoreBenchmarkCandidate(
     if (desc.includes('byte')) score += 6;
   }
 
-  // Balcony heuristics - distinguish platta vs räcke
+  // Balcony heuristics - distinguish platta vs räcke vs full renovation (Sammansatt)
   if (/(balkong|balcony|räcke|railing)/.test(itemDescLower)) {
     const wantsRailing = /(räcke|railing|målning|painting|trä|wood)/.test(itemDescLower);
     const wantsStructural = /(platta|betong|concrete|structural|rost|rust)/.test(itemDescLower);
+    const wantsFullRenovation = /(renovering|renovation|renov)/.test(itemDescLower) && !wantsRailing && !wantsStructural;
     
-    if (wantsRailing) {
+    if (wantsFullRenovation) {
+      // "Balkongrenovering" without specific sub-scope → prefer Sammansatt (cat 230) composite benchmarks
+      if (cat.includes('230') || desc.includes('sammansatt')) score += 35;
+      if (desc.includes('renov')) score += 20;
+      if (desc.includes('utanpåliggande')) score += 10; // common default for external balconies
+      // Penalize component-level benchmarks for full renovation
+      if (cat.includes('233') || desc.includes('balkongräcke')) score -= 20;
+      if (cat.includes('232') && desc.includes('målning')) score -= 15;
+    } else if (wantsRailing) {
       if (cat.includes('233') || desc.includes('balkongräcke')) score += 25;
       if (cat.includes('225') || desc.includes('räcken')) score += 15;
       if (desc.includes('trä') && itemDescLower.includes('trä')) score += 15;
@@ -952,6 +977,7 @@ function scoreBenchmarkCandidate(
       if (cat.includes('232') || desc.includes('balkongplatta')) score += 20;
       if (cat.includes('233') || desc.includes('balkongräcke')) score -= 10;
     } else {
+      if (cat.includes('230') || desc.includes('sammansatt')) score += 10;
       if (cat.includes('233') || desc.includes('balkongräcke')) score += 8;
       if (cat.includes('232') || desc.includes('balkongplatta')) score += 5;
     }
@@ -1042,20 +1068,20 @@ async function processCostItem(
     console.log(`[${item.originalDescription}] Candidates: ${candidates.length} (unit: ${item.unit})`);
 
     if (candidates.length === 0) {
-      // Check unit mismatch
+      // Instead of rejecting on unit mismatch, broaden to all units and let AI reason about it
       const candidatesNoUnit = filterBenchmarkCandidates(allBenchmarks, searchTerms, null);
       
       if (candidatesNoUnit.length > 0) {
         const expectedUnits = [...new Set(candidatesNoUnit.map(c => c.unit))];
-        noMatchResult.matchReasoning = `Unit mismatch detected`;
-        noMatchResult.aiComment = `Unit mismatch: Your item uses "${item.unit}" but matching benchmarks use "${expectedUnits.join('", "')}". Please convert your quantity to the correct unit (${expectedUnits[0]}).`;
-        console.log(`[${item.originalDescription}] → NO MATCH (unit mismatch: ${item.unit} vs ${expectedUnits.join(', ')})`);
+        console.log(`[${item.originalDescription}] Unit mismatch (${item.unit} vs ${expectedUnits.join(', ')}), broadening search to ${candidatesNoUnit.length} candidates`);
+        // Continue with these candidates — let the AI decide if it can still match
+        // by falling through to ranking and AI selection below
+        candidates.push(...candidatesNoUnit);
+      } else {
+        noMatchResult.matchReasoning = `No benchmarks found matching description`;
+        console.log(`[${item.originalDescription}] → NO MATCH (no candidates found)`);
         return noMatchResult;
       }
-      
-      noMatchResult.matchReasoning = `No benchmarks found matching description or compatible unit (${item.unit})`;
-      console.log(`[${item.originalDescription}] → NO MATCH (no candidates found)`);
-      return noMatchResult;
     }
 
     // Check percentage-only benchmarks
@@ -1132,12 +1158,12 @@ Select the BEST matching benchmark. Even partial matches (65-80% confidence) are
       return noMatchResult;
     }
 
-    // STEP 5: Calculate status
+    // STEP 5: Calculate status (±25% tolerance — construction estimates naturally vary)
     let status = 'ok';
     if (item.originalUnitPrice && benchmark.avg_price) {
       const variance = ((item.originalUnitPrice - benchmark.avg_price) / benchmark.avg_price) * 100;
-      if (variance < -15) status = 'underpriced';
-      else if (variance > 15) status = 'review';
+      if (variance < -25) status = 'underpriced';
+      else if (variance > 25) status = 'review';
     }
 
     const priceSource = `${benchmark.source || 'Benchmark'} - ${benchmark.category}: ${benchmark.description}`;
