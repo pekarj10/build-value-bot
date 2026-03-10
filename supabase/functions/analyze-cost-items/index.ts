@@ -1132,12 +1132,12 @@ Select the BEST matching benchmark. Even partial matches (65-80% confidence) are
       return noMatchResult;
     }
 
-    // STEP 5: Calculate status
+    // STEP 5: Calculate status (±25% tolerance — construction estimates naturally vary)
     let status = 'ok';
     if (item.originalUnitPrice && benchmark.avg_price) {
       const variance = ((item.originalUnitPrice - benchmark.avg_price) / benchmark.avg_price) * 100;
-      if (variance < -15) status = 'underpriced';
-      else if (variance > 15) status = 'review';
+      if (variance < -25) status = 'underpriced';
+      else if (variance > 25) status = 'review';
     }
 
     const priceSource = `${benchmark.source || 'Benchmark'} - ${benchmark.category}: ${benchmark.description}`;
