@@ -953,12 +953,21 @@ function scoreBenchmarkCandidate(
     if (desc.includes('byte')) score += 6;
   }
 
-  // Balcony heuristics - distinguish platta vs räcke
+  // Balcony heuristics - distinguish platta vs räcke vs full renovation (Sammansatt)
   if (/(balkong|balcony|räcke|railing)/.test(itemDescLower)) {
     const wantsRailing = /(räcke|railing|målning|painting|trä|wood)/.test(itemDescLower);
     const wantsStructural = /(platta|betong|concrete|structural|rost|rust)/.test(itemDescLower);
+    const wantsFullRenovation = /(renovering|renovation|renov)/.test(itemDescLower) && !wantsRailing && !wantsStructural;
     
-    if (wantsRailing) {
+    if (wantsFullRenovation) {
+      // "Balkongrenovering" without specific sub-scope → prefer Sammansatt (cat 230) composite benchmarks
+      if (cat.includes('230') || desc.includes('sammansatt')) score += 35;
+      if (desc.includes('renov')) score += 20;
+      if (desc.includes('utanpåliggande')) score += 10; // common default for external balconies
+      // Penalize component-level benchmarks for full renovation
+      if (cat.includes('233') || desc.includes('balkongräcke')) score -= 20;
+      if (cat.includes('232') && desc.includes('målning')) score -= 15;
+    } else if (wantsRailing) {
       if (cat.includes('233') || desc.includes('balkongräcke')) score += 25;
       if (cat.includes('225') || desc.includes('räcken')) score += 15;
       if (desc.includes('trä') && itemDescLower.includes('trä')) score += 15;
@@ -968,6 +977,7 @@ function scoreBenchmarkCandidate(
       if (cat.includes('232') || desc.includes('balkongplatta')) score += 20;
       if (cat.includes('233') || desc.includes('balkongräcke')) score -= 10;
     } else {
+      if (cat.includes('230') || desc.includes('sammansatt')) score += 10;
       if (cat.includes('233') || desc.includes('balkongräcke')) score += 8;
       if (cat.includes('232') || desc.includes('balkongplatta')) score += 5;
     }
