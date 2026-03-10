@@ -33,7 +33,7 @@ export function ProjectNotes({ projectId, initialNotes, onSave, lastUpdated }: P
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(lastUpdated || null);
   const editorRef = useRef<HTMLDivElement>(null);
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Auto-save every 5 seconds when there are changes
   const autoSave = useCallback(async () => {
