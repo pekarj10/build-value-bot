@@ -1042,20 +1042,20 @@ async function processCostItem(
     console.log(`[${item.originalDescription}] Candidates: ${candidates.length} (unit: ${item.unit})`);
 
     if (candidates.length === 0) {
-      // Check unit mismatch
+      // Instead of rejecting on unit mismatch, broaden to all units and let AI reason about it
       const candidatesNoUnit = filterBenchmarkCandidates(allBenchmarks, searchTerms, null);
       
       if (candidatesNoUnit.length > 0) {
         const expectedUnits = [...new Set(candidatesNoUnit.map(c => c.unit))];
-        noMatchResult.matchReasoning = `Unit mismatch detected`;
-        noMatchResult.aiComment = `Unit mismatch: Your item uses "${item.unit}" but matching benchmarks use "${expectedUnits.join('", "')}". Please convert your quantity to the correct unit (${expectedUnits[0]}).`;
-        console.log(`[${item.originalDescription}] → NO MATCH (unit mismatch: ${item.unit} vs ${expectedUnits.join(', ')})`);
+        console.log(`[${item.originalDescription}] Unit mismatch (${item.unit} vs ${expectedUnits.join(', ')}), broadening search to ${candidatesNoUnit.length} candidates`);
+        // Continue with these candidates — let the AI decide if it can still match
+        // by falling through to ranking and AI selection below
+        candidates.push(...candidatesNoUnit);
+      } else {
+        noMatchResult.matchReasoning = `No benchmarks found matching description`;
+        console.log(`[${item.originalDescription}] → NO MATCH (no candidates found)`);
         return noMatchResult;
       }
-      
-      noMatchResult.matchReasoning = `No benchmarks found matching description or compatible unit (${item.unit})`;
-      console.log(`[${item.originalDescription}] → NO MATCH (no candidates found)`);
-      return noMatchResult;
     }
 
     // Check percentage-only benchmarks
