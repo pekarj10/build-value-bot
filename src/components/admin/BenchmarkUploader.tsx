@@ -314,6 +314,12 @@ export function BenchmarkUploader({ onUploadComplete }: { onUploadComplete: () =
             <p className="text-muted-foreground mb-4">
               Successfully imported {parsedData?.rows.length} benchmark prices.
             </p>
+            {isGeneratingEmbeddings && (
+              <div className="flex items-center justify-center gap-2 mb-4 p-3 bg-primary/5 border border-primary/20 rounded-lg">
+                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                <span className="text-sm">Generating vector embeddings for new benchmarks...</span>
+              </div>
+            )}
             <Button onClick={reset}>Upload Another File</Button>
           </div>
         </CardContent>
