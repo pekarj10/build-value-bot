@@ -140,6 +140,7 @@ export type Database = {
           created_at: string
           currency: string
           description: string
+          embedding: string | null
           id: string
           max_price: number | null
           min_price: number | null
@@ -154,6 +155,7 @@ export type Database = {
           created_at?: string
           currency: string
           description: string
+          embedding?: string | null
           id?: string
           max_price?: number | null
           min_price?: number | null
@@ -168,6 +170,7 @@ export type Database = {
           created_at?: string
           currency?: string
           description?: string
+          embedding?: string | null
           id?: string
           max_price?: number | null
           min_price?: number | null
@@ -793,6 +796,21 @@ export type Database = {
       is_project_owner: {
         Args: { _project_id: string; _user_id: string }
         Returns: boolean
+      }
+      match_benchmarks_v2: {
+        Args: {
+          match_count: number
+          match_threshold: number
+          p_country: string
+          query_embedding: string
+        }
+        Returns: {
+          avg_price: number
+          description: string
+          id: string
+          similarity: number
+          unit: string
+        }[]
       }
     }
     Enums: {
