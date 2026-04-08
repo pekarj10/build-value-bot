@@ -2,14 +2,13 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 /**
- * DETERMINISTIC AI-POWERED PRICE RECALCULATION
+ * SEMANTIC VECTOR SEARCH + AI-POWERED PRICE RECALCULATION
  * 
- * Key reliability features:
- * 1. Temperature=0 for all AI calls (deterministic outputs)
- * 2. Sequential processing (no race conditions)
- * 3. Fixed seed for reproducibility
- * 4. Comprehensive error handling with retries
- * 5. All items processed in a single pass
+ * Flow per cost item:
+ * 1. Generate embedding for the item description via AI gateway
+ * 2. Call match_benchmarks_v2 RPC to get top 5 semantically similar benchmarks
+ * 3. Pass those 5 candidates into the AI prompt for final evaluation
+ * 4. Update cost item with the best match
  */
 
 const corsHeaders = {
@@ -17,44 +16,36 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// UNIFIED AI PROMPT - Single AI call for translation + search terms + matching
 const UNIFIED_MATCH_PROMPT = `You are a senior construction cost expert matching cost items to a benchmark database.
 
 YOUR TASK:
-1. TRANSLATE the cost item to Swedish construction terminology
-2. IDENTIFY the best matching benchmark from the candidates
-3. PROVIDE confidence score and reasoning
-
-SWEDISH CONSTRUCTION TERMINOLOGY (use these exact terms):
-- Carpets/flooring: textilgolv, nålfilt, heltäckningsmatta, golvmatta
-- Grass/landscaping: gräsytor, gräsmatta, omläggning gräsytor
-- Windows: fönster, fönsterbyte, 3-glas, treglasfönster
-- Doors: entrédörr, entréparti, ytterdörr, dörrbyte
-- Demolition: rivning, demontering
-- Insulation: isolering, tilläggsisolering, fasadisolering
-- Heat pump: värmepump, luft-vatten värmepump
-- Partitions: innervägg, mellanvägg, gipsväggar
+1. Evaluate the semantically matched benchmark candidates provided
+2. Select the BEST match based on scope of work, materials, and unit compatibility
+3. Provide confidence score and reasoning
 
 MATCHING RULES:
 - Match based on scope of work, materials, and activity type
 - Units must be compatible (m² matches m², st matches st, etc.)
 - Prefer exact semantic matches over partial matches
 - If multiple benchmarks could work, pick the most specific one
+- Consider quantity and size brackets when available
 
 CONFIDENCE SCORING:
-- 90-100%: Exact match (same work type, same materials)
+- 90-100%: Exact match (same work type, same materials, same unit)
 - 80-89%: Very close match (same work type, similar scope)
 - 70-79%: Good match (related work, compatible scope)
 - 50-69%: Partial match (only use if nothing better)
-- 0-49%: No suitable match
+- 0-49%: No suitable match — return null
 
-CRITICAL: Return EXACTLY this JSON format:
+PRICE-RANGE VALIDATION:
+If the user provides an original unit price, use it as a sanity check.
+If your best match differs by >5x from the original price, explain the discrepancy.
+
+CRITICAL: ALL responses must be in ENGLISH. Return EXACTLY this JSON format:
 {
-  "swedishTranslation": "the Swedish term for this work",
-  "searchTerms": ["term1", "term2", "term3"],
   "matchedBenchmarkId": "exact-uuid-or-null",
   "confidence": 85,
-  "reasoning": "Why this benchmark was selected"
+  "reasoning": "Why this benchmark was selected or why no match was found"
 }`;
 
 interface CostItem {
@@ -67,15 +58,12 @@ interface CostItem {
   project_id: string;
 }
 
-interface BenchmarkPrice {
+interface BenchmarkCandidate {
   id: string;
   description: string;
-  category: string;
-  unit: string;
-  min_price: number | null;
   avg_price: number;
-  max_price: number | null;
-  source: string | null;
+  unit: string;
+  similarity: number;
 }
 
 interface Project {
@@ -83,6 +71,7 @@ interface Project {
   country: string;
   currency: string;
   project_type: string;
+  name: string;
 }
 
 interface ProcessingResult {
@@ -122,20 +111,58 @@ function unitsCompatible(a: string, b: string): boolean {
 }
 
 /**
- * DETERMINISTIC AI CALL
- * - Temperature = 0 for consistent outputs
- * - Seed = 42 for reproducibility
- * - JSON mode for structured responses
- * - Retry logic for reliability
+ * GENERATE EMBEDDING via Lovable AI Gateway (OpenAI-compatible embeddings endpoint)
+ */
+async function generateEmbedding(apiKey: string, text: string, maxRetries = 2): Promise<number[]> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch("https://ai.gateway.lovable.dev/v1/embeddings", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "openai/text-embedding-3-small",
+          input: text,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Embedding error ${response.status}: ${errorText}`);
+      }
+
+      const data = await response.json();
+      const embedding = data?.data?.[0]?.embedding;
+      if (!embedding || !Array.isArray(embedding)) {
+        throw new Error("Invalid embedding response format");
+      }
+      return embedding;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      console.warn(`Embedding attempt ${attempt + 1} failed:`, lastError.message);
+      if (attempt < maxRetries) {
+        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+      }
+    }
+  }
+  throw lastError || new Error("Embedding generation failed after retries");
+}
+
+/**
+ * DETERMINISTIC AI CALL for final match evaluation
  */
 async function callAIDeterministic(
-  apiKey: string, 
-  systemPrompt: string, 
+  apiKey: string,
+  systemPrompt: string,
   userPrompt: string,
-  maxRetries: number = 2
+  maxRetries = 2
 ): Promise<any> {
   let lastError: Error | null = null;
-  
+
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -150,8 +177,8 @@ async function callAIDeterministic(
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt },
           ],
-          temperature: 0, // CRITICAL: Deterministic output
-          seed: 42, // CRITICAL: Reproducible results
+          temperature: 0,
+          seed: 42,
           response_format: { type: "json_object" },
         }),
       });
@@ -164,73 +191,45 @@ async function callAIDeterministic(
       const data = await response.json();
       const content = data.choices?.[0]?.message?.content;
       if (!content) throw new Error("Empty AI response");
-      
       return JSON.parse(content);
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
       console.warn(`AI call attempt ${attempt + 1} failed:`, lastError.message);
-      
       if (attempt < maxRetries) {
-        // Exponential backoff: 1s, 2s, 4s
         await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
       }
     }
   }
-  
   throw lastError || new Error("AI call failed after retries");
 }
 
 /**
- * COMPREHENSIVE BENCHMARK SEARCH
- * Searches both description and category columns with multiple terms
+ * SEMANTIC SEARCH via match_benchmarks_v2 RPC
  */
-async function searchBenchmarks(
+async function searchBenchmarksSemantic(
   supabase: any,
-  searchTerms: string[],
+  embedding: number[],
   dbCountry: string,
-  currency: string
-): Promise<BenchmarkPrice[]> {
-  const candidates: BenchmarkPrice[] = [];
-  const seenIds = new Set<string>();
+  matchCount = 5,
+  matchThreshold = 0.3
+): Promise<BenchmarkCandidate[]> {
+  const { data, error } = await supabase.rpc('match_benchmarks_v2', {
+    query_embedding: JSON.stringify(embedding),
+    match_threshold: matchThreshold,
+    match_count: matchCount,
+    p_country: dbCountry,
+  });
 
-  for (const term of searchTerms) {
-    if (!term || term.trim().length < 2) continue;
-    
-    const searchPattern = `%${term.trim()}%`;
-    
-    // Search in description
-    const { data: descMatches } = await supabase
-      .from('benchmark_prices')
-      .select('id, description, category, unit, min_price, avg_price, max_price, source')
-      .eq('country', dbCountry)
-      .eq('currency', currency)
-      .ilike('description', searchPattern)
-      .limit(30);
-
-    // Search in category
-    const { data: catMatches } = await supabase
-      .from('benchmark_prices')
-      .select('id, description, category, unit, min_price, avg_price, max_price, source')
-      .eq('country', dbCountry)
-      .eq('currency', currency)
-      .ilike('category', searchPattern)
-      .limit(30);
-
-    // Deduplicate and add to candidates
-    for (const match of [...(descMatches || []), ...(catMatches || [])]) {
-      if (!seenIds.has(match.id)) {
-        seenIds.add(match.id);
-        candidates.push(match);
-      }
-    }
+  if (error) {
+    console.error('match_benchmarks_v2 error:', error);
+    return [];
   }
 
-  return candidates;
+  return (data || []) as BenchmarkCandidate[];
 }
 
 /**
- * PROCESS SINGLE COST ITEM
- * Single AI call for translation + matching (reduces variability)
+ * PROCESS SINGLE COST ITEM with semantic vector search
  */
 async function processCostItem(
   supabase: any,
@@ -250,30 +249,32 @@ async function processCostItem(
   };
 
   try {
-    // STEP 1: Get initial Swedish search terms (deterministic)
-    const initialTerms = generateInitialSearchTerms(item.original_description);
-    console.log(`[${item.original_description}] Initial search terms: ${initialTerms.join(', ')}`);
+    // STEP 1: Generate embedding for the cost item description
+    const embeddingText = `${item.original_description} ${item.unit} ${item.quantity}`;
+    console.log(`[${item.original_description}] Generating embedding...`);
+    const embedding = await generateEmbedding(apiKey, embeddingText);
+    console.log(`[${item.original_description}] Embedding generated (${embedding.length} dims)`);
 
-    // STEP 2: Search benchmarks with initial terms
-    let candidates = await searchBenchmarks(supabase, initialTerms, dbCountry, project.currency);
-    console.log(`[${item.original_description}] Found ${candidates.length} initial candidates`);
+    // STEP 2: Semantic search via match_benchmarks_v2
+    const candidates = await searchBenchmarksSemantic(supabase, embedding, dbCountry, 5, 0.25);
+    console.log(`[${item.original_description}] Semantic matches: ${candidates.length}`);
 
-    // STEP 3: Filter by compatible units
-    const unitCompatible = candidates.filter(b => unitsCompatible(item.unit, b.unit));
-    console.log(`[${item.original_description}] Unit-compatible: ${unitCompatible.length} (item unit: ${item.unit})`);
-
-    if (unitCompatible.length === 0) {
-      // No unit-compatible matches - set to clarification
-      await updateCostItemNoMatch(supabase, item, `No benchmarks with compatible unit (${item.unit})`);
+    if (candidates.length === 0) {
+      await updateCostItemNoMatch(supabase, item, "No semantically similar benchmarks found");
       result.status = 'no_match';
-      result.reasoning = `No benchmarks with unit ${item.unit}`;
-      console.log(`[${item.original_description}] → NO MATCH (no compatible units)`);
+      result.reasoning = "No semantic matches above threshold";
+      console.log(`[${item.original_description}] → NO MATCH (no semantic candidates)`);
       return result;
     }
 
-    // STEP 4: AI selects best match (single deterministic call)
-    const candidateList = unitCompatible.slice(0, 20).map(b => 
-      `ID: ${b.id}\nCategory: ${b.category}\nDescription: ${b.description}\nUnit: ${b.unit}\nPrice: ${b.avg_price}`
+    // Log candidates for debugging
+    for (const c of candidates) {
+      console.log(`  → ${c.description} | ${c.unit} | ${c.avg_price} | sim=${c.similarity.toFixed(3)}`);
+    }
+
+    // STEP 3: AI evaluates the semantic candidates
+    const candidateList = candidates.map(b =>
+      `ID: ${b.id}\nDescription: ${b.description}\nUnit: ${b.unit}\nAvg Price: ${b.avg_price}\nSemantic Similarity: ${(b.similarity * 100).toFixed(1)}%`
     ).join('\n\n');
 
     const aiResult = await callAIDeterministic(
@@ -283,10 +284,11 @@ async function processCostItem(
 Description: "${item.original_description}"
 Unit: ${item.unit}
 Quantity: ${item.quantity}
+${item.original_unit_price ? `Original Unit Price: ${item.original_unit_price}` : ''}
 Project Country: ${project.country}
 Project Type: ${project.project_type || 'renovation'}
 
-AVAILABLE BENCHMARKS (already filtered to ${project.country}):
+TOP 5 SEMANTICALLY SIMILAR BENCHMARKS (from vector search):
 ${candidateList}
 
 Select the BEST matching benchmark or return null if none are suitable.`
@@ -298,7 +300,7 @@ Select the BEST matching benchmark or return null if none are suitable.`
     const confidence = aiResult.confidence || 0;
     const reasoning = aiResult.reasoning || "";
 
-    // STEP 5: Validate and apply match
+    // STEP 4: Validate and apply match
     if (!matchedId || matchedId === 'null' || confidence < 50) {
       await updateCostItemNoMatch(supabase, item, reasoning || "No confident match found");
       result.status = 'no_match';
@@ -308,7 +310,7 @@ Select the BEST matching benchmark or return null if none are suitable.`
       return result;
     }
 
-    const benchmark = unitCompatible.find(b => b.id === matchedId);
+    const benchmark = candidates.find(b => b.id === matchedId);
     if (!benchmark) {
       console.warn(`[${item.original_description}] Invalid benchmark ID returned: ${matchedId}`);
       await updateCostItemNoMatch(supabase, item, "AI returned invalid benchmark ID");
@@ -316,30 +318,39 @@ Select the BEST matching benchmark or return null if none are suitable.`
       return result;
     }
 
+    // STEP 5: Fetch full benchmark details for min/max prices
+    const { data: fullBenchmark } = await supabase
+      .from('benchmark_prices')
+      .select('id, description, category, unit, min_price, avg_price, max_price, source')
+      .eq('id', benchmark.id)
+      .single();
+
+    const bm = fullBenchmark || benchmark;
+
     // STEP 6: Calculate status based on price variance
     let status = 'ok';
-    if (item.original_unit_price && benchmark.avg_price) {
-      const variance = ((item.original_unit_price - benchmark.avg_price) / benchmark.avg_price) * 100;
+    if (item.original_unit_price && bm.avg_price) {
+      const variance = ((item.original_unit_price - bm.avg_price) / bm.avg_price) * 100;
       if (variance < -15) status = 'underpriced';
       else if (variance > 15) status = 'review';
     }
 
-    const priceSource = `${benchmark.source || 'Benchmark'} - ${benchmark.category}: ${benchmark.description}`;
+    const priceSource = `${fullBenchmark?.source || 'Benchmark'} - ${fullBenchmark?.category || ''}: ${bm.description}`;
 
-    // STEP 7: Update cost item with match
+    // STEP 7: Update cost item
     const { error: updateError } = await supabase
       .from('cost_items')
       .update({
-        matched_benchmark_id: benchmark.id,
+        matched_benchmark_id: bm.id,
         match_confidence: confidence,
         match_reasoning: reasoning,
-        recommended_unit_price: benchmark.avg_price,
-        benchmark_min: benchmark.min_price || benchmark.avg_price * 0.85,
-        benchmark_typical: benchmark.avg_price,
-        benchmark_max: benchmark.max_price || benchmark.avg_price * 1.15,
+        recommended_unit_price: bm.avg_price,
+        benchmark_min: fullBenchmark?.min_price || bm.avg_price * 0.85,
+        benchmark_typical: bm.avg_price,
+        benchmark_max: fullBenchmark?.max_price || bm.avg_price * 1.15,
         price_source: priceSource,
-        status: status,
-        ai_comment: `Matched to ${benchmark.description} (${confidence}% confidence). ${reasoning}`,
+        status,
+        ai_comment: `Matched to ${bm.description} (${confidence}% confidence, ${(benchmark.similarity * 100).toFixed(0)}% semantic similarity). ${reasoning}`,
       })
       .eq('id', item.id);
 
@@ -349,13 +360,13 @@ Select the BEST matching benchmark or return null if none are suitable.`
       return result;
     }
 
-    result.newPrice = benchmark.avg_price;
+    result.newPrice = bm.avg_price;
     result.priceSource = priceSource;
     result.confidence = confidence;
     result.status = 'matched';
     result.reasoning = reasoning;
 
-    console.log(`[${item.original_description}] → MATCHED: ${benchmark.avg_price} SEK (${confidence}% confidence)`);
+    console.log(`[${item.original_description}] → MATCHED: ${bm.avg_price} (${confidence}% confidence, ${(benchmark.similarity * 100).toFixed(0)}% similarity)`);
     return result;
 
   } catch (error) {
@@ -364,81 +375,6 @@ Select the BEST matching benchmark or return null if none are suitable.`
     result.reasoning = error instanceof Error ? error.message : "Unknown error";
     return result;
   }
-}
-
-/**
- * GENERATE INITIAL SEARCH TERMS
- * Deterministic English-to-Swedish translation for common construction terms
- */
-function generateInitialSearchTerms(description: string): string[] {
-  const terms: string[] = [description.toLowerCase()];
-  const desc = description.toLowerCase();
-
-  // Comprehensive English-Swedish mapping
-  const translations: Record<string, string[]> = {
-    // Flooring
-    'carpet': ['textilgolv', 'nålfilt', 'heltäckningsmatta', 'golvmatta', 'matta'],
-    'floor': ['golv', 'golvläggning', 'golvarbeten'],
-    'tile': ['kakel', 'klinker', 'plattor'],
-    'parquet': ['parkett', 'trägolv'],
-    'vinyl': ['vinyl', 'plastmatta'],
-    
-    // Exterior
-    'grass': ['gräsytor', 'gräsmatta', 'gräs', 'omläggning gräsytor'],
-    'lawn': ['gräsytor', 'gräsmatta'],
-    'garden': ['trädgård', 'utemiljö'],
-    'facade': ['fasad', 'puts', 'fasadrenovering'],
-    'roof': ['tak', 'takläggning', 'taktäckning'],
-    'insulation': ['isolering', 'tilläggsisolering', 'fasadisolering'],
-    'polystyrene': ['polystyren', 'cellplast', 'EPS'],
-    
-    // Windows & Doors
-    'window': ['fönster', 'fönsterbyte', 'fönstermontering'],
-    'double glazed': ['2-glas', 'tvåglas'],
-    'triple glazed': ['3-glas', 'treglas', 'treglasfönster'],
-    'triple': ['3-glas', 'treglas'],
-    'door': ['dörr', 'dörrmontering'],
-    'entrance': ['entré', 'entrédörr', 'entréparti', 'ytterdörr'],
-    
-    // Demolition & Construction
-    'demolition': ['rivning', 'demontering', 'rivningsarbeten'],
-    'partition': ['innervägg', 'mellanvägg', 'gipsväggar', 'rumsavskiljare'],
-    'internal': ['inner', 'invändig'],
-    'wall': ['vägg', 'väggar'],
-    
-    // Systems
-    'heat pump': ['värmepump', 'luft-vatten', 'bergvärme'],
-    'air to water': ['luft-vatten', 'luft/vatten'],
-    'heating': ['värme', 'uppvärmning', 'värmesystem'],
-    'ventilation': ['ventilation', 'fläkt', 'ventilationsaggregat'],
-    'plumbing': ['VVS', 'rör', 'rörarbeten'],
-    'electrical': ['el', 'elinstallation', 'elarbeten'],
-    
-    // Actions
-    'replacement': ['byte', 'utbyte'],
-    'renovation': ['renovering', 'ombyggnad'],
-    'installation': ['installation', 'montering'],
-    'repair': ['reparation', 'lagning'],
-    'new': ['ny', 'nytt', 'nyinstallation'],
-  };
-
-  // Add Swedish translations for matching English terms
-  for (const [eng, swe] of Object.entries(translations)) {
-    if (desc.includes(eng)) {
-      terms.push(...swe);
-    }
-  }
-
-  // Extract individual words and translate them too
-  const words = desc.split(/\s+/);
-  for (const word of words) {
-    if (translations[word]) {
-      terms.push(...translations[word]);
-    }
-  }
-
-  // Remove duplicates and empty strings
-  return [...new Set(terms.filter(t => t && t.trim().length >= 2))];
 }
 
 /**
@@ -473,7 +409,7 @@ serve(async (req) => {
 
   const startTime = Date.now();
   console.log("=".repeat(60));
-  console.log("DETERMINISTIC PRICE RECALCULATION - STARTING");
+  console.log("SEMANTIC VECTOR SEARCH PRICE RECALCULATION - STARTING");
   console.log("=".repeat(60));
 
   try {
@@ -497,7 +433,7 @@ serve(async (req) => {
     // Check admin
     const token = authHeader.replace("Bearer ", "");
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    
+
     if (authError || !user) {
       return new Response(
         JSON.stringify({ error: "Invalid authorization" }),
@@ -513,7 +449,7 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Admin ${user.id} initiating deterministic price recalculation`);
+    console.log(`Admin ${user.id} initiating semantic price recalculation`);
 
     const body = await req.json().catch(() => ({}));
     const projectId = body.projectId;
@@ -540,20 +476,20 @@ serve(async (req) => {
       projectsSummary: [] as { projectId: string; projectName: string; itemsProcessed: number; itemsMatched: number }[],
     };
 
-    // PROCESS EACH PROJECT SEQUENTIALLY (deterministic order)
-    for (const project of (projects || []).sort((a, b) => a.id.localeCompare(b.id))) {
+    // PROCESS EACH PROJECT SEQUENTIALLY
+    for (const project of (projects || []).sort((a: Project, b: Project) => a.id.localeCompare(b.id))) {
       const dbCountry = mapCountryToDb(project.country);
       console.log(`\n${"=".repeat(40)}`);
       console.log(`PROJECT: ${project.name} (${project.id})`);
       console.log(`Country: ${project.country} → ${dbCountry}`);
       console.log(`${"=".repeat(40)}`);
-      
-      // Fetch cost items (ordered by ID for determinism)
+
+      // Fetch cost items
       const { data: costItems, error: itemsError } = await supabase
         .from('cost_items')
         .select('id, original_description, quantity, unit, original_unit_price, recommended_unit_price, project_id')
         .eq('project_id', project.id)
-        .order('id', { ascending: true }); // CRITICAL: Deterministic ordering
+        .order('id', { ascending: true });
 
       if (itemsError || !costItems?.length) {
         console.log(`No items for project ${project.id}`);
@@ -564,16 +500,15 @@ serve(async (req) => {
 
       let projectMatched = 0;
 
-      // PROCESS EACH ITEM SEQUENTIALLY (no parallelism = no race conditions)
       for (let i = 0; i < costItems.length; i++) {
         const item = costItems[i];
         console.log(`\n[${i + 1}/${costItems.length}] Processing: "${item.original_description}"`);
-        
+
         const itemResult = await processCostItem(supabase, LOVABLE_API_KEY, item, project, dbCountry);
-        
+
         results.processed++;
         results.changes.push(itemResult);
-        
+
         if (itemResult.status === 'matched') {
           results.matched++;
           projectMatched++;
@@ -583,7 +518,7 @@ serve(async (req) => {
           results.noMatch++;
         }
 
-        // Rate limiting between items (consistent timing)
+        // Rate limiting between items
         await new Promise(r => setTimeout(r, 300));
       }
 
@@ -596,7 +531,7 @@ serve(async (req) => {
     }
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-    
+
     console.log("\n" + "=".repeat(60));
     console.log("RECALCULATION COMPLETE");
     console.log("=".repeat(60));
