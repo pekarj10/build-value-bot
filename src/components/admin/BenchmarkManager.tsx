@@ -377,11 +377,13 @@ export function BenchmarkManager() {
 
       while (remaining > 0) {
         const response = await supabase.functions.invoke('generate-benchmarks-embeddings', {
-          body: { batchSize: 50, maxItems: 500 },
+          body: {},
         });
 
         if (response.error) {
-          throw new Error(response.error.message || 'Failed to generate embeddings');
+          // Try to extract specific error from response data
+          const errorDetail = response.error.message || 'Failed to generate embeddings';
+          throw new Error(errorDetail);
         }
 
         const result = response.data;
@@ -394,12 +396,23 @@ export function BenchmarkManager() {
         });
 
         if (result.errors > 0) {
-          toast.warning(`${result.errors} embeddings failed in this batch`);
+          const errorDetail = result.errorMessages?.length
+            ? result.errorMessages[0]
+            : `${result.errors} embeddings failed`;
+          toast.warning(errorDetail);
+          
+          // If rate limited, pause before retrying
+          if (errorDetail.includes('429') || errorDetail.includes('rate')) {
+            toast.info('Rate limited — waiting 10s before retrying...');
+            await new Promise(r => setTimeout(r, 10000));
+          }
         }
 
         // If still remaining, continue the loop
         if (remaining > 0) {
           console.log(`${remaining} embeddings remaining, continuing...`);
+          // Small pause between invocations
+          await new Promise(r => setTimeout(r, 2000));
         }
       }
 
