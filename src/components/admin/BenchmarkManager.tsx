@@ -37,6 +37,7 @@ import { BenchmarkUploader } from './BenchmarkUploader';
 import { BenchmarkCsvImporter } from './BenchmarkCsvImporter';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { Progress } from '@/components/ui/progress';
 import { 
   Search, 
   Trash2, 
@@ -47,7 +48,8 @@ import {
   Copy,
   AlertTriangle,
   Loader2,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Sparkles
 } from 'lucide-react';
 
 interface BenchmarkPrice {
@@ -83,6 +85,8 @@ export function BenchmarkManager() {
   const [showDuplicates, setShowDuplicates] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isGeneratingEmbeddings, setIsGeneratingEmbeddings] = useState(false);
+  const [embeddingProgress, setEmbeddingProgress] = useState<{ processed: number; total: number } | null>(null);
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
