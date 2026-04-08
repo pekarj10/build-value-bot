@@ -357,15 +357,26 @@ export function BenchmarkManager() {
     URL.revokeObjectURL(url);
   };
 
-  // Filter benchmarks
-  const filteredBenchmarks = benchmarks.filter((b) => {
-    const matchesSearch =
-      b.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      b.category.toLowerCase().includes(searchQuery.toLowerCase());
+  // Pre-filter by dropdown filters
+  const dropdownFiltered = useMemo(() => benchmarks.filter((b) => {
     const matchesCountry = countryFilter === 'all' || b.country === countryFilter;
     const matchesCategory = categoryFilter === 'all' || b.category === categoryFilter;
-    return matchesSearch && matchesCountry && matchesCategory;
-  });
+    return matchesCountry && matchesCategory;
+  }), [benchmarks, countryFilter, categoryFilter]);
+
+  // Fuse.js instance for fuzzy search
+  const fuse = useMemo(() => new Fuse(dropdownFiltered, {
+    keys: ['description', 'category'],
+    threshold: 0.4,
+    ignoreLocation: true,
+    minMatchCharLength: 2,
+  }), [dropdownFiltered]);
+
+  // Filter benchmarks with fuzzy search
+  const filteredBenchmarks = useMemo(() => {
+    if (!searchQuery.trim()) return dropdownFiltered;
+    return fuse.search(searchQuery).map((r) => r.item);
+  }, [searchQuery, fuse, dropdownFiltered]);
 
   // Paginate
   const paginatedBenchmarks = filteredBenchmarks.slice(
