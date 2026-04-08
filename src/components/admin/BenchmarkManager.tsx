@@ -373,46 +373,39 @@ export function BenchmarkManager() {
       }
 
       let totalProcessed = 0;
-      let remaining = 1; // Start loop
+      let remaining = 1;
+      let totalKnown = 0;
 
       while (remaining > 0) {
         const response = await supabase.functions.invoke('generate-benchmarks-embeddings', {
           body: {},
         });
 
+        const result = response.data as {
+          processed?: number;
+          remaining?: number;
+          total?: number;
+          errors?: number;
+          errorMessages?: string[];
+          error?: string;
+        } | null;
+
         if (response.error) {
-          // Try to extract specific error from response data
-          const errorDetail = response.error.message || 'Failed to generate embeddings';
+          const errorDetail = result?.error || response.error.message || 'Failed to generate embeddings';
           throw new Error(errorDetail);
         }
 
-        const result = response.data;
-        totalProcessed += result.processed || 0;
-        remaining = result.remaining || 0;
+        totalProcessed += result?.processed || 0;
+        remaining = result?.remaining || 0;
+        totalKnown = result?.total || Math.max(totalKnown, totalProcessed + remaining);
 
         setEmbeddingProgress({
           processed: totalProcessed,
-          total: totalProcessed + remaining,
+          total: totalKnown,
         });
 
-        if (result.errors > 0) {
-          const errorDetail = result.errorMessages?.length
-            ? result.errorMessages[0]
-            : `${result.errors} embeddings failed`;
-          toast.warning(errorDetail);
-          
-          // If rate limited, pause before retrying
-          if (errorDetail.includes('429') || errorDetail.includes('rate')) {
-            toast.info('Rate limited — waiting 10s before retrying...');
-            await new Promise(r => setTimeout(r, 10000));
-          }
-        }
-
-        // If still remaining, continue the loop
-        if (remaining > 0) {
-          console.log(`${remaining} embeddings remaining, continuing...`);
-          // Small pause between invocations
-          await new Promise(r => setTimeout(r, 2000));
+        if ((result?.errors || 0) > 0) {
+          toast.warning(result?.errorMessages?.[0] || `${result?.errors} embeddings failed`);
         }
       }
 
