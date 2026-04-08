@@ -6,48 +6,34 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-/**
- * Generate embeddings for benchmark_prices rows that have NULL embedding.
- * Processes in batches, returns progress info.
- */
+const BATCH_SIZE = 10;
+const MAX_ITEMS = 50;
+const DELAY_MS = 400;
 
-async function generateEmbedding(apiKey: string, text: string, maxRetries = 2): Promise<number[]> {
-  let lastError: Error | null = null;
+async function generateEmbedding(apiKey: string, text: string): Promise<number[]> {
+  const response = await fetch("https://ai.gateway.lovable.dev/v1/embeddings", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "openai/text-embedding-3-small",
+      input: text,
+    }),
+  });
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/embeddings", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "openai/text-embedding-3-small",
-          input: text,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Embedding error ${response.status}: ${errorText}`);
-      }
-
-      const data = await response.json();
-      const embedding = data?.data?.[0]?.embedding;
-      if (!embedding || !Array.isArray(embedding)) {
-        throw new Error("Invalid embedding response format");
-      }
-      return embedding;
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-      console.warn(`Embedding attempt ${attempt + 1} failed:`, lastError.message);
-      if (attempt < maxRetries) {
-        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
-      }
-    }
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Embedding API ${response.status}: ${errorText}`);
   }
-  throw lastError || new Error("Embedding generation failed after retries");
+
+  const data = await response.json();
+  const embedding = data?.data?.[0]?.embedding;
+  if (!embedding || !Array.isArray(embedding)) {
+    throw new Error("Invalid embedding response format");
+  }
+  return embedding;
 }
 
 serve(async (req) => {
@@ -91,18 +77,13 @@ serve(async (req) => {
       );
     }
 
-    // Parse optional batch parameters
-    const body = await req.json().catch(() => ({}));
-    const batchSize = body.batchSize || 50;
-    const maxItems = body.maxItems || 500; // Process up to 500 per call to stay within function timeout
-
     // Fetch benchmarks with NULL embedding
     const { data: benchmarks, error: fetchError } = await supabase
       .from('benchmark_prices')
       .select('id, description, unit, category')
       .is('embedding', null)
       .order('id', { ascending: true })
-      .limit(maxItems);
+      .limit(MAX_ITEMS);
 
     if (fetchError) {
       throw new Error(`Failed to fetch benchmarks: ${fetchError.message}`);
@@ -110,12 +91,12 @@ serve(async (req) => {
 
     if (!benchmarks || benchmarks.length === 0) {
       return new Response(
-        JSON.stringify({ processed: 0, total: 0, remaining: 0, message: "All benchmarks already have embeddings" }),
+        JSON.stringify({ processed: 0, total: 0, remaining: 0, errors: 0, message: "All benchmarks already have embeddings" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Count total remaining (including beyond maxItems)
+    // Count total remaining
     const { count: totalMissing } = await supabase
       .from('benchmark_prices')
       .select('id', { count: 'exact', head: true })
@@ -125,45 +106,39 @@ serve(async (req) => {
 
     let processed = 0;
     let errors = 0;
+    const errorMessages: string[] = [];
 
-    // Process in batches
-    for (let i = 0; i < benchmarks.length; i += batchSize) {
-      const batch = benchmarks.slice(i, i + batchSize);
+    // Process one at a time with delay
+    for (const bm of benchmarks) {
+      try {
+        const text = `${bm.description} ${bm.unit}`;
+        const embedding = await generateEmbedding(LOVABLE_API_KEY, text);
 
-      // Generate embeddings in parallel within each batch
-      const results = await Promise.allSettled(
-        batch.map(async (bm) => {
-          const text = `${bm.description} ${bm.unit}`;
-          const embedding = await generateEmbedding(LOVABLE_API_KEY, text);
+        const { error: updateError } = await supabase
+          .from('benchmark_prices')
+          .update({ embedding: JSON.stringify(embedding) })
+          .eq('id', bm.id);
 
-          const { error: updateError } = await supabase
-            .from('benchmark_prices')
-            .update({ embedding: JSON.stringify(embedding) })
-            .eq('id', bm.id);
+        if (updateError) {
+          throw new Error(`DB update failed for ${bm.id}: ${updateError.message}`);
+        }
 
-          if (updateError) {
-            throw new Error(`Update failed for ${bm.id}: ${updateError.message}`);
-          }
+        processed++;
+      } catch (error) {
+        errors++;
+        const msg = error instanceof Error ? error.message : String(error);
+        errorMessages.push(msg);
+        console.error(`Embedding error for ${bm.id}:`, msg);
 
-          return bm.id;
-        })
-      );
-
-      for (const r of results) {
-        if (r.status === 'fulfilled') {
-          processed++;
-        } else {
-          errors++;
-          console.error('Embedding error:', r.reason);
+        // If we get a rate limit error, stop processing
+        if (msg.includes('429') || msg.includes('rate')) {
+          console.warn('Rate limited, stopping batch early');
+          break;
         }
       }
 
-      console.log(`Progress: ${processed + errors}/${benchmarks.length} (${processed} ok, ${errors} errors)`);
-
-      // Rate limit between batches
-      if (i + batchSize < benchmarks.length) {
-        await new Promise(r => setTimeout(r, 500));
-      }
+      // Mandatory delay between calls
+      await new Promise(r => setTimeout(r, DELAY_MS));
     }
 
     const remaining = (totalMissing || 0) - processed;
@@ -176,6 +151,7 @@ serve(async (req) => {
         errors,
         total: totalMissing || 0,
         remaining: Math.max(0, remaining),
+        errorMessages: errorMessages.slice(0, 5), // Return first 5 error messages
         message: remaining > 0
           ? `Processed ${processed} embeddings. ${remaining} still remaining — run again to continue.`
           : `All ${processed} embeddings generated successfully.`,
@@ -184,9 +160,10 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error("generate-benchmarks-embeddings error:", error);
+    const msg = error instanceof Error ? error.message : "Failed to generate embeddings";
+    console.error("generate-benchmarks-embeddings error:", msg);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Failed to generate embeddings" }),
+      JSON.stringify({ error: msg, processed: 0, errors: 1 }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
