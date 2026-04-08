@@ -361,6 +361,58 @@ export function BenchmarkManager() {
     URL.revokeObjectURL(url);
   };
 
+  const handleGenerateEmbeddings = async () => {
+    setIsGeneratingEmbeddings(true);
+    setEmbeddingProgress(null);
+    
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error('You must be logged in');
+        return;
+      }
+
+      let totalProcessed = 0;
+      let remaining = 1; // Start loop
+
+      while (remaining > 0) {
+        const response = await supabase.functions.invoke('generate-benchmarks-embeddings', {
+          body: { batchSize: 50, maxItems: 500 },
+        });
+
+        if (response.error) {
+          throw new Error(response.error.message || 'Failed to generate embeddings');
+        }
+
+        const result = response.data;
+        totalProcessed += result.processed || 0;
+        remaining = result.remaining || 0;
+
+        setEmbeddingProgress({
+          processed: totalProcessed,
+          total: totalProcessed + remaining,
+        });
+
+        if (result.errors > 0) {
+          toast.warning(`${result.errors} embeddings failed in this batch`);
+        }
+
+        // If still remaining, continue the loop
+        if (remaining > 0) {
+          console.log(`${remaining} embeddings remaining, continuing...`);
+        }
+      }
+
+      toast.success(`Generated embeddings for ${totalProcessed} benchmarks`);
+    } catch (error) {
+      console.error('Embedding generation error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to generate embeddings');
+    } finally {
+      setIsGeneratingEmbeddings(false);
+      setEmbeddingProgress(null);
+    }
+  };
+
   // Pre-filter by dropdown filters
   const dropdownFiltered = useMemo(() => benchmarks.filter((b) => {
     const matchesCountry = countryFilter === 'all' || b.country === countryFilter;
