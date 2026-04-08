@@ -86,7 +86,28 @@ export function BenchmarkUploader({ onUploadComplete }: { onUploadComplete: () =
   const [columnMapping, setColumnMapping] = useState<ColumnMapping>(DEFAULT_MAPPING);
   const [parsedData, setParsedData] = useState<ParsedData | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isGeneratingEmbeddings, setIsGeneratingEmbeddings] = useState(false);
   const [step, setStep] = useState<'upload' | 'map' | 'preview' | 'complete'>('upload');
+
+  const triggerEmbeddingGeneration = async () => {
+    setIsGeneratingEmbeddings(true);
+    try {
+      const response = await supabase.functions.invoke('generate-benchmarks-embeddings', {
+        body: { batchSize: 50, maxItems: 1000 },
+      });
+      if (response.error) {
+        console.error('Embedding generation error:', response.error);
+        toast.warning('Imported successfully but embedding generation failed. Use "Generate Missing Embeddings" button later.');
+      } else {
+        const data = response.data;
+        toast.success(`Generated embeddings for ${data.processed} new benchmarks`);
+      }
+    } catch (err) {
+      console.error('Embedding generation error:', err);
+    } finally {
+      setIsGeneratingEmbeddings(false);
+    }
+  };
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const csvFile = acceptedFiles[0];
@@ -246,6 +267,8 @@ export function BenchmarkUploader({ onUploadComplete }: { onUploadComplete: () =
 
       toast.success(`Successfully imported ${insertedCount} benchmark prices`);
       setStep('complete');
+      // Trigger embedding generation for newly imported benchmarks
+      triggerEmbeddingGeneration();
       onUploadComplete();
     } catch (error) {
       console.error('Error uploading benchmarks:', error);
