@@ -659,6 +659,26 @@ export function BenchmarkManager() {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Embedding generation progress */}
+        {isGeneratingEmbeddings && embeddingProgress && (
+          <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="font-medium flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Generating embeddings...
+              </span>
+              <span className="text-muted-foreground">
+                {embeddingProgress.processed} / {embeddingProgress.total}
+              </span>
+            </div>
+            <Progress
+              value={embeddingProgress.total > 0
+                ? (embeddingProgress.processed / embeddingProgress.total) * 100
+                : 0}
+            />
+          </div>
+        )}
+
         {/* Filters */}
         <div className="flex flex-wrap gap-3">
           <div className="relative flex-1 min-w-[200px]">
