@@ -129,6 +129,27 @@ export function BenchmarkCsvImporter() {
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [previewRows, setPreviewRows] = useState<CsvRow[]>([]);
+  const [isGeneratingEmbeddings, setIsGeneratingEmbeddings] = useState(false);
+
+  const triggerEmbeddingGeneration = async () => {
+    setIsGeneratingEmbeddings(true);
+    try {
+      const response = await supabase.functions.invoke('generate-benchmarks-embeddings', {
+        body: { batchSize: 50, maxItems: 1000 },
+      });
+      if (response.error) {
+        console.error('Embedding generation error:', response.error);
+        toast.warning('Imported successfully but embedding generation failed. Use "Generate Missing Embeddings" button later.');
+      } else {
+        const data = response.data;
+        toast.success(`Generated embeddings for ${data.processed} new benchmarks`);
+      }
+    } catch (err) {
+      console.error('Embedding generation error:', err);
+    } finally {
+      setIsGeneratingEmbeddings(false);
+    }
+  };
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
@@ -318,6 +339,8 @@ export function BenchmarkCsvImporter() {
 
         if (successCount > 0) {
           toast.success(`Imported ${successCount} benchmark costs`);
+          // Trigger embedding generation for newly imported benchmarks
+          triggerEmbeddingGeneration();
         }
         if (failedCount > 0 || errors.length > 0) {
           toast.warning(`${failedCount + (rows.length - validRows.length)} rows failed validation`);
@@ -396,6 +419,14 @@ export function BenchmarkCsvImporter() {
           <div className="space-y-2">
             <Progress value={progress} />
             <p className="text-xs text-muted-foreground text-center">{progress}% complete</p>
+          </div>
+        )}
+
+        {/* Embedding generation indicator */}
+        {isGeneratingEmbeddings && (
+          <div className="flex items-center gap-2 p-3 bg-primary/5 border border-primary/20 rounded-lg">
+            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+            <span className="text-sm">Generating vector embeddings for new benchmarks...</span>
           </div>
         )}
 

@@ -37,6 +37,7 @@ import { BenchmarkUploader } from './BenchmarkUploader';
 import { BenchmarkCsvImporter } from './BenchmarkCsvImporter';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { Progress } from '@/components/ui/progress';
 import { 
   Search, 
   Trash2, 
@@ -47,7 +48,8 @@ import {
   Copy,
   AlertTriangle,
   Loader2,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Sparkles
 } from 'lucide-react';
 
 interface BenchmarkPrice {
@@ -83,6 +85,8 @@ export function BenchmarkManager() {
   const [showDuplicates, setShowDuplicates] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isGeneratingEmbeddings, setIsGeneratingEmbeddings] = useState(false);
+  const [embeddingProgress, setEmbeddingProgress] = useState<{ processed: number; total: number } | null>(null);
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -357,6 +361,58 @@ export function BenchmarkManager() {
     URL.revokeObjectURL(url);
   };
 
+  const handleGenerateEmbeddings = async () => {
+    setIsGeneratingEmbeddings(true);
+    setEmbeddingProgress(null);
+    
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error('You must be logged in');
+        return;
+      }
+
+      let totalProcessed = 0;
+      let remaining = 1; // Start loop
+
+      while (remaining > 0) {
+        const response = await supabase.functions.invoke('generate-benchmarks-embeddings', {
+          body: { batchSize: 50, maxItems: 500 },
+        });
+
+        if (response.error) {
+          throw new Error(response.error.message || 'Failed to generate embeddings');
+        }
+
+        const result = response.data;
+        totalProcessed += result.processed || 0;
+        remaining = result.remaining || 0;
+
+        setEmbeddingProgress({
+          processed: totalProcessed,
+          total: totalProcessed + remaining,
+        });
+
+        if (result.errors > 0) {
+          toast.warning(`${result.errors} embeddings failed in this batch`);
+        }
+
+        // If still remaining, continue the loop
+        if (remaining > 0) {
+          console.log(`${remaining} embeddings remaining, continuing...`);
+        }
+      }
+
+      toast.success(`Generated embeddings for ${totalProcessed} benchmarks`);
+    } catch (error) {
+      console.error('Embedding generation error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to generate embeddings');
+    } finally {
+      setIsGeneratingEmbeddings(false);
+      setEmbeddingProgress(null);
+    }
+  };
+
   // Pre-filter by dropdown filters
   const dropdownFiltered = useMemo(() => benchmarks.filter((b) => {
     const matchesCountry = countryFilter === 'all' || b.country === countryFilter;
@@ -585,10 +641,44 @@ export function BenchmarkManager() {
               <FileSpreadsheet className="h-4 w-4 mr-2" />
               Import CSV
             </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleGenerateEmbeddings}
+              disabled={isGeneratingEmbeddings || benchmarks.length === 0}
+              className="border-primary/50 text-primary hover:bg-primary/10"
+            >
+              {isGeneratingEmbeddings ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4 mr-2" />
+              )}
+              Generate Missing Embeddings
+            </Button>
           </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Embedding generation progress */}
+        {isGeneratingEmbeddings && embeddingProgress && (
+          <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="font-medium flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Generating embeddings...
+              </span>
+              <span className="text-muted-foreground">
+                {embeddingProgress.processed} / {embeddingProgress.total}
+              </span>
+            </div>
+            <Progress
+              value={embeddingProgress.total > 0
+                ? (embeddingProgress.processed / embeddingProgress.total) * 100
+                : 0}
+            />
+          </div>
+        )}
+
         {/* Filters */}
         <div className="flex flex-wrap gap-3">
           <div className="relative flex-1 min-w-[200px]">

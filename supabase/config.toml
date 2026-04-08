@@ -23,3 +23,6 @@ verify_jwt = false
 
 [functions.collect-actual-cost]
 verify_jwt = false
+
+[functions.generate-benchmarks-embeddings]
+verify_jwt = false
