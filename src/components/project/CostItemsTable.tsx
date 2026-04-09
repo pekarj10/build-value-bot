@@ -1352,6 +1352,28 @@ export function CostItemsTable({
           )}
         </div>
 
+        {/* What-If Scenario Summary Bar */}
+        {excludedIds && excludedIds.size > 0 && (
+          <div className="sticky bottom-0 z-20 flex items-center justify-between gap-4 p-3 bg-primary/5 border border-primary/20 rounded-lg backdrop-blur-sm">
+            <div className="flex items-center gap-3 text-sm">
+              <span className="font-semibold text-foreground">Selected Budget:</span>
+              <span className="font-mono font-semibold text-primary text-base">
+                {formatPrice(
+                  items
+                    .filter(i => !excludedIds.has(i.id))
+                    .reduce((s, i) => {
+                      const p = i.userOverridePrice ?? i.recommendedUnitPrice ?? i.originalUnitPrice;
+                      return s + (p != null ? p * i.quantity : 0);
+                    }, 0)
+                )} {currency}
+              </span>
+            </div>
+            <span className="text-sm text-muted-foreground">
+              {excludedIds.size} item{excludedIds.size > 1 ? 's' : ''} excluded
+            </span>
+          </div>
+        )}
+
         {/* Pagination */}
         {sortedItems.length > 0 && (
           <TablePagination
