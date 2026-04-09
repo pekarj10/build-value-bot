@@ -131,11 +131,11 @@ interface TableRowProps {
 }
 
 const TableRowMemo = memo(function TableRowComponent({
-  item, currency, isEditing, editValue, isSelected, isRowReanalyzing, isReanalyzing,
-  effectiveIsAdmin, hasReanalyze, hasDelete, hasClearClarification, hasPriceUpdate, hasResetPrice,
+  item, currency, isEditing, editValue, isSelected, isExcluded, isRowReanalyzing, isReanalyzing,
+  effectiveIsAdmin, hasReanalyze, hasDelete, hasClearClarification, hasPriceUpdate, hasResetPrice, hasToggleInclude,
   formatPrice, getItemVariance, getOriginalTotal, getRecommendedTotal, getRowHighlight,
   getConfidenceColor, getConfidenceBg, getStatusRowTint,
-  onItemSelect, onToggleSelect, onEditStart, onEditSave, onEditCancel, onKeyDown, onEditValueChange,
+  onItemSelect, onToggleSelect, onToggleInclude, onEditStart, onEditSave, onEditCancel, onKeyDown, onEditValueChange,
   onResetPrice, onDeleteItem, onClearClarification, onReanalyzeSingle,
 }: TableRowProps) {
   const variance = getItemVariance(item);
@@ -146,13 +146,23 @@ const TableRowMemo = memo(function TableRowComponent({
     <tr
       onClick={() => !isEditing && onItemSelect(item)}
       className={cn(
-        "cursor-pointer group",
+        "cursor-pointer group transition-opacity",
         isEditing && "bg-muted/50",
         isSelected && "bg-primary/5",
+        isExcluded && "opacity-40",
         getRowHighlight(item),
         getStatusRowTint(item.status)
       )}
     >
+      {hasToggleInclude && (
+        <td onClick={(e) => e.stopPropagation()} className="w-[44px]">
+          <Switch
+            checked={!isExcluded}
+            onCheckedChange={() => onToggleInclude(item.id)}
+            className="scale-75"
+          />
+        </td>
+      )}
       <td onClick={(e) => onToggleSelect(item.id, e)}>
         <Checkbox checked={isSelected} />
       </td>
