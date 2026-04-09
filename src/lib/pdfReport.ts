@@ -1084,8 +1084,8 @@ export async function generatePdfReport(
 
   // ── PDF Properties ──
   doc.setProperties({
-    title: `Unit Rate - ${project.name} - TDD Estimate Report`,
-    subject: `${options.format === 'executive' ? 'Executive Summary' : 'Full Report'} for ${project.name}`,
+    title: `Unit Rate - ${project.name} - ${term.reportTitle}`,
+    subject: `${options.format === 'executive' ? term.summaryTitle : 'Full Report'} for ${project.name}`,
     author: 'Unit Rate',
     creator: 'Unit Rate Cost Analysis Platform',
   });

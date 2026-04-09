@@ -118,6 +118,7 @@ export function ExportDialog({
     includeExcludedItems: preferences.includeExcludedItems,
     includeVisualCharts: preferences.includeVisualCharts,
     excludedIds: excludedIds,
+    projectType: project.projectType,
   });
 
   const handleExport = async () => {
