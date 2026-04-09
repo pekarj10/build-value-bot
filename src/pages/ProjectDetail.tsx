@@ -905,6 +905,7 @@ export default function ProjectDetail() {
         project={project}
         items={items}
         isAdmin={isAdmin}
+        excludedIds={excludedIds}
       />
 
       {/* Delete Dialog */}
