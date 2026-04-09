@@ -6,11 +6,12 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const MAX_ITEMS = 5;
+const BATCH_SIZE = 100;
 
-async function generateEmbedding(_apiKey: string, text: string): Promise<number[]> {
+async function generateEmbeddingsBulk(texts: string[]): Promise<number[][]> {
   const openaiKey = Deno.env.get("OPENAI_API_KEY");
   if (!openaiKey) throw new Error("OPENAI_API_KEY not configured");
+
   const response = await fetch("https://api.openai.com/v1/embeddings", {
     method: "POST",
     headers: {
@@ -19,7 +20,7 @@ async function generateEmbedding(_apiKey: string, text: string): Promise<number[
     },
     body: JSON.stringify({
       model: "text-embedding-3-small",
-      input: text,
+      input: texts,
     }),
   });
 
@@ -29,12 +30,13 @@ async function generateEmbedding(_apiKey: string, text: string): Promise<number[
   }
 
   const data = await response.json();
-  const embedding = data?.data?.[0]?.embedding;
-  if (!embedding || !Array.isArray(embedding)) {
+  if (!data?.data || !Array.isArray(data.data)) {
     throw new Error("Invalid embedding response format");
   }
 
-  return embedding;
+  // Sort by index to ensure correct ordering
+  const sorted = data.data.sort((a: any, b: any) => a.index - b.index);
+  return sorted.map((item: any) => item.embedding);
 }
 
 serve(async (req) => {
@@ -49,11 +51,6 @@ serve(async (req) => {
         JSON.stringify({ error: "Authorization required" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
-    }
-
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("AI service not configured");
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -81,12 +78,13 @@ serve(async (req) => {
       );
     }
 
+    // Fetch up to BATCH_SIZE rows missing embeddings
     const { data: benchmarks, error: fetchError } = await supabase
       .from("benchmark_prices")
       .select("id, description, unit")
       .is("embedding", null)
       .order("id", { ascending: true })
-      .limit(MAX_ITEMS);
+      .limit(BATCH_SIZE);
 
     if (fetchError) {
       throw new Error(`Failed to fetch benchmarks: ${fetchError.message}`);
@@ -99,43 +97,42 @@ serve(async (req) => {
       );
     }
 
-    const { count: totalMissing, error: countError } = await supabase
+    // Count total missing
+    const { count: totalMissing } = await supabase
       .from("benchmark_prices")
       .select("id", { count: "exact", head: true })
       .is("embedding", null);
 
-    if (countError) {
-      throw new Error(`Failed to count benchmarks: ${countError.message}`);
-    }
+    // Build text array and generate all embeddings in a single API call
+    const texts = benchmarks.map((bm) => `${bm.description} ${bm.unit}`);
+    const embeddings = await generateEmbeddingsBulk(texts);
 
-    const results = await Promise.all(
-      benchmarks.map(async (bm) => {
+    // Bulk update all rows
+    let processed = 0;
+    let errors = 0;
+    const errorMessages: string[] = [];
+
+    await Promise.all(
+      benchmarks.map(async (bm, i) => {
         try {
-          const text = `${bm.description} ${bm.unit}`;
-          const embedding = await generateEmbedding(LOVABLE_API_KEY, text);
-
           const { error: updateError } = await supabase
             .from("benchmark_prices")
-            .update({ embedding: JSON.stringify(embedding) })
+            .update({ embedding: JSON.stringify(embeddings[i]) })
             .eq("id", bm.id);
 
           if (updateError) {
             throw new Error(`DB update failed for ${bm.id}: ${updateError.message}`);
           }
-
-          return { id: bm.id, ok: true as const };
+          processed++;
         } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          console.error(`Embedding error for ${bm.id}:`, message);
-          return { id: bm.id, ok: false as const, message };
+          errors++;
+          const msg = error instanceof Error ? error.message : String(error);
+          console.error(`Update error for ${bm.id}:`, msg);
+          if (errorMessages.length < 5) errorMessages.push(msg);
         }
       })
     );
 
-    const processed = results.filter((result) => result.ok).length;
-    const failures = results.filter((result) => !result.ok);
-    const errors = failures.length;
-    const errorMessages = failures.map((result) => result.message).slice(0, 5);
     const remaining = Math.max(0, (totalMissing || 0) - processed);
 
     return new Response(
@@ -147,7 +144,7 @@ serve(async (req) => {
         errorMessages,
         message:
           remaining > 0
-            ? `Processed ${processed} embeddings. ${remaining} still remaining — continuing in small batches.`
+            ? `Processed ${processed} embeddings. ${remaining} still remaining.`
             : `All ${processed} embeddings generated successfully.`,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
