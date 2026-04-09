@@ -184,21 +184,23 @@ function getLanguageForCountry(country: string): string {
 }
 
 /**
- * GENERATE EMBEDDING via Lovable AI Gateway
+ * GENERATE EMBEDDING via OpenAI directly
  */
-async function generateEmbedding(apiKey: string, text: string, maxRetries = 2): Promise<number[]> {
+async function generateEmbedding(_apiKey: string, text: string, maxRetries = 2): Promise<number[]> {
+  const openaiKey = Deno.env.get("OPENAI_API_KEY");
+  if (!openaiKey) throw new Error("OPENAI_API_KEY not configured");
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/embeddings", {
+      const response = await fetch("https://api.openai.com/v1/embeddings", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${apiKey}`,
+          Authorization: `Bearer ${openaiKey}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "openai/text-embedding-3-small",
+          model: "text-embedding-3-small",
           input: text,
         }),
       });
