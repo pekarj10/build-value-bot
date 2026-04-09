@@ -123,23 +123,17 @@ export function ExportDialog({
   const handleExport = async () => {
     setIsExporting(true);
 
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    const downloadWindow = exportType === 'pdf' && isIOS ? window.open('', '_blank') : null;
-
     try {
       if (exportType === 'excel') {
         await exportToExcel(filteredItems, project, preferences);
       } else {
-        await generatePdfReport(filteredItems, project, buildPdfOptions(), { downloadWindow });
+        await generatePdfReport(filteredItems, project, buildPdfOptions());
         toast.success('PDF report exported successfully');
       }
       
       onClose();
     } catch (error: unknown) {
       console.error('Export failed:', error);
-      if (downloadWindow && !downloadWindow.closed) {
-        downloadWindow.close();
-      }
       const message = error instanceof Error ? error.message : 'Unknown error';
       toast.error(`Failed to export report: ${message}`);
     } finally {

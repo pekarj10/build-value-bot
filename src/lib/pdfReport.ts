@@ -36,7 +36,6 @@ export interface PdfExportOptions {
 
 export interface PdfRuntimeOptions {
   previewMode?: boolean;
-  downloadWindow?: Window | null;
 }
 
 function detectIOSDevice() {
