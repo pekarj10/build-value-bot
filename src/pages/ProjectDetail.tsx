@@ -929,6 +929,17 @@ export default function ProjectDetail() {
         onOpenChange={setShowShareDialog}
         isOwner={project.userId === user?.id}
       />
+
+      {/* Focus Review Mode */}
+      {showFocusReview && (
+        <FocusReviewMode
+          items={items}
+          currency={project.currency}
+          onAccept={handleAccept}
+          onOverride={handleOverride}
+          onClose={() => setShowFocusReview(false)}
+        />
+      )}
     </AppLayout>
   );
 }
