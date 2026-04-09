@@ -24,7 +24,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-import { Users, Mail, Trash2, Crown, Loader2, MessageSquare } from 'lucide-react';
+import { Users, Mail, Trash2, Crown, Loader2, MessageSquare, Link2, Copy, ExternalLink } from 'lucide-react';
 import { z } from 'zod';
 
 const emailSchema = z.string().email('Please enter a valid email address');
