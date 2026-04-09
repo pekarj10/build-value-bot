@@ -19,12 +19,14 @@ export interface ExportPreferences {
   currencyFormat: 'symbol' | 'code' | 'none';
   pdfFormat: 'executive' | 'full';
   exportType: 'excel' | 'pdf';
-  // Cover page fields
   clientName: string;
   contractorName: string;
   coverNotes: string;
-  // Trade filter
   excludedTrades: string[];
+  // TDD report options
+  includeAIReasoning: boolean;
+  includeExcludedItems: boolean;
+  includeVisualCharts: boolean;
 }
 
 const DEFAULTS: ExportPreferences = {
@@ -48,6 +50,9 @@ const DEFAULTS: ExportPreferences = {
   contractorName: '',
   coverNotes: '',
   excludedTrades: [],
+  includeAIReasoning: false,
+  includeExcludedItems: false,
+  includeVisualCharts: true,
 };
 
 function loadPreferences(): ExportPreferences {
