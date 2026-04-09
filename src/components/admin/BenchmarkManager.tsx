@@ -97,8 +97,21 @@ export function BenchmarkManager() {
   const countries = [...new Set(benchmarks.map((b) => b.country))].sort();
   const categories = [...new Set(benchmarks.map((b) => b.category))].sort();
 
+  const fetchMissingEmbeddingsCount = async () => {
+    try {
+      const { count, error } = await supabase
+        .from('benchmark_prices')
+        .select('id', { count: 'exact', head: true })
+        .is('embedding', null);
+      if (!error) setMissingEmbeddingsCount(count ?? 0);
+    } catch (e) {
+      console.error('Failed to fetch missing embeddings count:', e);
+    }
+  };
+
   useEffect(() => {
     fetchBenchmarks();
+    fetchMissingEmbeddingsCount();
   }, []);
 
   const fetchBenchmarks = async () => {
@@ -411,12 +424,14 @@ export function BenchmarkManager() {
       }
 
       toast.success(`Generated embeddings for ${totalProcessed} benchmarks`);
+      setMissingEmbeddingsCount(0);
     } catch (error) {
       console.error('Embedding generation error:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to generate embeddings');
     } finally {
       setIsGeneratingEmbeddings(false);
       setEmbeddingProgress(null);
+      fetchMissingEmbeddingsCount();
     }
   };
 
