@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, memo } from 'react';
 import { CostItem } from '@/types/project';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
@@ -88,6 +88,275 @@ const STATUS_OPTIONS = [
   { value: 'clarification', label: 'Clarification' },
   { value: 'underpriced', label: 'Under-Priced' },
 ];
+
+interface TableRowProps {
+  item: CostItem;
+  currency: string;
+  isEditing: boolean;
+  editValue: string;
+  isSelected: boolean;
+  isRowReanalyzing: boolean;
+  isReanalyzing: boolean;
+  effectiveIsAdmin: boolean;
+  hasReanalyze: boolean;
+  hasDelete: boolean;
+  hasClearClarification: boolean;
+  hasPriceUpdate: boolean;
+  hasResetPrice: boolean;
+  formatPrice: (v: number) => string;
+  getItemVariance: (item: CostItem) => number | null;
+  getOriginalTotal: (item: CostItem) => number | null;
+  getRecommendedTotal: (item: CostItem) => number | null;
+  getRowHighlight: (item: CostItem) => string;
+  getConfidenceColor: (c: number | null | undefined) => string;
+  getConfidenceBg: (c: number | null | undefined) => string;
+  getStatusRowTint: (status: string) => string;
+  onItemSelect: (item: CostItem) => void;
+  onToggleSelect: (id: string, e: React.MouseEvent) => void;
+  onEditStart: (item: CostItem, e: React.MouseEvent) => void;
+  onEditSave: (itemId: string, e: React.MouseEvent) => void;
+  onEditCancel: (e: React.MouseEvent) => void;
+  onKeyDown: (e: React.KeyboardEvent, itemId: string) => void;
+  onEditValueChange: (v: string) => void;
+  onResetPrice?: (itemId: string) => void;
+  onDeleteItem?: (itemId: string) => Promise<boolean>;
+  onClearClarification?: (itemId: string) => Promise<void>;
+  onReanalyzeSingle: (itemId: string) => Promise<void>;
+}
+
+const TableRowMemo = memo(function TableRowComponent({
+  item, currency, isEditing, editValue, isSelected, isRowReanalyzing, isReanalyzing,
+  effectiveIsAdmin, hasReanalyze, hasDelete, hasClearClarification, hasPriceUpdate, hasResetPrice,
+  formatPrice, getItemVariance, getOriginalTotal, getRecommendedTotal, getRowHighlight,
+  getConfidenceColor, getConfidenceBg, getStatusRowTint,
+  onItemSelect, onToggleSelect, onEditStart, onEditSave, onEditCancel, onKeyDown, onEditValueChange,
+  onResetPrice, onDeleteItem, onClearClarification, onReanalyzeSingle,
+}: TableRowProps) {
+  const variance = getItemVariance(item);
+  const hasOverride = item.userOverridePrice !== undefined;
+  const displayPrice = item.userOverridePrice || item.recommendedUnitPrice;
+
+  return (
+    <tr
+      onClick={() => !isEditing && onItemSelect(item)}
+      className={cn(
+        "cursor-pointer group",
+        isEditing && "bg-muted/50",
+        isSelected && "bg-primary/5",
+        getRowHighlight(item),
+        getStatusRowTint(item.status)
+      )}
+    >
+      <td onClick={(e) => onToggleSelect(item.id, e)}>
+        <Checkbox checked={isSelected} />
+      </td>
+      <td>
+        <div className="space-y-1">
+          <p className="font-medium text-foreground line-clamp-1">
+            {item.originalDescription}
+          </p>
+          <p className="text-xs text-muted-foreground line-clamp-1">
+            {item.trade} • {item.sheetName}
+          </p>
+        </div>
+      </td>
+      <td className="font-mono text-sm text-right">{item.quantity.toLocaleString()}</td>
+      <td className="text-muted-foreground text-xs">{item.unit}</td>
+      <td className="text-right font-mono text-sm">
+        <div className="flex items-center justify-end gap-1.5">
+          <span>{item.originalUnitPrice ? formatPrice(item.originalUnitPrice) : '—'}</span>
+          {variance !== null && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className={cn('text-[10px] font-semibold px-1 py-0.5 rounded', 
+                  Math.abs(variance) <= 10 && 'bg-success/10 text-success',
+                  Math.abs(variance) > 10 && Math.abs(variance) <= 25 && 'bg-warning/10 text-warning',
+                  Math.abs(variance) > 25 && 'bg-destructive/10 text-destructive'
+                )}>
+                  {variance > 0 ? '+' : ''}{variance.toFixed(0)}%
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Variance from benchmark: {variance > 0 ? 'over' : 'under'} by {Math.abs(variance).toFixed(1)}%</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
+        </div>
+      </td>
+      <td className="text-right font-mono text-sm">
+        <span className={cn(!getOriginalTotal(item) && "text-muted-foreground")}>
+          {getOriginalTotal(item) ? formatPrice(getOriginalTotal(item)!) : '—'}
+        </span>
+      </td>
+      <td className={cn("text-right", getConfidenceBg(item.matchConfidence))} onClick={(e) => e.stopPropagation()}>
+        {isEditing ? (
+          <div className="flex items-center justify-end gap-1">
+            <Input
+              type="number"
+              value={editValue}
+              onChange={(e) => onEditValueChange(e.target.value)}
+              onKeyDown={(e) => onKeyDown(e, item.id)}
+              className="w-20 h-7 text-right font-mono text-sm"
+              autoFocus
+            />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => onEditSave(item.id, e)}>
+                  <Check className="h-3.5 w-3.5 text-success" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Save price</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onEditCancel}>
+                  <X className="h-3.5 w-3.5 text-destructive" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Cancel</TooltipContent>
+            </Tooltip>
+          </div>
+        ) : (
+          <div className="relative flex items-center justify-end group">
+            <div className="absolute right-full mr-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+              {hasOverride && hasResetPrice && onResetPrice && (item.recommendedUnitPrice || item.originalUnitPrice) ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost" size="icon"
+                      className="h-4 w-4 text-primary hover:text-primary hover:bg-primary/10"
+                      onClick={(e) => { e.stopPropagation(); e.preventDefault(); onResetPrice(item.id); }}
+                    >
+                      <RotateCcw className="h-2.5 w-2.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Reset to {item.recommendedUnitPrice ? 'recommended' : 'original'} ({formatPrice(item.recommendedUnitPrice ?? item.originalUnitPrice!)} {currency})
+                  </TooltipContent>
+                </Tooltip>
+              ) : hasPriceUpdate && displayPrice ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-4 w-4 hover:bg-muted" onClick={(e) => onEditStart(item, e)}>
+                      <Pencil className="h-2.5 w-2.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Edit price</TooltipContent>
+                </Tooltip>
+              ) : null}
+            </div>
+            {effectiveIsAdmin && item.priceSource ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className={cn(
+                    "font-mono text-sm font-medium cursor-help",
+                    hasOverride && "text-warning",
+                    getConfidenceColor(item.matchConfidence)
+                  )}>
+                    {displayPrice ? formatPrice(displayPrice) : '—'}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p className="text-xs font-medium">{item.priceSource}</p>
+                  {item.matchConfidence != null && (
+                    <p className="text-xs text-muted-foreground">
+                      Match confidence: {item.matchConfidence}%
+                    </p>
+                  )}
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <span className={cn(
+                "font-mono text-sm font-medium",
+                hasOverride && "text-warning",
+                !hasOverride && getConfidenceColor(item.matchConfidence),
+                !displayPrice && "text-muted-foreground"
+              )}>
+                {displayPrice ? formatPrice(displayPrice) : '—'}
+              </span>
+            )}
+          </div>
+        )}
+      </td>
+      <td className="text-right font-mono text-sm font-medium">
+        <span className={cn(
+          getRecommendedTotal(item) ? "text-primary" : "text-muted-foreground"
+        )}>
+          {getRecommendedTotal(item) ? formatPrice(getRecommendedTotal(item)!) : '—'}
+        </span>
+      </td>
+      <td>
+        <StatusBadge status={item.status} showIcon={false} />
+      </td>
+      <td>
+        <div className="flex items-center gap-0.5">
+          {hasReanalyze && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost" size="icon"
+                  className={cn(
+                    "h-6 px-2 w-auto gap-1 opacity-0 group-hover:opacity-100 transition-opacity",
+                    item.status === 'clarification' && "opacity-100",
+                  )}
+                  disabled={isReanalyzing || isRowReanalyzing}
+                  onClick={(e) => { e.stopPropagation(); onReanalyzeSingle(item.id); }}
+                >
+                  <RotateCcw className={cn(
+                    "h-4 w-4",
+                    item.status === 'clarification' ? "text-warning" : "text-muted-foreground",
+                    (isReanalyzing || isRowReanalyzing) && "animate-spin"
+                  )} />
+                  {isRowReanalyzing && <span className="text-xs text-muted-foreground">Analyzing…</span>}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Re-analyze this item</TooltipContent>
+            </Tooltip>
+          )}
+          {item.userClarification && (
+            <>
+              <Tooltip>
+                <TooltipTrigger>
+                  <MessageSquare className="h-3 w-3 text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent>Has clarification notes</TooltipContent>
+              </Tooltip>
+              {hasClearClarification && onClearClarification && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost" size="icon"
+                      className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-warning"
+                      onClick={async (e) => { e.stopPropagation(); await onClearClarification(item.id); toast.success('Clarification cleared'); }}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Clear clarification</TooltipContent>
+                </Tooltip>
+              )}
+            </>
+          )}
+          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+          {hasDelete && onDeleteItem && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost" size="icon"
+                  className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                  onClick={async (e) => { e.stopPropagation(); const success = await onDeleteItem(item.id); if (success) toast.success('Item deleted'); }}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Delete item</TooltipContent>
+            </Tooltip>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+});
 
 export function CostItemsTable({ 
   items, 
@@ -328,6 +597,30 @@ export function CostItemsTable({
     if (absVariance <= 10) return 'text-success';
     if (absVariance <= 25) return 'text-warning';
     return 'text-destructive';
+  };
+
+  const getConfidenceColor = (confidence: number | null | undefined) => {
+    if (confidence == null) return '';
+    if (confidence >= 80) return 'text-success';
+    if (confidence >= 50) return 'text-warning';
+    return 'text-destructive';
+  };
+
+  const getConfidenceBg = (confidence: number | null | undefined) => {
+    if (confidence == null) return '';
+    if (confidence >= 80) return 'bg-success/5';
+    if (confidence >= 50) return 'bg-warning/5';
+    return 'bg-destructive/5';
+  };
+
+  const getStatusRowTint = (status: string) => {
+    switch (status) {
+      case 'ok': return '';
+      case 'review': return 'bg-warning/[0.03]';
+      case 'clarification': return 'bg-destructive/[0.03]';
+      case 'underpriced': return 'bg-blue-500/[0.03]';
+      default: return '';
+    }
   };
 
   const getRowHighlight = (item: CostItem) => {
@@ -865,399 +1158,165 @@ export function CostItemsTable({
         </div>
 
         {/* Desktop Table */}
-        <div className="hidden md:block border rounded-lg overflow-x-auto bg-card">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th className="w-[40px]">
-                  <Checkbox
-                    checked={selectedIds.size === paginatedItems.length && paginatedItems.length > 0}
-                    onCheckedChange={toggleSelectAll}
-                  />
-                </th>
-                <th 
-                  className="min-w-[250px] cursor-pointer hover:bg-muted/70"
-                  onClick={() => handleSort('description')}
-                >
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex items-center">
-                        Description
-                        <SortIcon field="description" />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>Item description from uploaded file</TooltipContent>
-                  </Tooltip>
-                </th>
-                <th 
-                  className="w-[70px] cursor-pointer hover:bg-muted/70"
-                  onClick={() => handleSort('quantity')}
-                >
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex items-center">
-                        Qty
-                        <SortIcon field="quantity" />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>Quantity of units</TooltipContent>
-                  </Tooltip>
-                </th>
-                <th className="w-[50px]">
-                  <Tooltip>
-                    <TooltipTrigger>Unit</TooltipTrigger>
-                    <TooltipContent>Unit of measurement</TooltipContent>
-                  </Tooltip>
-                </th>
-                <th 
-                  className="w-[100px] cursor-pointer hover:bg-muted/70"
-                  onClick={() => handleSort('originalPrice')}
-                >
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex items-center justify-end">
-                        Orig. Price
-                        <SortIcon field="originalPrice" />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>Original unit price from uploaded file</TooltipContent>
-                  </Tooltip>
-                </th>
-                <th 
-                  className="w-[110px] cursor-pointer hover:bg-muted/70"
-                  onClick={() => handleSort('originalTotal')}
-                >
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex items-center justify-end">
-                        Orig. Total
-                        <SortIcon field="originalTotal" />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>Qty × Original Price</TooltipContent>
-                  </Tooltip>
-                </th>
-                <th 
-                  className="w-[100px] cursor-pointer hover:bg-muted/70"
-                  onClick={() => handleSort('recommendedPrice')}
-                >
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex items-center justify-end">
-                        Rec. Price
-                        <SortIcon field="recommendedPrice" />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>AI recommended unit price based on benchmarks</TooltipContent>
-                  </Tooltip>
-                </th>
-                <th 
-                  className="w-[110px] cursor-pointer hover:bg-muted/70"
-                  onClick={() => handleSort('recommendedTotal')}
-                >
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex items-center justify-end">
-                        Rec. Total
-                        <SortIcon field="recommendedTotal" />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>Qty × Recommended Price</TooltipContent>
-                  </Tooltip>
-                </th>
-                <th 
-                  className="w-[90px] cursor-pointer hover:bg-muted/70"
-                  onClick={() => handleSort('status')}
-                >
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex items-center">
-                        Status
-                        <SortIcon field="status" />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>Item review status</TooltipContent>
-                  </Tooltip>
-                </th>
-                <th className="w-[84px]"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {paginatedItems.map((item) => {
-                const variance = getItemVariance(item);
-                const isEditing = editingId === item.id;
-                const hasOverride = item.userOverridePrice !== undefined;
-                const displayPrice = item.userOverridePrice || item.recommendedUnitPrice;
-                const isSelected = selectedIds.has(item.id);
-                const isRowReanalyzing = reanalyzingId === item.id;
-                
-                return (
-                  <tr
-                    key={item.id}
-                    onClick={() => !isEditing && onItemSelect(item)}
-                    className={cn(
-                      "cursor-pointer group", 
-                      isEditing && "bg-muted/50",
-                      isSelected && "bg-primary/5",
-                      getRowHighlight(item)
-                    )}
+        <div className="hidden md:block border rounded-lg bg-card">
+          <div className="overflow-x-auto" style={{ maxHeight: '70vh' }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th className="w-[40px]">
+                    <Checkbox
+                      checked={selectedIds.size === paginatedItems.length && paginatedItems.length > 0}
+                      onCheckedChange={toggleSelectAll}
+                    />
+                  </th>
+                  <th 
+                    className="min-w-[250px] cursor-pointer hover:bg-muted/70"
+                    onClick={() => handleSort('description')}
                   >
-                    <td onClick={(e) => toggleSelect(item.id, e)}>
-                      <Checkbox checked={isSelected} />
-                    </td>
-                    <td>
-                      <div className="space-y-1">
-                        <p className="font-medium text-foreground line-clamp-1">
-                          {item.originalDescription}
-                        </p>
-                        <p className="text-xs text-muted-foreground line-clamp-1">
-                          {item.trade} • {item.sheetName}
-                        </p>
-                      </div>
-                    </td>
-                    <td className="font-mono text-sm text-right">{item.quantity.toLocaleString()}</td>
-                    <td className="text-muted-foreground text-xs">{item.unit}</td>
-                    <td className="text-right font-mono text-sm">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <span>{item.originalUnitPrice ? formatPrice(item.originalUnitPrice) : '—'}</span>
-                        {variance !== null && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className={cn('text-[10px] font-semibold px-1 py-0.5 rounded', 
-                                Math.abs(variance) <= 10 && 'bg-success/10 text-success',
-                                Math.abs(variance) > 10 && Math.abs(variance) <= 25 && 'bg-warning/10 text-warning',
-                                Math.abs(variance) > 25 && 'bg-destructive/10 text-destructive'
-                              )}>
-                                {variance > 0 ? '+' : ''}{variance.toFixed(0)}%
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Variance from benchmark: {variance > 0 ? 'over' : 'under'} by {Math.abs(variance).toFixed(1)}%</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        )}
-                      </div>
-                    </td>
-                    <td className="text-right font-mono text-sm">
-                      <span className={cn(!getOriginalTotal(item) && "text-muted-foreground")}>
-                        {getOriginalTotal(item) ? formatPrice(getOriginalTotal(item)!) : '—'}
-                      </span>
-                    </td>
-                    <td className="text-right" onClick={(e) => e.stopPropagation()}>
-                      {isEditing ? (
-                        <div className="flex items-center justify-end gap-1">
-                          <Input
-                            type="number"
-                            value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
-                            onKeyDown={(e) => handleKeyDown(e, item.id)}
-                            className="w-20 h-7 text-right font-mono text-sm"
-                            autoFocus
-                          />
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={(e) => handleEditSave(item.id, e)}
-                              >
-                                <Check className="h-3.5 w-3.5 text-success" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Save price</TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={handleEditCancel}
-                              >
-                                <X className="h-3.5 w-3.5 text-destructive" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Cancel</TooltipContent>
-                          </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center">
+                          Description
+                          <SortIcon field="description" />
                         </div>
-                      ) : (
-                        <div className="relative flex items-center justify-end group">
-                          {/* Single action icon - reset takes priority over edit when override exists */}
-                          <div className="absolute right-full mr-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                            {hasOverride && onResetPrice && (item.recommendedUnitPrice || item.originalUnitPrice) ? (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-4 w-4 text-primary hover:text-primary hover:bg-primary/10"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      e.preventDefault();
-                                      onResetPrice(item.id);
-                                    }}
-                                  >
-                                    <RotateCcw className="h-2.5 w-2.5" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  Reset to {item.recommendedUnitPrice ? 'recommended' : 'original'} ({formatPrice(item.recommendedUnitPrice ?? item.originalUnitPrice)} {currency})
-                                </TooltipContent>
-                              </Tooltip>
-                            ) : onPriceUpdate && displayPrice ? (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-4 w-4 hover:bg-muted"
-                                    onClick={(e) => handleEditStart(item, e)}
-                                  >
-                                    <Pencil className="h-2.5 w-2.5" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>Edit price</TooltipContent>
-                              </Tooltip>
-                            ) : null}
-                          </div>
-                          {/* Price value - always in same position */}
-                          {effectiveIsAdmin && item.priceSource ? (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className={cn(
-                                  "font-mono text-sm font-medium cursor-help",
-                                  hasOverride && "text-warning"
-                                )}>
-                                  {displayPrice ? formatPrice(displayPrice) : '—'}
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent className="max-w-xs">
-                                {effectiveIsAdmin ? (
-                                  <>
-                                    <p className="text-xs font-medium">{item.priceSource}</p>
-                                    {item.matchConfidence && (
-                                      <p className="text-xs text-muted-foreground">
-                                        Match confidence: {item.matchConfidence}%
-                                      </p>
-                                    )}
-                                  </>
-                                ) : (
-                                  <p className="text-xs">Based on market data analysis</p>
-                                )}
-                              </TooltipContent>
-                            </Tooltip>
-                          ) : (
-                            <span className={cn(
-                              "font-mono text-sm font-medium",
-                              hasOverride && "text-warning",
-                              !displayPrice && "text-muted-foreground"
-                            )}>
-                              {displayPrice ? formatPrice(displayPrice) : '—'}
-                            </span>
-                          )}
+                      </TooltipTrigger>
+                      <TooltipContent>Item description from uploaded file</TooltipContent>
+                    </Tooltip>
+                  </th>
+                  <th 
+                    className="w-[70px] cursor-pointer hover:bg-muted/70"
+                    onClick={() => handleSort('quantity')}
+                  >
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center">
+                          Qty
+                          <SortIcon field="quantity" />
                         </div>
-                      )}
-                    </td>
-                    <td className="text-right font-mono text-sm font-medium">
-                      <span className={cn(
-                        getRecommendedTotal(item) ? "text-primary" : "text-muted-foreground"
-                      )}>
-                        {getRecommendedTotal(item) ? formatPrice(getRecommendedTotal(item)!) : '—'}
-                      </span>
-                    </td>
-                    <td>
-                      <StatusBadge status={item.status} showIcon={false} />
-                    </td>
-                    <td>
-                      <div className="flex items-center gap-0.5">
-                        {onReanalyzeItems && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className={cn(
-                                  "h-6 px-2 w-auto gap-1 opacity-0 group-hover:opacity-100 transition-opacity",
-                                  item.status === 'clarification' && "opacity-100",
-                                )}
-                                disabled={isReanalyzing || isRowReanalyzing}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleReanalyzeSingle(item.id);
-                                }}
-                              >
-                                <RotateCcw className={cn(
-                                  "h-4 w-4",
-                                  item.status === 'clarification' ? "text-warning" : "text-muted-foreground",
-                                  (isReanalyzing || isRowReanalyzing) && "animate-spin"
-                                )} />
-                                {isRowReanalyzing && (
-                                  <span className="text-xs text-muted-foreground">Analyzing…</span>
-                                )}
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Re-analyze this item</TooltipContent>
-                          </Tooltip>
-                        )}
-                        {item.userClarification && (
-                          <>
-                            <Tooltip>
-                              <TooltipTrigger>
-                                <MessageSquare className="h-3 w-3 text-muted-foreground" />
-                              </TooltipTrigger>
-                              <TooltipContent>Has clarification notes</TooltipContent>
-                            </Tooltip>
-                            {onClearClarification && (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-warning"
-                                    onClick={async (e) => {
-                                      e.stopPropagation();
-                                      await onClearClarification(item.id);
-                                      toast.success('Clarification cleared');
-                                    }}
-                                  >
-                                    <X className="h-3 w-3" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>Clear clarification</TooltipContent>
-                              </Tooltip>
-                            )}
-                          </>
-                        )}
-                        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-                        {onDeleteItem && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
-                                onClick={async (e) => {
-                                  e.stopPropagation();
-                                  const success = await onDeleteItem(item.id);
-                                  if (success) {
-                                    toast.success('Item deleted');
-                                  }
-                                }}
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Delete item</TooltipContent>
-                          </Tooltip>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                      </TooltipTrigger>
+                      <TooltipContent>Quantity of units</TooltipContent>
+                    </Tooltip>
+                  </th>
+                  <th className="w-[50px]">
+                    <Tooltip>
+                      <TooltipTrigger>Unit</TooltipTrigger>
+                      <TooltipContent>Unit of measurement</TooltipContent>
+                    </Tooltip>
+                  </th>
+                  <th 
+                    className="w-[100px] cursor-pointer hover:bg-muted/70"
+                    onClick={() => handleSort('originalPrice')}
+                  >
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center justify-end">
+                          Orig. Price
+                          <SortIcon field="originalPrice" />
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>Original unit price from uploaded file</TooltipContent>
+                    </Tooltip>
+                  </th>
+                  <th 
+                    className="w-[110px] cursor-pointer hover:bg-muted/70"
+                    onClick={() => handleSort('originalTotal')}
+                  >
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center justify-end">
+                          Orig. Total
+                          <SortIcon field="originalTotal" />
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>Qty × Original Price</TooltipContent>
+                    </Tooltip>
+                  </th>
+                  <th 
+                    className="w-[100px] cursor-pointer hover:bg-muted/70"
+                    onClick={() => handleSort('recommendedPrice')}
+                  >
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center justify-end">
+                          Rec. Price
+                          <SortIcon field="recommendedPrice" />
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>AI recommended unit price based on benchmarks</TooltipContent>
+                    </Tooltip>
+                  </th>
+                  <th 
+                    className="w-[110px] cursor-pointer hover:bg-muted/70"
+                    onClick={() => handleSort('recommendedTotal')}
+                  >
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center justify-end">
+                          Rec. Total
+                          <SortIcon field="recommendedTotal" />
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>Qty × Recommended Price</TooltipContent>
+                    </Tooltip>
+                  </th>
+                  <th 
+                    className="w-[90px] cursor-pointer hover:bg-muted/70"
+                    onClick={() => handleSort('status')}
+                  >
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center">
+                          Status
+                          <SortIcon field="status" />
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>Item review status</TooltipContent>
+                    </Tooltip>
+                  </th>
+                  <th className="w-[84px]"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedItems.map((item) => (
+                  <TableRowMemo
+                    key={item.id}
+                    item={item}
+                    currency={currency}
+                    isEditing={editingId === item.id}
+                    editValue={editValue}
+                    isSelected={selectedIds.has(item.id)}
+                    isRowReanalyzing={reanalyzingId === item.id}
+                    isReanalyzing={isReanalyzing}
+                    effectiveIsAdmin={effectiveIsAdmin}
+                    hasReanalyze={!!onReanalyzeItems}
+                    hasDelete={!!onDeleteItem}
+                    hasClearClarification={!!onClearClarification}
+                    hasPriceUpdate={!!onPriceUpdate}
+                    hasResetPrice={!!onResetPrice}
+                    formatPrice={formatPrice}
+                    getItemVariance={getItemVariance}
+                    getOriginalTotal={getOriginalTotal}
+                    getRecommendedTotal={getRecommendedTotal}
+                    getRowHighlight={getRowHighlight}
+                    getConfidenceColor={getConfidenceColor}
+                    getConfidenceBg={getConfidenceBg}
+                    getStatusRowTint={getStatusRowTint}
+                    onItemSelect={onItemSelect}
+                    onToggleSelect={toggleSelect}
+                    onEditStart={handleEditStart}
+                    onEditSave={handleEditSave}
+                    onEditCancel={handleEditCancel}
+                    onKeyDown={handleKeyDown}
+                    onEditValueChange={setEditValue}
+                    onResetPrice={onResetPrice}
+                    onDeleteItem={onDeleteItem}
+                    onClearClarification={onClearClarification}
+                    onReanalyzeSingle={handleReanalyzeSingle}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
           
           {paginatedItems.length === 0 && (
             <EmptyState type="no-results" onClearFilters={clearAllFilters} />
