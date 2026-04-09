@@ -663,20 +663,27 @@ export function BenchmarkManager() {
               <FileSpreadsheet className="h-4 w-4 mr-2" />
               Import CSV
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleGenerateEmbeddings}
-              disabled={isGeneratingEmbeddings || benchmarks.length === 0}
-              className="border-primary/50 text-primary hover:bg-primary/10"
-            >
-              {isGeneratingEmbeddings ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Sparkles className="h-4 w-4 mr-2" />
+            <div className="flex items-center gap-2">
+              {missingEmbeddingsCount !== null && missingEmbeddingsCount > 0 && (
+                <Badge variant="secondary" className="text-xs">
+                  Missing: {missingEmbeddingsCount.toLocaleString()}
+                </Badge>
               )}
-              Generate Missing Embeddings
-            </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleGenerateEmbeddings}
+                disabled={isGeneratingEmbeddings || benchmarks.length === 0}
+                className="border-primary/50 text-primary hover:bg-primary/10"
+              >
+                {isGeneratingEmbeddings ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Sparkles className="h-4 w-4 mr-2" />
+                )}
+                Generate Missing Embeddings
+              </Button>
+            </div>
           </div>
         </div>
       </CardHeader>
