@@ -1,5 +1,4 @@
-import { useState, useMemo, useRef, useEffect, useCallback, memo } from 'react';
-import { List } from 'react-window';
+import { useState, useMemo, useRef, useEffect, memo } from 'react';
 import { CostItem } from '@/types/project';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
