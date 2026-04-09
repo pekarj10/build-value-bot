@@ -392,6 +392,8 @@ export function CostItemsTable({
   statusFilter: externalStatusFilter,
   tradeFilter: externalTradeFilter,
   isLoading = false,
+  excludedIds,
+  onToggleInclude,
 }: CostItemsTableProps) {
   const { isAdmin } = useAuth();
   const { showAsAdmin } = useViewMode();
@@ -1179,6 +1181,14 @@ export function CostItemsTable({
             <table className="data-table">
               <thead>
                 <tr>
+                  {onToggleInclude && (
+                    <th className="w-[44px]">
+                      <Tooltip>
+                        <TooltipTrigger><span className="text-xs">Budget</span></TooltipTrigger>
+                        <TooltipContent>Include/exclude from budget scenario</TooltipContent>
+                      </Tooltip>
+                    </th>
+                  )}
                   <th className="w-[40px]">
                     <Checkbox
                       checked={selectedIds.size === paginatedItems.length && paginatedItems.length > 0}
@@ -1301,6 +1311,7 @@ export function CostItemsTable({
                     isEditing={editingId === item.id}
                     editValue={editValue}
                     isSelected={selectedIds.has(item.id)}
+                    isExcluded={excludedIds?.has(item.id) ?? false}
                     isRowReanalyzing={reanalyzingId === item.id}
                     isReanalyzing={isReanalyzing}
                     effectiveIsAdmin={effectiveIsAdmin}
@@ -1309,6 +1320,7 @@ export function CostItemsTable({
                     hasClearClarification={!!onClearClarification}
                     hasPriceUpdate={!!onPriceUpdate}
                     hasResetPrice={!!onResetPrice}
+                    hasToggleInclude={!!onToggleInclude}
                     formatPrice={formatPrice}
                     getItemVariance={getItemVariance}
                     getOriginalTotal={getOriginalTotal}
@@ -1319,6 +1331,7 @@ export function CostItemsTable({
                     getStatusRowTint={getStatusRowTint}
                     onItemSelect={onItemSelect}
                     onToggleSelect={toggleSelect}
+                    onToggleInclude={onToggleInclude || (() => {})}
                     onEditStart={handleEditStart}
                     onEditSave={handleEditSave}
                     onEditCancel={handleEditCancel}
