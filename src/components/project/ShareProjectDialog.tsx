@@ -98,6 +98,59 @@ export function ShareProjectDialog({
     }
   };
 
+  const loadShareTokens = async () => {
+    try {
+      const { data } = await supabase
+        .from('project_share_tokens')
+        .select('id, token, label, is_active, created_at')
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: false });
+      setShareTokens(data || []);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleGenerateLink = async () => {
+    if (!user) return;
+    setIsGeneratingLink(true);
+    try {
+      const { error } = await supabase.from('project_share_tokens').insert({
+        project_id: projectId,
+        created_by: user.id,
+        label: 'Presentation Link',
+      });
+      if (error) throw error;
+      toast.success('Presentation link generated!');
+      loadShareTokens();
+    } catch (err) {
+      console.error('Failed to generate link:', err);
+      toast.error('Failed to generate link');
+    } finally {
+      setIsGeneratingLink(false);
+    }
+  };
+
+  const handleRevokeToken = async (tokenId: string) => {
+    try {
+      const { error } = await supabase
+        .from('project_share_tokens')
+        .update({ is_active: false })
+        .eq('id', tokenId);
+      if (error) throw error;
+      toast.success('Link revoked');
+      loadShareTokens();
+    } catch {
+      toast.error('Failed to revoke link');
+    }
+  };
+
+  const copyPresentationLink = (token: string) => {
+    const url = `${window.location.origin}/presentation/${token}`;
+    navigator.clipboard.writeText(url);
+    toast.success('Presentation link copied to clipboard!');
+  };
+
   const loadMembers = async () => {
     setIsLoading(true);
     try {
