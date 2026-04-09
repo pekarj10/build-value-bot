@@ -1097,9 +1097,16 @@ export async function generatePdfReport(
   const timestamp = new Date().toISOString().split('T')[0];
   const formatSuffix = options.format === 'executive' ? 'Executive' : 'Full';
   const filename = `UnitRate_${project.name.replace(/[^a-zA-Z0-9]/g, '_')}_TDD_${formatSuffix}_${timestamp}.pdf`;
-  const isIOS = typeof navigator !== 'undefined' && detectIOSDevice();
 
-  if (!isIOS) {
+  // Strategy 1: Native Web Share API (best for iOS)
+  const file = new File([pdfBlob], filename, { type: 'application/pdf' });
+  if (typeof navigator !== 'undefined' && navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+    await navigator.share({ files: [file], title: 'TDD Report' });
+    return;
+  }
+
+  // Strategy 2: Standard anchor download (desktop & most Android)
+  try {
     const blobUrl = URL.createObjectURL(pdfBlob);
     const link = document.createElement('a');
     link.href = blobUrl;
@@ -1108,38 +1115,24 @@ export async function generatePdfReport(
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    window.setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+    window.setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
     return;
+  } catch {
+    // Fall through to strategy 3
   }
 
-  const blobUrl = URL.createObjectURL(pdfBlob);
-
-  try {
-    if (downloadWindow && !downloadWindow.closed) {
-      downloadWindow.location.href = blobUrl;
-      downloadWindow.focus();
-    } else {
-      window.location.href = blobUrl;
-    }
-    window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
-  } catch (blobError) {
-    URL.revokeObjectURL(blobUrl);
-
-    try {
-      const dataUri = doc.output('datauristring');
-      if (downloadWindow && !downloadWindow.closed) {
-        downloadWindow.location.href = dataUri;
-        downloadWindow.focus();
+  // Strategy 3: Base64 Data URI redirect (last resort for older iOS)
+  await new Promise<void>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === 'string') {
+        window.location.href = reader.result;
+        resolve();
       } else {
-        window.open(dataUri, '_blank');
+        reject(new Error('Failed to convert PDF to data URI'));
       }
-    } catch (dataUriError) {
-      const message = dataUriError instanceof Error
-        ? dataUriError.message
-        : blobError instanceof Error
-          ? blobError.message
-          : 'iOS Safari blocked the PDF download';
-      throw new Error(message);
-    }
-  }
+    };
+    reader.onerror = () => reject(new Error('Failed to read PDF blob'));
+    reader.readAsDataURL(pdfBlob);
+  });
 }
