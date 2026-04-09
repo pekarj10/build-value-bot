@@ -8,6 +8,7 @@ import autoTable from 'jspdf-autotable';
 import { CostItem, Project, PROJECT_TYPE_LABELS, ProjectType } from '@/types/project';
 import { formatCurrency } from '@/lib/formatters';
 import { inferTddCategory, TDD_CATEGORIES, TDD_CATEGORY_COLORS, type TddCategory } from '@/lib/tddCategories';
+import { getTerminology } from '@/hooks/useProjectTerminology';
 import logoImg from '@/assets/logo-new.png';
 
 export type ReportFormat = 'executive' | 'full';
@@ -32,6 +33,7 @@ export interface PdfExportOptions {
   includeExcludedItems?: boolean;
   includeVisualCharts?: boolean;
   excludedIds?: Set<string>;
+  projectType?: string;
 }
 
 export interface PdfRuntimeOptions {
