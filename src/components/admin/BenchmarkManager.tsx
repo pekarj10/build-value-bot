@@ -87,6 +87,7 @@ export function BenchmarkManager() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isGeneratingEmbeddings, setIsGeneratingEmbeddings] = useState(false);
   const [embeddingProgress, setEmbeddingProgress] = useState<{ processed: number; total: number } | null>(null);
+  const [missingEmbeddingsCount, setMissingEmbeddingsCount] = useState<number | null>(null);
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
