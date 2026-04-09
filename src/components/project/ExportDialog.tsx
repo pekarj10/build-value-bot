@@ -122,18 +122,24 @@ export function ExportDialog({
 
   const handleExport = async () => {
     setIsExporting(true);
-    
+
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const downloadWindow = exportType === 'pdf' && isIOS ? window.open('', '_blank') : null;
+
     try {
       if (exportType === 'excel') {
         await exportToExcel(filteredItems, project, preferences);
       } else {
-        await generatePdfReport(filteredItems, project, buildPdfOptions());
+        await generatePdfReport(filteredItems, project, buildPdfOptions(), { downloadWindow });
         toast.success('PDF report exported successfully');
       }
       
       onClose();
     } catch (error: unknown) {
       console.error('Export failed:', error);
+      if (downloadWindow && !downloadWindow.closed) {
+        downloadWindow.close();
+      }
       const message = error instanceof Error ? error.message : 'Unknown error';
       toast.error(`Failed to export report: ${message}`);
     } finally {
@@ -144,16 +150,17 @@ export function ExportDialog({
   const handlePreview = async () => {
     setIsGeneratingPreview(true);
     try {
-      const blob = await generatePdfReport(filteredItems, project, buildPdfOptions(), true);
+      const blob = await generatePdfReport(filteredItems, project, buildPdfOptions(), { previewMode: true });
 
       if (blob) {
         if (previewUrl) URL.revokeObjectURL(previewUrl);
         const url = URL.createObjectURL(blob);
         setPreviewUrl(url);
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Preview failed:', error);
-      toast.error('Failed to generate preview');
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(`Failed to generate preview: ${message}`);
     } finally {
       setIsGeneratingPreview(false);
     }
