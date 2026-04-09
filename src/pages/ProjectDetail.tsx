@@ -38,7 +38,8 @@ import {
   Trash2,
   FileDown,
   StickyNote,
-  Users
+  Users,
+  Crosshair,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
