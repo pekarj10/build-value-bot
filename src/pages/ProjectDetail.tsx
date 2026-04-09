@@ -735,7 +735,7 @@ export default function ProjectDetail() {
         )}
 
         {/* Executive Summary */}
-        <ExecutiveSummary items={items} currency={project.currency} />
+        <ExecutiveSummary items={items} currency={project.currency} excludedIds={excludedIds} />
 
         {/* Tabs for different views */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
@@ -779,6 +779,15 @@ export default function ProjectDetail() {
               isReanalyzing={isReanalyzing || isAnalyzing}
               statusFilter={statusFilter}
               tradeFilter={tradeFilter}
+              excludedIds={excludedIds}
+              onToggleInclude={(itemId) => {
+                setExcludedIds(prev => {
+                  const next = new Set(prev);
+                  if (next.has(itemId)) next.delete(itemId);
+                  else next.add(itemId);
+                  return next;
+                });
+              }}
             />
           </TabsContent>
 
@@ -820,6 +829,7 @@ export default function ProjectDetail() {
               currency={project.currency}
               onFilterByStatus={handleFilterByStatus}
               onFilterByTrade={handleFilterByTrade}
+              excludedIds={excludedIds}
             />
           </TabsContent>
 
