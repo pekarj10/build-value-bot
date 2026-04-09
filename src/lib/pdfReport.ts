@@ -398,7 +398,7 @@ export async function generatePdfReport(
   options: PdfExportOptions,
   runtimeOptions: PdfRuntimeOptions = {},
 ): Promise<Blob | void> {
-  const { previewMode = false, downloadWindow = null } = runtimeOptions;
+  const { previewMode = false } = runtimeOptions;
   const doc = new jsPDF('portrait', 'mm', 'a4');
   const pw = 210;
   const ph = 297;
