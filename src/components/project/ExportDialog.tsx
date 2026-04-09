@@ -132,9 +132,10 @@ export function ExportDialog({
       }
       
       onClose();
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Export failed:', error);
-      toast.error('Failed to export report');
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(`Failed to export report: ${message}`);
     } finally {
       setIsExporting(false);
     }
