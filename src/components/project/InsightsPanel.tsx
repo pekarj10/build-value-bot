@@ -64,24 +64,24 @@ export function InsightsPanel({
     }, 0),
   [activeItems]);
 
-  const avgCost = items.length > 0 ? totalCAPEX / items.length : 0;
+  const avgCost = activeItems.length > 0 ? totalCAPEX / activeItems.length : 0;
 
   // ── Status distribution ────────────────────────────────────
   const statusData = useMemo(() => {
     const c = { ok: 0, review: 0, clarification: 0 };
-    items.forEach(i => { if (i.status in c) (c as any)[i.status]++; });
+    activeItems.forEach(i => { if (i.status in c) (c as any)[i.status]++; });
     return [
       { name: 'Approved', value: c.ok, status: 'ok', color: STATUS_COLORS.ok },
       { name: 'Need Review', value: c.review, status: 'review', color: STATUS_COLORS.review },
       { name: 'Clarification', value: c.clarification, status: 'clarification', color: STATUS_COLORS.clarification },
     ].filter(d => d.value > 0);
-  }, [items]);
+  }, [activeItems]);
 
   // ── TDD Category distribution ──────────────────────────────
   const tddData = useMemo(() => {
     const map: Record<TddCategory, { value: number; count: number }> = {} as any;
     TDD_CATEGORIES.forEach(c => { map[c] = { value: 0, count: 0 }; });
-    items.forEach(item => {
+    activeItems.forEach(item => {
       const cat = inferTddCategory(null, item.trade, item.originalDescription);
       const price = item.userOverridePrice ?? item.recommendedUnitPrice ?? item.originalUnitPrice;
       map[cat].value += price != null ? price * item.quantity : 0;
@@ -91,16 +91,16 @@ export function InsightsPanel({
       .map(name => ({ name, ...map[name], color: TDD_CATEGORY_COLORS[name] }))
       .filter(d => d.value > 0)
       .sort((a, b) => b.value - a.value);
-  }, [items]);
+  }, [activeItems]);
 
   // ── Top cost drivers ───────────────────────────────────────
   const topDrivers = useMemo(() =>
-    [...items].sort((a, b) => (b.totalPrice || 0) - (a.totalPrice || 0)).slice(0, 5),
-  [items]);
+    [...activeItems].sort((a, b) => (b.totalPrice || 0) - (a.totalPrice || 0)).slice(0, 5),
+  [activeItems]);
 
   // ── Variance data ──────────────────────────────────────────
   const varianceData = useMemo(() =>
-    items
+    activeItems
       .filter(i => i.originalUnitPrice && i.benchmarkTypical)
       .map(i => ({
         id: i.id,
