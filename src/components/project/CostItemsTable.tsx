@@ -359,7 +359,7 @@ const TableRowMemo = memo(function TableRowComponent({
   );
 });
 
-
+export function CostItemsTable({ 
   items, 
   currency, 
   onItemSelect, 
