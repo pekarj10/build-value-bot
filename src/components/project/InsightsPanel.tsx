@@ -32,6 +32,7 @@ interface InsightsPanelProps {
   onFilterByStatus?: (status: string) => void;
   onFilterByTrade?: (trade: string) => void;
   onFilterByVariance?: (range: string) => void;
+  excludedIds?: Set<string>;
 }
 
 const STATUS_COLORS = {

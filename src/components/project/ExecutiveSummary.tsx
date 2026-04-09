@@ -27,9 +27,10 @@ import {
 interface ExecutiveSummaryProps {
   items: CostItem[];
   currency: string;
+  excludedIds?: Set<string>;
 }
 
-export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
+export function ExecutiveSummary({ items, currency, excludedIds }: ExecutiveSummaryProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [forceCompactLayout, setForceCompactLayout] = useState(false);
 
