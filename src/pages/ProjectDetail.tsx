@@ -667,6 +667,12 @@ export default function ProjectDetail() {
         ]}
         actions={
           <div className="flex items-center gap-2">
+            {items.filter(i => i.status === 'review' || i.status === 'clarification').length > 0 && (
+              <Button onClick={() => setShowFocusReview(true)} className="bg-success hover:bg-success/90 text-success-foreground">
+                <Crosshair className="h-4 w-4 mr-2" />
+                Focus Review ({items.filter(i => i.status === 'review' || i.status === 'clarification').length})
+              </Button>
+            )}
             <Button variant="outline" onClick={() => setShowShareDialog(true)}>
               <Users className="h-4 w-4 mr-2" />
               Share
