@@ -33,6 +33,7 @@ interface ExportDialogProps {
   items: CostItem[];
   selectedItemIds?: string[];
   isAdmin?: boolean;
+  excludedIds?: Set<string>;
 }
 
 export function ExportDialog({ 
@@ -42,6 +43,7 @@ export function ExportDialog({
   items,
   selectedItemIds,
   isAdmin = false,
+  excludedIds,
 }: ExportDialogProps) {
   const { showAsAdmin } = useViewMode();
   const effectiveIsAdmin = isAdmin && showAsAdmin;
@@ -81,8 +83,13 @@ export function ExportDialog({
       });
     }
 
+    // Handle excluded items based on preference
+    if (!preferences.includeExcludedItems && excludedIds?.size) {
+      filtered = filtered.filter(i => !excludedIds.has(i.id));
+    }
+
     return filtered;
-  }, [items, selectedItemIds, preferences.onlyFlagged, preferences.excludedTrades]);
+  }, [items, selectedItemIds, preferences.onlyFlagged, preferences.excludedTrades, preferences.includeExcludedItems, excludedIds]);
 
   // Clean up preview URL on unmount
   useEffect(() => {
@@ -91,6 +98,28 @@ export function ExportDialog({
     };
   }, [previewUrl]);
 
+  const buildPdfOptions = () => ({
+    format: preferences.pdfFormat,
+    includeDescription: preferences.includeDescription,
+    includeTrade: preferences.includeTrade,
+    includeQuantity: preferences.includeQuantity,
+    includeUnit: preferences.includeUnit,
+    includeOriginalPrice: preferences.includeOriginalPrice,
+    includeOriginalTotal: preferences.includeOriginalTotal,
+    includeRecommendedPrice: preferences.includeRecommendedPrice,
+    includeRecommendedTotal: preferences.includeRecommendedTotal,
+    includeVariance: preferences.includeVariance,
+    includeStatus: preferences.includeStatus,
+    onlyFlagged: false, // already filtered
+    clientName: preferences.clientName || undefined,
+    contractorName: preferences.contractorName || undefined,
+    coverNotes: preferences.coverNotes || undefined,
+    includeAIReasoning: preferences.includeAIReasoning,
+    includeExcludedItems: preferences.includeExcludedItems,
+    includeVisualCharts: preferences.includeVisualCharts,
+    excludedIds: excludedIds,
+  });
+
   const handleExport = async () => {
     setIsExporting(true);
     
@@ -98,23 +127,7 @@ export function ExportDialog({
       if (exportType === 'excel') {
         await exportToExcel(filteredItems, project, preferences);
       } else {
-        await generatePdfReport(filteredItems, project, {
-          format: preferences.pdfFormat,
-          includeDescription: preferences.includeDescription,
-          includeTrade: preferences.includeTrade,
-          includeQuantity: preferences.includeQuantity,
-          includeUnit: preferences.includeUnit,
-          includeOriginalPrice: preferences.includeOriginalPrice,
-          includeOriginalTotal: preferences.includeOriginalTotal,
-          includeRecommendedPrice: preferences.includeRecommendedPrice,
-          includeRecommendedTotal: preferences.includeRecommendedTotal,
-          includeVariance: preferences.includeVariance,
-          includeStatus: preferences.includeStatus,
-          onlyFlagged: false, // already filtered
-          clientName: preferences.clientName || undefined,
-          contractorName: preferences.contractorName || undefined,
-          coverNotes: preferences.coverNotes || undefined,
-        });
+        await generatePdfReport(filteredItems, project, buildPdfOptions());
         toast.success('PDF report exported successfully');
       }
       
@@ -130,23 +143,7 @@ export function ExportDialog({
   const handlePreview = async () => {
     setIsGeneratingPreview(true);
     try {
-      const blob = await generatePdfReport(filteredItems, project, {
-        format: preferences.pdfFormat,
-        includeDescription: preferences.includeDescription,
-        includeTrade: preferences.includeTrade,
-        includeQuantity: preferences.includeQuantity,
-        includeUnit: preferences.includeUnit,
-        includeOriginalPrice: preferences.includeOriginalPrice,
-        includeOriginalTotal: preferences.includeOriginalTotal,
-        includeRecommendedPrice: preferences.includeRecommendedPrice,
-        includeRecommendedTotal: preferences.includeRecommendedTotal,
-        includeVariance: preferences.includeVariance,
-        includeStatus: preferences.includeStatus,
-        onlyFlagged: false,
-        clientName: preferences.clientName || undefined,
-        contractorName: preferences.contractorName || undefined,
-        coverNotes: preferences.coverNotes || undefined,
-      }, true); // preview mode - returns blob instead of downloading
+      const blob = await generatePdfReport(filteredItems, project, buildPdfOptions(), true);
 
       if (blob) {
         if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -169,6 +166,8 @@ export function ExportDialog({
       updatePreference('excludedTrades', [...current, trade]);
     }
   };
+
+  const excludedCount = excludedIds?.size ?? 0;
 
   // If preview is showing, render preview dialog
   if (previewUrl) {
@@ -257,7 +256,7 @@ export function ExportDialog({
           </div>
         )}
 
-        <ScrollArea className="max-h-[340px]">
+        <ScrollArea className="max-h-[380px]">
           <div className="space-y-4 py-2 pr-3">
             {/* Cover Page Fields */}
             {exportType === 'pdf' && (
@@ -301,7 +300,61 @@ export function ExportDialog({
               </Collapsible>
             )}
 
+            {/* TDD Report Options */}
+            {exportType === 'pdf' && (
+              <>
+                <Separator />
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium">Report Content</Label>
+                  <div className="space-y-2.5">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="includeVisualCharts"
+                        checked={preferences.includeVisualCharts}
+                        onCheckedChange={(c) => updatePreference('includeVisualCharts', !!c)}
+                      />
+                      <Label htmlFor="includeVisualCharts" className="text-sm">
+                        Include Visual Charts
+                        <span className="text-xs text-muted-foreground ml-1.5">
+                          (TDD category donut, cost distribution)
+                        </span>
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="includeAIReasoning"
+                        checked={preferences.includeAIReasoning}
+                        onCheckedChange={(c) => updatePreference('includeAIReasoning', !!c)}
+                      />
+                      <Label htmlFor="includeAIReasoning" className="text-sm">
+                        Include AI Reasoning
+                        <span className="text-xs text-muted-foreground ml-1.5">
+                          (benchmark match details per item)
+                        </span>
+                      </Label>
+                    </div>
+                    {excludedCount > 0 && (
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="includeExcludedItems"
+                          checked={preferences.includeExcludedItems}
+                          onCheckedChange={(c) => updatePreference('includeExcludedItems', !!c)}
+                        />
+                        <Label htmlFor="includeExcludedItems" className="text-sm">
+                          Include Excluded Items
+                          <span className="text-xs text-muted-foreground ml-1.5">
+                            ({excludedCount} items currently excluded from budget)
+                          </span>
+                        </Label>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+
             {/* Columns to Include */}
+            <Separator />
             <div className="space-y-3">
               <Label className="text-sm font-medium">Columns to Include</Label>
               <div className="grid grid-cols-2 gap-2.5">

@@ -7,6 +7,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { CostItem, Project, PROJECT_TYPE_LABELS, ProjectType } from '@/types/project';
 import { formatCurrency } from '@/lib/formatters';
+import { inferTddCategory, TDD_CATEGORIES, TDD_CATEGORY_COLORS, type TddCategory } from '@/lib/tddCategories';
 import logoImg from '@/assets/logo-new.png';
 
 export type ReportFormat = 'executive' | 'full';
@@ -27,6 +28,10 @@ export interface PdfExportOptions {
   clientName?: string;
   contractorName?: string;
   coverNotes?: string;
+  includeAIReasoning?: boolean;
+  includeExcludedItems?: boolean;
+  includeVisualCharts?: boolean;
+  excludedIds?: Set<string>;
 }
 
 // ─── Colors ──────────────────────────────────────────────────────
@@ -61,6 +66,17 @@ const CHART_PALETTE: [number, number, number][] = [
   [139, 92, 246],  // violet
   [236, 72, 153],  // pink
 ];
+
+/** TDD category colors as RGB tuples for PDF */
+const TDD_PALETTE: Record<TddCategory, [number, number, number]> = {
+  Structural: [42, 72, 107],
+  Facade: [56, 107, 133],
+  Roof: [54, 128, 118],
+  'Interior Finishes': [178, 130, 50],
+  'MEP / HVAC': [107, 78, 148],
+  'Site Works': [56, 128, 82],
+  Other: [115, 122, 137],
+};
 
 // ─── Smart Description Truncation ────────────────────────────────
 const FILLER_WORDS = new Set([
@@ -101,7 +117,6 @@ function smartTruncate(text: string, maxLen: number): string {
 function formatProjectType(project: Project): string {
   const label = PROJECT_TYPE_LABELS[project.projectType as ProjectType];
   if (label) return label;
-  // Fallback: format raw DB string
   return project.projectType
     .replace(/_/g, ' ')
     .replace(/\b\w/g, c => c.toUpperCase());
@@ -128,6 +143,7 @@ interface Metrics {
   topFlaggedItems: CostItem[];
   tradeBreakdown: Map<string, { original: number; estimated: number; count: number }>;
   savingsOpportunities: Array<{ item: CostItem; savings: number }>;
+  tddBreakdown: Map<TddCategory, { estimated: number; count: number }>;
 }
 
 function computeMetrics(items: CostItem[]): Metrics {
@@ -196,6 +212,17 @@ function computeMetrics(items: CostItem[]): Metrics {
     .sort((a, b) => b.savings - a.savings)
     .slice(0, 10);
 
+  // TDD Category breakdown
+  const tddBreakdown = new Map<TddCategory, { estimated: number; count: number }>();
+  for (const item of items) {
+    const cat = inferTddCategory(null, item.trade, item.originalDescription);
+    const existing = tddBreakdown.get(cat) || { estimated: 0, count: 0 };
+    const p = getEffectivePrice(item);
+    existing.estimated += p != null ? p * item.quantity : 0;
+    existing.count++;
+    tddBreakdown.set(cat, existing);
+  }
+
   return {
     totalItems: items.length,
     totalOriginal,
@@ -211,11 +238,11 @@ function computeMetrics(items: CostItem[]): Metrics {
     topFlaggedItems,
     tradeBreakdown,
     savingsOpportunities,
+    tddBreakdown,
   };
 }
 
 // ─── Native Chart Drawing ────────────────────────────────────────
-// All charts drawn directly with jsPDF — no canvas, no images.
 
 function drawDonutChart(
   doc: jsPDF,
@@ -226,43 +253,28 @@ function drawDonutChart(
   const total = data.reduce((s, d) => s + d.value, 0);
   if (total === 0) return;
 
-  // Draw slices using filled arcs approximated by polygon wedges
-  let startAngle = -Math.PI / 2; // start from top
+  let startAngle = -Math.PI / 2;
   for (const slice of data) {
     const sweepAngle = (slice.value / total) * Math.PI * 2;
     const endAngle = startAngle + sweepAngle;
 
-    // Draw wedge as a filled polygon (many small segments)
     doc.setFillColor(...slice.color);
     const points: [number, number][] = [];
-    // Outer arc
     const steps = Math.max(20, Math.ceil(sweepAngle / 0.05));
     for (let i = 0; i <= steps; i++) {
       const a = startAngle + (sweepAngle * i) / steps;
       points.push([cx + Math.cos(a) * outerR, cy + Math.sin(a) * outerR]);
     }
-    // Inner arc (reverse)
     for (let i = steps; i >= 0; i--) {
       const a = startAngle + (sweepAngle * i) / steps;
       points.push([cx + Math.cos(a) * innerR, cy + Math.sin(a) * innerR]);
     }
 
-    // Draw polygon using lines
     if (points.length > 2) {
       doc.setDrawColor(...C.white);
       doc.setLineWidth(0.5);
-      // Use triangle fan approach
-      const path = points.map(([x, y], i) => 
-        i === 0 ? `${x.toFixed(2)} ${y.toFixed(2)} m` : `${x.toFixed(2)} ${y.toFixed(2)} l`
-      ).join(' ') + ' h';
-      
-      // Fallback: draw using multiple triangles from center
-      // jsPDF doesn't have native polygon, so use rect-based approximation
-      // Actually use the triangle() method or lines
-      const xCoords = points.map(p => p[0]);
-      const yCoords = points.map(p => p[1]);
       doc.setFillColor(...slice.color);
-      // @ts-ignore - using internal lines method
+      // @ts-ignore
       doc.lines(
         points.slice(1).map((p, i) => [p[0] - points[i][0], p[1] - points[i][1]]),
         points[0][0], points[0][1],
@@ -273,7 +285,7 @@ function drawDonutChart(
     startAngle = endAngle;
   }
 
-  // Draw center hole (white circle)
+  // Center hole
   doc.setFillColor(...C.white);
   doc.circle(cx, cy, innerR, 'F');
 
@@ -317,18 +329,15 @@ function drawHorizontalBarChart(
 
   let by = y + 5;
   for (const bar of bars) {
-    // Label
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
     doc.setTextColor(...C.text);
     doc.text(smartTruncate(bar.label, 28), x, by + barH / 2 + 1);
 
-    // Bar
     const barWidth = (bar.value / maxVal) * chartW;
     doc.setFillColor(...bar.color);
     doc.roundedRect(x + labelW, by, barWidth, barH, 1, 1, 'F');
 
-    // Value
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6.5);
     doc.setTextColor(...C.textMuted);
@@ -352,6 +361,9 @@ export async function generatePdfReport(
   const M = 18;
   const contentWidth = pw - 2 * M;
   let pageNum = 0;
+
+  const includeCharts = options.includeVisualCharts !== false;
+  const includeAIReasoning = options.includeAIReasoning === true;
 
   let exportItems = [...items];
   if (options.onlyFlagged) {
@@ -392,7 +404,7 @@ export async function generatePdfReport(
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(...C.textMuted);
-    doc.text('Construction Cost Analysis', M + (logoDataUrl ? 13 : 0), 19);
+    doc.text('TDD / Renovation Estimate Report', M + (logoDataUrl ? 13 : 0), 19);
     const dateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
     doc.text(dateStr, pw - M, 12, { align: 'right' });
     doc.text(options.format === 'executive' ? 'Executive Summary' : 'Full Report', pw - M, 17, { align: 'right' });
@@ -447,7 +459,7 @@ export async function generatePdfReport(
   doc.setTextColor(...C.navy);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(22);
-  doc.text('Cost Analysis Report', M, y + 8);
+  doc.text('TDD / Renovation Estimate Report', M, y + 8);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(11);
   doc.setTextColor(...C.darkGray);
@@ -501,6 +513,28 @@ export async function generatePdfReport(
     y += 20;
   }
 
+  // ── Total Estimated CAPEX Hero Card ──
+  const heroH = 24;
+  doc.setFillColor(...C.navy);
+  doc.roundedRect(M, y, contentWidth, heroH, 2, 2, 'F');
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(180, 195, 220);
+  doc.text('TOTAL ESTIMATED CAPEX', M + 8, y + 8);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(18);
+  doc.setTextColor(...C.white);
+  const capexStr = `${fmt(m.totalEstimated)} ${currency}`;
+  doc.text(capexStr, M + 8, y + 18);
+  // Items count on right
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(180, 195, 220);
+  doc.text(`${m.totalItems} line items`, pw - M - 8, y + 10, { align: 'right' });
+  doc.text(`${m.reviewCount + m.clarificationCount} flagged`, pw - M - 8, y + 17, { align: 'right' });
+
+  y += heroH + 6;
+
   // ── KPI Cards ──
   y = sectionTitle(y, 'Key Metrics');
 
@@ -547,48 +581,16 @@ export async function generatePdfReport(
 
   y += kpiCardH + 6;
 
-  // ── Variance Indicators ──
-  y = sectionTitle(y, 'Variance Assessment');
-
-  const overrunItems = items.filter(i => {
-    if (!i.originalUnitPrice || !i.benchmarkTypical || i.benchmarkTypical === 0) return false;
-    return ((i.originalUnitPrice - i.benchmarkTypical) / i.benchmarkTypical) * 100 > 20;
-  });
-  const moderateItems = items.filter(i => {
-    if (!i.originalUnitPrice || !i.benchmarkTypical || i.benchmarkTypical === 0) return false;
-    const v = ((i.originalUnitPrice - i.benchmarkTypical) / i.benchmarkTypical) * 100;
-    return v > 5 && v <= 20;
-  });
-  const withinBudget = items.filter(i => {
-    if (!i.originalUnitPrice || !i.benchmarkTypical || i.benchmarkTypical === 0) return false;
-    return ((i.originalUnitPrice - i.benchmarkTypical) / i.benchmarkTypical) * 100 <= 5;
-  });
-
-  const indW = contentWidth / 3 - 3;
-  const drawIndicator = (x: number, iy: number, bg: [number, number, number], fg: [number, number, number], label: string, count: number, desc: string) => {
-    doc.setFillColor(...bg);
-    doc.roundedRect(x, iy, indW, 16, 2, 2, 'F');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.setTextColor(...fg);
-    doc.text(`${label}: ${count} items`, x + 4, iy + 6);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(6.5);
-    doc.text(desc, x + 4, iy + 12);
-  };
-
-  drawIndicator(M, y, C.redBg, C.red, 'HIGH RISK', overrunItems.length, '>20% over benchmark');
-  drawIndicator(M + indW + 4, y, C.orangeBg, C.orange, 'MODERATE', moderateItems.length, '+5% to +20% variance');
-  drawIndicator(M + (indW + 4) * 2, y, C.greenBg, C.green, 'ON BUDGET', withinBudget.length, '<5% variance');
-
-  y += 22;
-
   // ── Summary Bullets ──
   y = sectionTitle(y, 'Summary');
 
   const bullets: string[] = [];
   bullets.push(`Total project estimate: ${fmt(m.totalEstimated)} ${currency} across ${m.totalItems} line items.`);
   if (m.potentialSavings > 0) bullets.push(`Potential savings of ${fmt(m.potentialSavings)} ${currency} identified through benchmarking.`);
+  const overrunItems = items.filter(i => {
+    if (!i.originalUnitPrice || !i.benchmarkTypical || i.benchmarkTypical === 0) return false;
+    return ((i.originalUnitPrice - i.benchmarkTypical) / i.benchmarkTypical) * 100 > 20;
+  });
   if (overrunItems.length > 0) bullets.push(`${overrunItems.length} item(s) priced >20% above market benchmarks — recommend re-quoting.`);
   if (m.underpricedRisk > 0) bullets.push(`Underpriced risk exposure of ${fmt(m.underpricedRisk)} ${currency} identified.`);
   if (m.reviewCount + m.clarificationCount > 0) bullets.push(`${m.reviewCount + m.clarificationCount} items require attention (review or clarification).`);
@@ -608,121 +610,131 @@ export async function generatePdfReport(
   addFooter();
 
   // ════════════════════════════════════════════════════════════════
-  // PAGE 2: NATIVE CHARTS + RISK MATRIX
+  // PAGE 2: TDD CATEGORY CHART + COST DISTRIBUTION
   // ════════════════════════════════════════════════════════════════
-  y = addNewPage();
-  y = sectionTitle(y, 'Cost Distribution');
+  if (includeCharts) {
+    y = addNewPage();
+    y = sectionTitle(y, 'Budget by TDD Category');
 
-  // Trade breakdown data
-  const topTrades = [...m.tradeBreakdown.entries()]
-    .sort((a, b) => b[1].estimated - a[1].estimated)
-    .slice(0, 8);
+    // TDD category donut
+    const tddData = [...m.tddBreakdown.entries()]
+      .filter(([, d]) => d.estimated > 0)
+      .sort((a, b) => b[1].estimated - a[1].estimated)
+      .map(([cat, data]) => ({
+        label: cat,
+        value: data.estimated,
+        color: TDD_PALETTE[cat] || TDD_PALETTE.Other,
+      }));
 
-  const donutData = topTrades.map(([trade, data], i) => ({
-    label: trade,
-    value: data.estimated,
-    color: CHART_PALETTE[i % CHART_PALETTE.length],
-  }));
-
-  // Draw donut chart — left side
-  const donutAreaH = 85;
-  doc.setFillColor(...C.lightGray);
-  doc.setDrawColor(...C.border);
-  doc.roundedRect(M, y, contentWidth, donutAreaH, 2, 2, 'FD');
-  doc.setTextColor(...C.navy);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.text('Cost by Trade', M + 4, y + 7);
-
-  drawDonutChart(
-    doc,
-    M + 45, y + 48, 28, 16,  // center, outer, inner
-    donutData,
-    M + 85, y + 14, contentWidth - 90, currency, fmt,
-  );
-
-  y += donutAreaH + 5;
-
-  // Estimate Flow — horizontal bars
-  const flowH = 50;
-  doc.setFillColor(...C.lightGray);
-  doc.setDrawColor(...C.border);
-  doc.roundedRect(M, y, contentWidth, flowH, 2, 2, 'FD');
-  doc.setTextColor(...C.navy);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.text('Estimate Flow', M + 4, y + 7);
-
-  const adjustmentValue = m.totalEstimated - m.totalOriginal;
-  drawHorizontalBarChart(
-    doc, M + 4, y + 10, contentWidth - 8, flowH - 15,
-    [
-      { label: 'Original Estimate', value: m.totalOriginal, color: C.navy },
-      { label: `Adjustments (${adjustmentValue >= 0 ? '+' : ''}${fmt(adjustmentValue)})`, value: Math.abs(adjustmentValue), color: adjustmentValue >= 0 ? C.red : C.green },
-      { label: 'Final Estimate', value: m.totalEstimated, color: C.blue },
-    ],
-    fmt,
-  );
-
-  y += flowH + 8;
-
-  // ── Risk Matrix (2x2) ──
-  y = sectionTitle(y, 'Risk Matrix');
-
-  const rmW = contentWidth / 2 - 2;
-  const rmH = 18;
-  const drawRmCell = (x: number, iy: number, bg: [number, number, number], fg: [number, number, number], label: string, desc: string) => {
-    doc.setFillColor(...bg);
+    const donutAreaH = 85;
+    doc.setFillColor(...C.lightGray);
     doc.setDrawColor(...C.border);
-    doc.roundedRect(x, iy, rmW, rmH, 1, 1, 'FD');
+    doc.roundedRect(M, y, contentWidth, donutAreaH, 2, 2, 'FD');
+    doc.setTextColor(...C.navy);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.setTextColor(...fg);
-    doc.text(label, x + 4, iy + 7);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(6.5);
-    doc.setTextColor(...C.darkGray);
-    doc.text(desc, x + 4, iy + 13);
-  };
+    doc.setFontSize(9);
+    doc.text('CAPEX Distribution by Category', M + 4, y + 7);
 
-  const hvhcItems = exportItems.filter(i => {
-    if (!i.originalUnitPrice || !i.benchmarkTypical || i.benchmarkTypical === 0) return false;
-    const v = Math.abs(((i.originalUnitPrice - i.benchmarkTypical) / i.benchmarkTypical) * 100);
-    const total = (getEffectivePrice(i) ?? 0) * i.quantity;
-    return v > 15 && total > m.totalEstimated * 0.05;
-  });
-  const hvlcItems = exportItems.filter(i => {
-    if (!i.originalUnitPrice || !i.benchmarkTypical || i.benchmarkTypical === 0) return false;
-    const v = Math.abs(((i.originalUnitPrice - i.benchmarkTypical) / i.benchmarkTypical) * 100);
-    const total = (getEffectivePrice(i) ?? 0) * i.quantity;
-    return v > 15 && total <= m.totalEstimated * 0.05;
-  });
-  const lvhcItems = exportItems.filter(i => {
-    if (!i.originalUnitPrice || !i.benchmarkTypical || i.benchmarkTypical === 0) return false;
-    const v = Math.abs(((i.originalUnitPrice - i.benchmarkTypical) / i.benchmarkTypical) * 100);
-    const total = (getEffectivePrice(i) ?? 0) * i.quantity;
-    return v <= 15 && total > m.totalEstimated * 0.05;
-  });
-  const lvlcItems = exportItems.filter(i => {
-    if (!i.originalUnitPrice || !i.benchmarkTypical || i.benchmarkTypical === 0) return false;
-    const v = Math.abs(((i.originalUnitPrice - i.benchmarkTypical) / i.benchmarkTypical) * 100);
-    const total = (getEffectivePrice(i) ?? 0) * i.quantity;
-    return v <= 15 && total <= m.totalEstimated * 0.05;
-  });
+    drawDonutChart(
+      doc,
+      M + 45, y + 48, 28, 16,
+      tddData,
+      M + 85, y + 14, contentWidth - 90, currency, fmt,
+    );
 
-  drawRmCell(M, y, C.redBg, C.red, `Critical: ${hvhcItems.length} items`, 'High variance + High cost — Immediate attention');
-  drawRmCell(M + rmW + 4, y, C.greenBg, C.green, `Low Risk: ${lvhcItems.length} items`, 'Low variance + High cost — Monitor');
-  drawRmCell(M, y + rmH + 2, C.orangeBg, C.orange, `Investigate: ${hvlcItems.length} items`, 'High variance + Low cost — Check pricing');
-  drawRmCell(M + rmW + 4, y + rmH + 2, C.blueBg, C.blue, `Acceptable: ${lvlcItems.length} items`, 'Low variance + Low cost — No action');
+    y += donutAreaH + 5;
 
-  y += rmH * 2 + 8;
+    // Trade breakdown chart (original)
+    const topTrades = [...m.tradeBreakdown.entries()]
+      .sort((a, b) => b[1].estimated - a[1].estimated)
+      .slice(0, 8);
 
-  addFooter();
+    const tradeDonutData = topTrades.map(([trade, data], i) => ({
+      label: trade,
+      value: data.estimated,
+      color: CHART_PALETTE[i % CHART_PALETTE.length],
+    }));
+
+    const tradeDonutH = 85;
+    doc.setFillColor(...C.lightGray);
+    doc.setDrawColor(...C.border);
+    doc.roundedRect(M, y, contentWidth, tradeDonutH, 2, 2, 'FD');
+    doc.setTextColor(...C.navy);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.text('Cost by Trade', M + 4, y + 7);
+
+    drawDonutChart(
+      doc,
+      M + 45, y + 48, 28, 16,
+      tradeDonutData,
+      M + 85, y + 14, contentWidth - 90, currency, fmt,
+    );
+
+    y += tradeDonutH + 5;
+
+    // Estimate Flow
+    const flowH = 50;
+    doc.setFillColor(...C.lightGray);
+    doc.setDrawColor(...C.border);
+    doc.roundedRect(M, y, contentWidth, flowH, 2, 2, 'FD');
+    doc.setTextColor(...C.navy);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.text('Estimate Flow', M + 4, y + 7);
+
+    const adjustmentValue = m.totalEstimated - m.totalOriginal;
+    drawHorizontalBarChart(
+      doc, M + 4, y + 10, contentWidth - 8, flowH - 15,
+      [
+        { label: 'Original Estimate', value: m.totalOriginal, color: C.navy },
+        { label: `Adjustments (${adjustmentValue >= 0 ? '+' : ''}${fmt(adjustmentValue)})`, value: Math.abs(adjustmentValue), color: adjustmentValue >= 0 ? C.red : C.green },
+        { label: 'Final Estimate', value: m.totalEstimated, color: C.blue },
+      ],
+      fmt,
+    );
+
+    y += flowH + 5;
+
+    addFooter();
+  }
 
   // ════════════════════════════════════════════════════════════════
-  // PAGE 3: TRADE SUMMARY TABLE
+  // PAGE 3: TDD CATEGORY SUMMARY TABLE
   // ════════════════════════════════════════════════════════════════
   y = addNewPage();
+  y = sectionTitle(y, 'TDD Category Summary');
+
+  const tddSummaryData = [...m.tddBreakdown.entries()]
+    .sort((a, b) => b[1].estimated - a[1].estimated)
+    .map(([cat, data]) => {
+      const pct = m.totalEstimated > 0 ? ((data.estimated / m.totalEstimated) * 100).toFixed(1) : '0';
+      return [cat, String(data.count), fmt(data.estimated), `${pct}%`];
+    });
+
+  autoTable(doc, {
+    head: [['TDD Category', 'Items', `Estimated (${currency})`, '% of CAPEX']],
+    body: tddSummaryData,
+    startY: y,
+    margin: { left: M, right: M },
+    styles: { fontSize: 7.5, cellPadding: 2.5 },
+    headStyles: { fillColor: C.navy, textColor: C.white, fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: C.offWhite },
+    columnStyles: {
+      0: { cellWidth: 50 },
+      1: { halign: 'center', cellWidth: 20 },
+      2: { halign: 'right', cellWidth: 40 },
+      3: { halign: 'center', cellWidth: 25 },
+    },
+    didDrawPage: () => addFooter(),
+  });
+
+  y = (doc as any).lastAutoTable?.finalY + 8 || y + 40;
+
+  // Trade Summary
+  if (y > ph - 80) {
+    y = addNewPage();
+  }
   y = sectionTitle(y, 'Trade Summary');
 
   const tradeSummaryData = [...m.tradeBreakdown.entries()]
@@ -751,14 +763,12 @@ export async function generatePdfReport(
   });
 
   // ════════════════════════════════════════════════════════════════
-  // FULL REPORT: Detailed Tables (PORTRAIT) + Analysis
+  // FULL REPORT: Detailed Tables + Analysis
   // ════════════════════════════════════════════════════════════════
   if (options.format === 'full') {
     y = addNewPage();
-    y = sectionTitle(y, 'Detailed Cost Items');
+    y = sectionTitle(y, 'Itemized Breakdown');
 
-    // Portrait table: Description | Qty | Unit | Orig Total | Rec Total | Var%
-    // Trade column removed — it's shown in group header rows
     const sorted = [...exportItems].sort((a, b) => (a.trade || 'Uncategorized').localeCompare(b.trade || 'Uncategorized'));
     const groups = new Map<string, CostItem[]>();
     for (const it of sorted) {
@@ -769,9 +779,12 @@ export async function generatePdfReport(
     const rowTypes: Array<'group' | 'item' | 'subtotal' | 'total'> = [];
     const tableBody: string[][] = [];
 
+    // Determine columns based on includeAIReasoning
+    const hasAICol = includeAIReasoning;
+
     for (const [trade, groupItems] of groups.entries()) {
-      // Group header
-      tableBody.push([trade, '', '', '', '', '']);
+      const colCount = hasAICol ? 7 : 6;
+      tableBody.push([trade, ...Array(colCount - 1).fill('')]);
       rowTypes.push('group');
 
       for (const item of groupItems) {
@@ -784,37 +797,60 @@ export async function generatePdfReport(
           varianceStr = `${v > 0 ? '+' : ''}${v.toFixed(0)}%`;
         }
 
-        tableBody.push([
-          smartTruncate(item.originalDescription, 55),
+        const row = [
+          smartTruncate(item.originalDescription, hasAICol ? 40 : 55),
           item.quantity.toLocaleString(),
           item.unit,
           origT != null ? fmt(origT) : '—',
           recT != null ? fmt(recT) : '—',
           varianceStr,
-        ]);
+        ];
+        if (hasAICol) {
+          row.push(smartTruncate(item.aiComment || item.matchReasoning || '—', 45));
+        }
+        tableBody.push(row);
         rowTypes.push('item');
       }
 
       // Subtotal
       const subOrig = groupItems.reduce((s, i) => s + (i.originalUnitPrice ? i.originalUnitPrice * i.quantity : 0), 0);
       const subEst = groupItems.reduce((s, i) => { const p = getEffectivePrice(i); return s + (p != null ? p * i.quantity : 0); }, 0);
-      tableBody.push([`Subtotal: ${trade}`, '', '', fmt(subOrig), fmt(subEst), '']);
+      const subRow = [`Subtotal: ${trade}`, '', '', fmt(subOrig), fmt(subEst), ''];
+      if (hasAICol) subRow.push('');
+      tableBody.push(subRow);
       rowTypes.push('subtotal');
     }
 
     // Grand total
-    tableBody.push([
+    const totalRow = [
       'GRAND TOTAL',
       exportItems.reduce((s, i) => s + i.quantity, 0).toLocaleString(),
       '',
       fmt(m.totalOriginal),
       fmt(m.totalEstimated),
       '',
-    ]);
+    ];
+    if (hasAICol) totalRow.push('');
+    tableBody.push(totalRow);
     rowTypes.push('total');
 
+    const headRow = ['Description', 'Qty', 'Unit', `Original (${currency})`, `Estimated (${currency})`, 'Var %'];
+    if (hasAICol) headRow.push('AI Reasoning');
+
+    const colStyles: Record<number, any> = {
+      0: { cellWidth: hasAICol ? 45 : 68 },
+      1: { cellWidth: 18, halign: 'right' },
+      2: { cellWidth: 14 },
+      3: { cellWidth: 28, halign: 'right' },
+      4: { cellWidth: 28, halign: 'right' },
+      5: { cellWidth: 16, halign: 'center' },
+    };
+    if (hasAICol) {
+      colStyles[6] = { cellWidth: 25 };
+    }
+
     autoTable(doc, {
-      head: [['Description', 'Qty', 'Unit', `Original (${currency})`, `Estimated (${currency})`, 'Var %']],
+      head: [headRow],
       body: tableBody,
       startY: y,
       margin: { left: M, right: M },
@@ -822,14 +858,7 @@ export async function generatePdfReport(
       headStyles: { fillColor: C.navy, textColor: C.white, fontStyle: 'bold', fontSize: 7.5 },
       alternateRowStyles: { fillColor: C.offWhite },
       rowPageBreak: 'avoid',
-      columnStyles: {
-        0: { cellWidth: 68 },
-        1: { cellWidth: 18, halign: 'right' },
-        2: { cellWidth: 14 },
-        3: { cellWidth: 30, halign: 'right' },
-        4: { cellWidth: 30, halign: 'right' },
-        5: { cellWidth: 16, halign: 'center' },
-      },
+      columnStyles: colStyles,
       didParseCell: (data) => {
         const t = rowTypes[data.row.index];
         if (!t) return;
@@ -853,7 +882,6 @@ export async function generatePdfReport(
           data.cell.styles.fontSize = 7.5;
         }
         if (t === 'item') {
-          // Variance color coding
           if (data.column.index === 5) {
             const raw = (data.cell.text?.[0] ?? '').replace(/[+\-%\s]/g, '');
             const v = Number(raw);
@@ -867,7 +895,6 @@ export async function generatePdfReport(
         }
       },
       willDrawCell: (data) => {
-        // Prevent orphaned group headers at bottom of page
         if (data.section === 'body') {
           const t = rowTypes[data.row.index];
           if (t === 'group' && data.column.index === 0) {
@@ -887,7 +914,6 @@ export async function generatePdfReport(
     y = addNewPage();
     y = sectionTitle(y, 'Analysis & Recommendations');
 
-    // Top flagged items
     if (m.topFlaggedItems.length > 0) {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(9);
@@ -968,55 +994,65 @@ export async function generatePdfReport(
 
       y = (doc as any).lastAutoTable?.finalY + 8 || y + 40;
     }
-
-    // High deviation items
-    if (m.highVarianceItems.length > 0) {
-      if (y > ph - 60) {
-        y = addNewPage();
-      }
-      y = sectionTitle(y, 'Cost Deviation Analysis (>10%)');
-
-      const devData = m.highVarianceItems.slice(0, 8).map(item => {
-        const v = ((item.originalUnitPrice! - item.benchmarkTypical!) / item.benchmarkTypical!) * 100;
-        return [
-          smartTruncate(item.originalDescription, 50),
-          fmt(item.originalUnitPrice || 0),
-          fmt(item.benchmarkTypical || 0),
-          `${v > 0 ? '+' : ''}${Math.abs(v).toFixed(1)}%`,
-        ];
-      });
-
-      autoTable(doc, {
-        head: [['Description', `Original (${currency})`, `Benchmark (${currency})`, 'Deviation']],
-        body: devData,
-        startY: y,
-        margin: { left: M, right: M },
-        styles: { fontSize: 7, cellPadding: 2, overflow: 'linebreak' },
-        headStyles: { fillColor: C.red, textColor: C.white, fontStyle: 'bold' },
-        alternateRowStyles: { fillColor: C.offWhite },
-        columnStyles: {
-          0: { cellWidth: 65 },
-          1: { cellWidth: 30, halign: 'right' },
-          2: { cellWidth: 30, halign: 'right' },
-          3: { cellWidth: 25, halign: 'center', fontStyle: 'bold' },
-        },
-        didParseCell: (data) => {
-          if (data.column.index === 3 && data.section === 'body') {
-            const raw = (data.cell.text?.[0] ?? '').replace(/[+\-%\s]/g, '');
-            const v = Number(raw);
-            if (!Number.isNaN(v)) {
-              data.cell.styles.textColor = v > 20 ? C.red : C.orange;
-            }
-          }
-        },
-        didDrawPage: () => addFooter(),
-      });
-    }
   } // end full report
+
+  // ════════════════════════════════════════════════════════════════
+  // FINAL PAGE: ASSUMPTIONS & LIMITATIONS
+  // ════════════════════════════════════════════════════════════════
+  if (y > ph - 90) {
+    y = addNewPage();
+  } else {
+    y += 5;
+  }
+
+  y = sectionTitle(y, 'Assumptions & Limitations');
+
+  const disclaimers = [
+    'This report has been prepared using AI-assisted benchmark matching. Unit prices are estimated based on available market data and may not reflect actual contractor pricing in your region or project conditions.',
+    'Benchmark data is sourced from publicly available databases and proprietary datasets. Coverage may vary by country, trade, and construction type. Some items may lack reliable benchmark references.',
+    'All estimates are indicative and should not be used as a substitute for formal contractor quotations. Actual costs may vary due to site conditions, material availability, labor markets, and project-specific requirements.',
+    'The AI matching engine assigns confidence scores to each benchmark match. Items with low confidence or missing benchmarks are flagged for manual review. Users should verify all flagged items before relying on the estimates.',
+    'This document is intended for internal decision-making and due diligence purposes only. It does not constitute a binding offer, warranty, or guarantee of construction costs.',
+  ];
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(...C.darkGray);
+
+  for (let i = 0; i < disclaimers.length; i++) {
+    const text = `${i + 1}.  ${disclaimers[i]}`;
+    const wrapped = doc.splitTextToSize(text, contentWidth - 6) as string[];
+    
+    // Check if we need a new page
+    if (y + wrapped.length * 4 > ph - 20) {
+      addFooter();
+      y = addNewPage();
+      if (i === 0) y = sectionTitle(y, 'Assumptions & Limitations');
+    }
+
+    for (const line of wrapped) {
+      doc.text(line, M + 3, y);
+      y += 3.8;
+    }
+    y += 2;
+  }
+
+  // Signature line
+  y += 6;
+  doc.setDrawColor(...C.border);
+  doc.setLineWidth(0.3);
+  doc.line(M, y, M + 70, y);
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(7);
+  doc.setTextColor(...C.textMuted);
+  doc.text('Report prepared by Unit Rate — AI-Powered Cost Intelligence', M, y + 5);
+  doc.text(new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }), M, y + 9);
+
+  addFooter();
 
   // ── PDF Properties ──
   doc.setProperties({
-    title: `Unit Rate - ${project.name} - Cost Analysis`,
+    title: `Unit Rate - ${project.name} - TDD Estimate Report`,
     subject: `${options.format === 'executive' ? 'Executive Summary' : 'Full Report'} for ${project.name}`,
     author: 'Unit Rate',
     creator: 'Unit Rate Cost Analysis Platform',
@@ -1028,6 +1064,6 @@ export async function generatePdfReport(
 
   const timestamp = new Date().toISOString().split('T')[0];
   const formatSuffix = options.format === 'executive' ? 'Executive' : 'Full';
-  const filename = `UnitRate_${project.name.replace(/[^a-zA-Z0-9]/g, '_')}_${formatSuffix}_${timestamp}.pdf`;
+  const filename = `UnitRate_${project.name.replace(/[^a-zA-Z0-9]/g, '_')}_TDD_${formatSuffix}_${timestamp}.pdf`;
   doc.save(filename);
 }
