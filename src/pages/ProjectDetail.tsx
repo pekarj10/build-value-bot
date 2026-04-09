@@ -736,7 +736,7 @@ export default function ProjectDetail() {
         )}
 
         {/* Executive Summary */}
-        <ExecutiveSummary items={items} currency={project.currency} excludedIds={excludedIds} />
+        <ExecutiveSummary items={items} currency={project.currency} excludedIds={excludedIds} projectType={project.projectType} />
 
         {/* Tabs for different views */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
@@ -831,6 +831,7 @@ export default function ProjectDetail() {
               onFilterByStatus={handleFilterByStatus}
               onFilterByTrade={handleFilterByTrade}
               excludedIds={excludedIds}
+              projectType={project.projectType}
             />
           </TabsContent>
 

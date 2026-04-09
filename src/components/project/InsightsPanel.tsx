@@ -13,6 +13,7 @@ import {
 import { cn } from '@/lib/utils';
 import { formatCurrency, formatCompactNumber } from '@/lib/formatters';
 import { inferTddCategory, TDD_CATEGORY_COLORS, TDD_CATEGORIES, TddCategory } from '@/lib/tddCategories';
+import { useProjectTerminology } from '@/hooks/useProjectTerminology';
 import {
   PieChart,
   Pie,
@@ -33,6 +34,7 @@ interface InsightsPanelProps {
   onFilterByTrade?: (trade: string) => void;
   onFilterByVariance?: (range: string) => void;
   excludedIds?: Set<string>;
+  projectType?: string;
 }
 
 const STATUS_COLORS = {
@@ -47,7 +49,9 @@ export function InsightsPanel({
   onFilterByStatus,
   onFilterByTrade,
   excludedIds,
+  projectType = 'new_construction_residential',
 }: InsightsPanelProps) {
+  const t = useProjectTerminology(projectType);
   const fmt = (v: number) => formatCurrency(v, currency);
   const numberBase = 'font-mono tabular-nums';
 
@@ -169,7 +173,7 @@ export function InsightsPanel({
         <Card className="p-5">
           <div className="flex items-center gap-2 mb-4">
             <PieChartIcon className="h-4 w-4 text-muted-foreground" />
-            <h3 className="font-semibold">Budget by TDD Category</h3>
+            <h3 className="font-semibold">{t.budgetChartTitle}</h3>
           </div>
           <div className="flex items-center gap-4">
             <div className="h-[220px] w-[220px] flex-shrink-0">
@@ -258,7 +262,7 @@ export function InsightsPanel({
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="rounded-lg border p-3">
-                <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Total CAPEX</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Total {t.totalBudgetShort}</p>
                 <p className={cn('text-lg font-semibold', numberBase)}>{formatCompactNumber(totalCAPEX).display} <span className="text-xs font-normal text-muted-foreground">{currency}</span></p>
               </div>
               <div className="rounded-lg border p-3">
@@ -292,7 +296,7 @@ export function InsightsPanel({
         <Card className="p-5">
           <div className="flex items-center gap-2 mb-4">
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            <h3 className="font-semibold">Top 5 Cost Drivers</h3>
+            <h3 className="font-semibold">Top 5 {t.costDriversTitle}</h3>
           </div>
           <div className="space-y-3">
             {topDrivers.map((item, idx) => {
@@ -391,7 +395,7 @@ export function InsightsPanel({
 
         {/* TDD Categories by Count */}
         <Card className="p-5">
-          <h3 className="font-semibold mb-4">TDD Categories by Count</h3>
+          <h3 className="font-semibold mb-4">{t.categoriesLabel} by Count</h3>
           <div className="space-y-2">
             {tddData.slice(0, 5).map(d => (
               <div key={d.name} className="flex items-center justify-between p-2 rounded hover:bg-muted/30 transition-colors">

@@ -16,6 +16,7 @@ import {
 import { cn } from '@/lib/utils';
 import { formatCompactNumber, formatCurrency } from '@/lib/formatters';
 import { inferTddCategory, TDD_CATEGORY_COLORS, TDD_CATEGORIES, TddCategory } from '@/lib/tddCategories';
+import { useProjectTerminology } from '@/hooks/useProjectTerminology';
 import {
   PieChart,
   Pie,
@@ -28,9 +29,11 @@ interface ExecutiveSummaryProps {
   items: CostItem[];
   currency: string;
   excludedIds?: Set<string>;
+  projectType?: string;
 }
 
-export function ExecutiveSummary({ items, currency, excludedIds }: ExecutiveSummaryProps) {
+export function ExecutiveSummary({ items, currency, excludedIds, projectType = 'new_construction_residential' }: ExecutiveSummaryProps) {
+  const t = useProjectTerminology(projectType);
   const [isExpanded, setIsExpanded] = useState(true);
   const [forceCompactLayout, setForceCompactLayout] = useState(false);
 
@@ -112,7 +115,7 @@ export function ExecutiveSummary({ items, currency, excludedIds }: ExecutiveSumm
       <div className="bg-popover border rounded-lg shadow-lg p-3 text-sm">
         <p className="font-medium">{d.name}</p>
         <p className="font-mono text-muted-foreground">{fmt(d.value)}</p>
-        <p className="text-xs text-muted-foreground">{pct}% of CAPEX</p>
+        <p className="text-xs text-muted-foreground">{pct}% of {t.totalBudgetShort}</p>
       </div>
     );
   };
@@ -126,8 +129,8 @@ export function ExecutiveSummary({ items, currency, excludedIds }: ExecutiveSumm
             <Calculator className="h-5 w-5 text-primary" />
           </div>
           <div className="min-w-0">
-            <h2 className="font-semibold text-lg">CAPEX Executive Summary</h2>
-            <p className="text-sm text-muted-foreground hidden sm:block">Technical Due Diligence Overview</p>
+            <h2 className="font-semibold text-lg">{t.summaryTitle}</h2>
+            <p className="text-sm text-muted-foreground hidden sm:block">{t.summarySubtitle}</p>
           </div>
         </div>
         <Button
@@ -143,7 +146,7 @@ export function ExecutiveSummary({ items, currency, excludedIds }: ExecutiveSumm
       {/* ── Hero: Total Estimated CAPEX ── */}
       <div className="rounded-xl border border-primary/20 bg-primary/[0.03] p-5 mb-5">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
-          Total Estimated CAPEX
+          {t.totalBudgetLabel}
         </p>
         <p className={cn('text-3xl lg:text-4xl font-semibold text-foreground', numberBase)}>
           {fmt(totalCAPEX)}
@@ -209,7 +212,7 @@ export function ExecutiveSummary({ items, currency, excludedIds }: ExecutiveSumm
             />
             <MiniKpi
               icon={<Layers className="h-4 w-4 text-muted-foreground" />}
-              label="TDD Categories"
+              label={t.categoriesLabel}
               value={`${tddData.length}`}
               sub="active"
             />
@@ -221,7 +224,7 @@ export function ExecutiveSummary({ items, currency, excludedIds }: ExecutiveSumm
             <div className="rounded-xl border p-4">
               <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
                 <Layers className="h-4 w-4 text-muted-foreground" />
-                Budget by TDD Category
+                {t.budgetChartTitle}
               </h3>
               {tddData.length > 0 ? (
                 <div className="flex items-center gap-4">
@@ -269,7 +272,7 @@ export function ExecutiveSummary({ items, currency, excludedIds }: ExecutiveSumm
             <div className="rounded-xl border p-4">
               <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
                 <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                Top 3 Cost Drivers
+                Top 3 {t.costDriversTitle}
               </h3>
               {topDrivers.length > 0 ? (
                 <div className="space-y-3">

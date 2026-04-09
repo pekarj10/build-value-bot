@@ -8,7 +8,8 @@ export type ProjectType =
   | 'new_construction_office'
   | 'reconstruction'
   | 'demolition'
-  | 'office_fitout';
+  | 'office_fitout'
+  | 'personal_renovation';
 
 export type CostItemStatus = 'ok' | 'review' | 'clarification' | 'underpriced' | 'actual';
 
@@ -83,9 +84,10 @@ export const PROJECT_TYPE_LABELS: Record<ProjectType, string> = {
   new_construction_industrial: 'New Construction - Industrial',
   new_construction_retail: 'New Construction - Retail',
   new_construction_office: 'New Construction - Office',
-  reconstruction: 'Reconstruction',
+  reconstruction: 'Reconstruction / Renovation',
   demolition: 'Demolition',
   office_fitout: 'Office Fit-out',
+  personal_renovation: 'Personal Home Renovation',
 };
 
 export const SUPPORTED_COUNTRIES = [

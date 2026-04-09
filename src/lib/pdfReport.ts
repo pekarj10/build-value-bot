@@ -8,6 +8,7 @@ import autoTable from 'jspdf-autotable';
 import { CostItem, Project, PROJECT_TYPE_LABELS, ProjectType } from '@/types/project';
 import { formatCurrency } from '@/lib/formatters';
 import { inferTddCategory, TDD_CATEGORIES, TDD_CATEGORY_COLORS, type TddCategory } from '@/lib/tddCategories';
+import { getTerminology } from '@/hooks/useProjectTerminology';
 import logoImg from '@/assets/logo-new.png';
 
 export type ReportFormat = 'executive' | 'full';
@@ -32,6 +33,7 @@ export interface PdfExportOptions {
   includeExcludedItems?: boolean;
   includeVisualCharts?: boolean;
   excludedIds?: Set<string>;
+  projectType?: string;
 }
 
 export interface PdfRuntimeOptions {
@@ -406,6 +408,7 @@ export async function generatePdfReport(
   const contentWidth = pw - 2 * M;
   let pageNum = 0;
 
+  const term = getTerminology(options.projectType || project.projectType || 'new_construction_residential');
   const includeCharts = options.includeVisualCharts !== false;
   const includeAIReasoning = options.includeAIReasoning === true;
 
@@ -433,10 +436,10 @@ export async function generatePdfReport(
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(...C.textMuted);
-    doc.text('TDD / Renovation Estimate Report', M + (logoDataUrl ? 13 : 0), 19);
+    doc.text(term.reportSubtitle, M + (logoDataUrl ? 13 : 0), 19);
     const dateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
     doc.text(dateStr, pw - M, 12, { align: 'right' });
-    doc.text(options.format === 'executive' ? 'Executive Summary' : 'Full Report', pw - M, 17, { align: 'right' });
+    doc.text(options.format === 'executive' ? term.summaryTitle : 'Full Report', pw - M, 17, { align: 'right' });
     doc.setDrawColor(...C.border);
     doc.setLineWidth(0.3);
     doc.line(M, 23, pw - M, 23);
@@ -488,7 +491,7 @@ export async function generatePdfReport(
   doc.setTextColor(...C.navy);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(22);
-  doc.text('TDD / Renovation Estimate Report', M, y + 8);
+  doc.text(term.reportTitle, M, y + 8);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(11);
   doc.setTextColor(...C.darkGray);
@@ -524,7 +527,7 @@ export async function generatePdfReport(
 
   const dateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   infoLabel(M + colW + 11, y + 7, 'Report Date', dateStr);
-  infoLabel(M + colW + 11, y + 19, 'Report Type', options.format === 'executive' ? 'Executive Summary' : 'Full Report');
+  infoLabel(M + colW + 11, y + 19, 'Report Type', options.format === 'executive' ? term.summaryTitle : 'Full Report');
   infoLabel(M + colW + 6 + colW / 2, y + 7, options.clientName ? 'Client' : 'Status', options.clientName || `${m.okCount} OK / ${m.reviewCount + m.clarificationCount} Flagged`);
   infoLabel(M + colW + 6 + colW / 2, y + 19, options.contractorName ? 'Contractor' : 'Total Value', options.contractorName || fmt(m.totalEstimated));
 
@@ -549,7 +552,7 @@ export async function generatePdfReport(
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(180, 195, 220);
-  doc.text('TOTAL ESTIMATED CAPEX', M + 8, y + 8);
+  doc.text(term.totalBudgetLabel.toUpperCase(), M + 8, y + 8);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(18);
   doc.setTextColor(...C.white);
@@ -643,7 +646,7 @@ export async function generatePdfReport(
   // ════════════════════════════════════════════════════════════════
   if (includeCharts) {
     y = addNewPage();
-    y = sectionTitle(y, 'Budget by TDD Category');
+    y = sectionTitle(y, term.budgetChartTitle);
 
     // TDD category donut
     const tddData = [...m.tddBreakdown.entries()]
@@ -1081,8 +1084,8 @@ export async function generatePdfReport(
 
   // ── PDF Properties ──
   doc.setProperties({
-    title: `Unit Rate - ${project.name} - TDD Estimate Report`,
-    subject: `${options.format === 'executive' ? 'Executive Summary' : 'Full Report'} for ${project.name}`,
+    title: `Unit Rate - ${project.name} - ${term.reportTitle}`,
+    subject: `${options.format === 'executive' ? term.summaryTitle : 'Full Report'} for ${project.name}`,
     author: 'Unit Rate',
     creator: 'Unit Rate Cost Analysis Platform',
   });
