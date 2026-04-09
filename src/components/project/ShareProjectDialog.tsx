@@ -24,7 +24,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-import { Users, Mail, Trash2, Crown, Loader2, MessageSquare } from 'lucide-react';
+import { Users, Mail, Trash2, Crown, Loader2, MessageSquare, Link2, Copy, ExternalLink } from 'lucide-react';
 import { z } from 'zod';
 
 const emailSchema = z.string().email('Please enter a valid email address');
@@ -71,12 +71,15 @@ export function ShareProjectDialog({
   const [isSending, setIsSending] = useState(false);
   const [createChatChannel, setCreateChatChannel] = useState(true);
   const [hasProjectChannel, setHasProjectChannel] = useState(false);
+  const [shareTokens, setShareTokens] = useState<{ id: string; token: string; label: string | null; is_active: boolean; created_at: string }[]>([]);
+  const [isGeneratingLink, setIsGeneratingLink] = useState(false);
 
   useEffect(() => {
     if (open) {
       loadMembers();
       loadInvitations();
       checkProjectChannel();
+      loadShareTokens();
     }
   }, [open, projectId]);
 
@@ -93,6 +96,59 @@ export function ShareProjectDialog({
     } catch {
       // ignore
     }
+  };
+
+  const loadShareTokens = async () => {
+    try {
+      const { data } = await supabase
+        .from('project_share_tokens')
+        .select('id, token, label, is_active, created_at')
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: false });
+      setShareTokens(data || []);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleGenerateLink = async () => {
+    if (!user) return;
+    setIsGeneratingLink(true);
+    try {
+      const { error } = await supabase.from('project_share_tokens').insert({
+        project_id: projectId,
+        created_by: user.id,
+        label: 'Presentation Link',
+      });
+      if (error) throw error;
+      toast.success('Presentation link generated!');
+      loadShareTokens();
+    } catch (err) {
+      console.error('Failed to generate link:', err);
+      toast.error('Failed to generate link');
+    } finally {
+      setIsGeneratingLink(false);
+    }
+  };
+
+  const handleRevokeToken = async (tokenId: string) => {
+    try {
+      const { error } = await supabase
+        .from('project_share_tokens')
+        .update({ is_active: false })
+        .eq('id', tokenId);
+      if (error) throw error;
+      toast.success('Link revoked');
+      loadShareTokens();
+    } catch {
+      toast.error('Failed to revoke link');
+    }
+  };
+
+  const copyPresentationLink = (token: string) => {
+    const url = `${window.location.origin}/presentation/${token}`;
+    navigator.clipboard.writeText(url);
+    toast.success('Presentation link copied to clipboard!');
   };
 
   const loadMembers = async () => {
@@ -489,6 +545,62 @@ export function ShareProjectDialog({
         {isLoading && (
           <div className="flex items-center justify-center py-4">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        )}
+
+        <Separator />
+
+        {/* Presentation Links */}
+        {isOwner && (
+          <div className="space-y-3">
+            <Label className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+              <Link2 className="h-3.5 w-3.5" />
+              Interactive Presentation Links
+            </Label>
+
+            {shareTokens.filter(t => t.is_active).map((st) => (
+              <div key={st.id} className="flex items-center gap-2 p-2 rounded-lg bg-muted/50 text-sm">
+                <ExternalLink className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <span className="flex-1 truncate text-xs font-mono text-muted-foreground">
+                  {window.location.origin}/presentation/{st.token.slice(0, 8)}…
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => copyPresentationLink(st.token)}
+                >
+                  <Copy className="h-3 w-3 mr-1" />
+                  Copy
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+                  onClick={() => handleRevokeToken(st.id)}
+                >
+                  Revoke
+                </Button>
+              </div>
+            ))}
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleGenerateLink}
+              disabled={isGeneratingLink}
+              className="w-full"
+            >
+              {isGeneratingLink ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Link2 className="h-4 w-4 mr-2" />
+              )}
+              Generate Presentation Link
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Anyone with this link can view an interactive, read-only dashboard with What-If budget scenarios.
+            </p>
           </div>
         )}
       </DialogContent>
