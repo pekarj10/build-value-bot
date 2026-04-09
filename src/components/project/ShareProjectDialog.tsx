@@ -71,6 +71,8 @@ export function ShareProjectDialog({
   const [isSending, setIsSending] = useState(false);
   const [createChatChannel, setCreateChatChannel] = useState(true);
   const [hasProjectChannel, setHasProjectChannel] = useState(false);
+  const [shareTokens, setShareTokens] = useState<{ id: string; token: string; label: string | null; is_active: boolean; created_at: string }[]>([]);
+  const [isGeneratingLink, setIsGeneratingLink] = useState(false);
 
   useEffect(() => {
     if (open) {
