@@ -69,6 +69,7 @@ export default function ProjectDetail() {
   const [activeTab, setActiveTab] = useState('items');
   const [showShareDialog, setShowShareDialog] = useState(false);
   const [showFocusReview, setShowFocusReview] = useState(false);
+  const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set());
 
   // Benchmark update notification state
   const [pendingBenchmarkUpdate, setPendingBenchmarkUpdate] = useState(false);
