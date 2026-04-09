@@ -46,17 +46,23 @@ export function InsightsPanel({
   currency,
   onFilterByStatus,
   onFilterByTrade,
+  excludedIds,
 }: InsightsPanelProps) {
   const fmt = (v: number) => formatCurrency(v, currency);
   const numberBase = 'font-mono tabular-nums';
 
+  // Filter items based on scenario exclusions
+  const activeItems = useMemo(() =>
+    excludedIds?.size ? items.filter(i => !excludedIds.has(i.id)) : items,
+  [items, excludedIds]);
+
   // ── Total CAPEX ────────────────────────────────────────────
   const totalCAPEX = useMemo(() =>
-    items.reduce((s, i) => {
+    activeItems.reduce((s, i) => {
       const p = i.userOverridePrice ?? i.recommendedUnitPrice ?? i.originalUnitPrice;
       return s + (p != null ? p * i.quantity : 0);
     }, 0),
-  [items]);
+  [activeItems]);
 
   const avgCost = items.length > 0 ? totalCAPEX / items.length : 0;
 
