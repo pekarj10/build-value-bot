@@ -1,8 +1,9 @@
-import { useState, useMemo, useRef, useEffect, memo } from 'react';
+import { useState, useMemo, useRef, useEffect, memo, useCallback } from 'react';
 import { CostItem } from '@/types/project';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import { 
   Select,
   SelectContent,
@@ -69,6 +70,8 @@ interface CostItemsTableProps {
   statusFilter?: string;
   tradeFilter?: string;
   isLoading?: boolean;
+  excludedIds?: Set<string>;
+  onToggleInclude?: (itemId: string) => void;
 }
 
 type SortField = 'description' | 'quantity' | 'originalPrice' | 'recommendedPrice' | 'originalTotal' | 'recommendedTotal' | 'variance' | 'trade' | 'status';
@@ -95,6 +98,7 @@ interface TableRowProps {
   isEditing: boolean;
   editValue: string;
   isSelected: boolean;
+  isExcluded: boolean;
   isRowReanalyzing: boolean;
   isReanalyzing: boolean;
   effectiveIsAdmin: boolean;
@@ -103,6 +107,7 @@ interface TableRowProps {
   hasClearClarification: boolean;
   hasPriceUpdate: boolean;
   hasResetPrice: boolean;
+  hasToggleInclude: boolean;
   formatPrice: (v: number) => string;
   getItemVariance: (item: CostItem) => number | null;
   getOriginalTotal: (item: CostItem) => number | null;
@@ -113,6 +118,7 @@ interface TableRowProps {
   getStatusRowTint: (status: string) => string;
   onItemSelect: (item: CostItem) => void;
   onToggleSelect: (id: string, e: React.MouseEvent) => void;
+  onToggleInclude: (id: string) => void;
   onEditStart: (item: CostItem, e: React.MouseEvent) => void;
   onEditSave: (itemId: string, e: React.MouseEvent) => void;
   onEditCancel: (e: React.MouseEvent) => void;
@@ -125,11 +131,11 @@ interface TableRowProps {
 }
 
 const TableRowMemo = memo(function TableRowComponent({
-  item, currency, isEditing, editValue, isSelected, isRowReanalyzing, isReanalyzing,
-  effectiveIsAdmin, hasReanalyze, hasDelete, hasClearClarification, hasPriceUpdate, hasResetPrice,
+  item, currency, isEditing, editValue, isSelected, isExcluded, isRowReanalyzing, isReanalyzing,
+  effectiveIsAdmin, hasReanalyze, hasDelete, hasClearClarification, hasPriceUpdate, hasResetPrice, hasToggleInclude,
   formatPrice, getItemVariance, getOriginalTotal, getRecommendedTotal, getRowHighlight,
   getConfidenceColor, getConfidenceBg, getStatusRowTint,
-  onItemSelect, onToggleSelect, onEditStart, onEditSave, onEditCancel, onKeyDown, onEditValueChange,
+  onItemSelect, onToggleSelect, onToggleInclude, onEditStart, onEditSave, onEditCancel, onKeyDown, onEditValueChange,
   onResetPrice, onDeleteItem, onClearClarification, onReanalyzeSingle,
 }: TableRowProps) {
   const variance = getItemVariance(item);
@@ -140,13 +146,23 @@ const TableRowMemo = memo(function TableRowComponent({
     <tr
       onClick={() => !isEditing && onItemSelect(item)}
       className={cn(
-        "cursor-pointer group",
+        "cursor-pointer group transition-opacity",
         isEditing && "bg-muted/50",
         isSelected && "bg-primary/5",
+        isExcluded && "opacity-40",
         getRowHighlight(item),
         getStatusRowTint(item.status)
       )}
     >
+      {hasToggleInclude && (
+        <td onClick={(e) => e.stopPropagation()} className="w-[44px]">
+          <Switch
+            checked={!isExcluded}
+            onCheckedChange={() => onToggleInclude(item.id)}
+            className="scale-75"
+          />
+        </td>
+      )}
       <td onClick={(e) => onToggleSelect(item.id, e)}>
         <Checkbox checked={isSelected} />
       </td>
@@ -376,6 +392,8 @@ export function CostItemsTable({
   statusFilter: externalStatusFilter,
   tradeFilter: externalTradeFilter,
   isLoading = false,
+  excludedIds,
+  onToggleInclude,
 }: CostItemsTableProps) {
   const { isAdmin } = useAuth();
   const { showAsAdmin } = useViewMode();
@@ -1163,6 +1181,14 @@ export function CostItemsTable({
             <table className="data-table">
               <thead>
                 <tr>
+                  {onToggleInclude && (
+                    <th className="w-[44px]">
+                      <Tooltip>
+                        <TooltipTrigger><span className="text-xs">Budget</span></TooltipTrigger>
+                        <TooltipContent>Include/exclude from budget scenario</TooltipContent>
+                      </Tooltip>
+                    </th>
+                  )}
                   <th className="w-[40px]">
                     <Checkbox
                       checked={selectedIds.size === paginatedItems.length && paginatedItems.length > 0}
@@ -1285,6 +1311,7 @@ export function CostItemsTable({
                     isEditing={editingId === item.id}
                     editValue={editValue}
                     isSelected={selectedIds.has(item.id)}
+                    isExcluded={excludedIds?.has(item.id) ?? false}
                     isRowReanalyzing={reanalyzingId === item.id}
                     isReanalyzing={isReanalyzing}
                     effectiveIsAdmin={effectiveIsAdmin}
@@ -1293,6 +1320,7 @@ export function CostItemsTable({
                     hasClearClarification={!!onClearClarification}
                     hasPriceUpdate={!!onPriceUpdate}
                     hasResetPrice={!!onResetPrice}
+                    hasToggleInclude={!!onToggleInclude}
                     formatPrice={formatPrice}
                     getItemVariance={getItemVariance}
                     getOriginalTotal={getOriginalTotal}
@@ -1303,6 +1331,7 @@ export function CostItemsTable({
                     getStatusRowTint={getStatusRowTint}
                     onItemSelect={onItemSelect}
                     onToggleSelect={toggleSelect}
+                    onToggleInclude={onToggleInclude || (() => {})}
                     onEditStart={handleEditStart}
                     onEditSave={handleEditSave}
                     onEditCancel={handleEditCancel}
@@ -1322,6 +1351,28 @@ export function CostItemsTable({
             <EmptyState type="no-results" onClearFilters={clearAllFilters} />
           )}
         </div>
+
+        {/* What-If Scenario Summary Bar */}
+        {excludedIds && excludedIds.size > 0 && (
+          <div className="sticky bottom-0 z-20 flex items-center justify-between gap-4 p-3 bg-primary/5 border border-primary/20 rounded-lg backdrop-blur-sm">
+            <div className="flex items-center gap-3 text-sm">
+              <span className="font-semibold text-foreground">Selected Budget:</span>
+              <span className="font-mono font-semibold text-primary text-base">
+                {formatPrice(
+                  items
+                    .filter(i => !excludedIds.has(i.id))
+                    .reduce((s, i) => {
+                      const p = i.userOverridePrice ?? i.recommendedUnitPrice ?? i.originalUnitPrice;
+                      return s + (p != null ? p * i.quantity : 0);
+                    }, 0)
+                )} {currency}
+              </span>
+            </div>
+            <span className="text-sm text-muted-foreground">
+              {excludedIds.size} item{excludedIds.size > 1 ? 's' : ''} excluded
+            </span>
+          </div>
+        )}
 
         {/* Pagination */}
         {sortedItems.length > 0 && (
