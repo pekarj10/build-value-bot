@@ -145,11 +145,12 @@
   
   /* Data table styles */
   .data-table {
-    @apply w-full text-sm;
+    @apply w-full text-sm border-collapse;
   }
   
   .data-table th {
-    @apply text-left font-medium text-muted-foreground px-4 py-3.5 border-b bg-muted/30 text-xs uppercase tracking-wider;
+    @apply text-left font-medium text-muted-foreground px-4 py-3.5 border-b bg-muted/30 text-xs uppercase tracking-wider sticky top-0 z-10 backdrop-blur-sm;
+    background-color: hsl(var(--muted) / 0.95);
   }
   
   .data-table td {
