@@ -68,6 +68,7 @@ export default function ProjectDetail() {
   const [isUploading, setIsUploading] = useState(false);
   const [activeTab, setActiveTab] = useState('items');
   const [showShareDialog, setShowShareDialog] = useState(false);
+  const [showFocusReview, setShowFocusReview] = useState(false);
 
   // Benchmark update notification state
   const [pendingBenchmarkUpdate, setPendingBenchmarkUpdate] = useState(false);
