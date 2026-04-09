@@ -79,6 +79,7 @@ export function ShareProjectDialog({
       loadMembers();
       loadInvitations();
       checkProjectChannel();
+      loadShareTokens();
     }
   }, [open, projectId]);
 
