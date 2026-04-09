@@ -331,6 +331,30 @@ export function CostItemsTable({
     return 'text-destructive';
   };
 
+  const getConfidenceColor = (confidence: number | null | undefined) => {
+    if (confidence == null) return '';
+    if (confidence >= 80) return 'text-success';
+    if (confidence >= 50) return 'text-warning';
+    return 'text-destructive';
+  };
+
+  const getConfidenceBg = (confidence: number | null | undefined) => {
+    if (confidence == null) return '';
+    if (confidence >= 80) return 'bg-success/5';
+    if (confidence >= 50) return 'bg-warning/5';
+    return 'bg-destructive/5';
+  };
+
+  const getStatusRowTint = (status: string) => {
+    switch (status) {
+      case 'ok': return '';
+      case 'review': return 'bg-warning/[0.03]';
+      case 'clarification': return 'bg-destructive/[0.03]';
+      case 'underpriced': return 'bg-blue-500/[0.03]';
+      default: return '';
+    }
+  };
+
   const getRowHighlight = (item: CostItem) => {
     const variance = getItemVariance(item);
     if (variance === null) return '';
