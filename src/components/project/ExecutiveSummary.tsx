@@ -44,45 +44,50 @@ export function ExecutiveSummary({ items, currency, excludedIds }: ExecutiveSumm
 
   const fmt = (value: number) => `${formatCurrency(value, currency)} ${currency}`;
 
+  // Filter items based on scenario exclusions
+  const activeItems = useMemo(() =>
+    excludedIds?.size ? items.filter(i => !excludedIds.has(i.id)) : items,
+  [items, excludedIds]);
+
   // ── Core metrics ──────────────────────────────────────────
   const totalCAPEX = useMemo(() =>
-    items.reduce((sum, item) => {
+    activeItems.reduce((sum, item) => {
       const price = item.userOverridePrice ?? item.recommendedUnitPrice ?? item.originalUnitPrice;
       return sum + (price != null ? price * item.quantity : 0);
     }, 0),
-  [items]);
+  [activeItems]);
 
   const totalOriginal = useMemo(() =>
-    items.reduce((sum, item) => sum + (item.originalUnitPrice ? item.originalUnitPrice * item.quantity : 0), 0),
-  [items]);
+    activeItems.reduce((sum, item) => sum + (item.originalUnitPrice ? item.originalUnitPrice * item.quantity : 0), 0),
+  [activeItems]);
 
   const reviewCount = useMemo(() =>
-    items.filter(i => i.status === 'review' || i.status === 'clarification').length,
-  [items]);
+    activeItems.filter(i => i.status === 'review' || i.status === 'clarification').length,
+  [activeItems]);
 
-  const avgCostPerItem = items.length > 0 ? totalCAPEX / items.length : 0;
+  const avgCostPerItem = activeItems.length > 0 ? totalCAPEX / activeItems.length : 0;
 
   const avgVariance = useMemo(() => {
-    const withVar = items.filter(i => i.originalUnitPrice && i.benchmarkTypical);
+    const withVar = activeItems.filter(i => i.originalUnitPrice && i.benchmarkTypical);
     if (!withVar.length) return 0;
     return withVar.reduce((s, i) =>
       s + ((i.originalUnitPrice! - i.benchmarkTypical!) / i.benchmarkTypical!) * 100, 0
     ) / withVar.length;
-  }, [items]);
+  }, [activeItems]);
 
   // ── Top 3 cost drivers ────────────────────────────────────
   const topDrivers = useMemo(() =>
-    [...items]
+    [...activeItems]
       .sort((a, b) => (b.totalPrice || 0) - (a.totalPrice || 0))
       .slice(0, 3),
-  [items]);
+  [activeItems]);
 
   // ── TDD Category distribution ─────────────────────────────
   const tddData = useMemo(() => {
     const map: Record<TddCategory, number> = {} as any;
     TDD_CATEGORIES.forEach(c => { map[c] = 0; });
 
-    items.forEach(item => {
+    activeItems.forEach(item => {
       const cat = inferTddCategory(null, item.trade, item.originalDescription);
       const price = item.userOverridePrice ?? item.recommendedUnitPrice ?? item.originalUnitPrice;
       map[cat] += price != null ? price * item.quantity : 0;
