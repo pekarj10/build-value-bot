@@ -6,15 +6,23 @@ import {
   TrendingUp,
   TrendingDown,
   AlertCircle,
-  CheckCircle,
-  BarChart3,
   ChevronDown,
   ChevronUp,
   Calculator,
-  Percent
+  Percent,
+  DollarSign,
+  Layers,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatCompactNumber, formatCurrency } from '@/lib/formatters';
+import { inferTddCategory, TDD_CATEGORY_COLORS, TDD_CATEGORIES, TddCategory } from '@/lib/tddCategories';
+import {
+  PieChart,
+  Pie,
+  Cell,
+  ResponsiveContainer,
+  Tooltip,
+} from 'recharts';
 
 interface ExecutiveSummaryProps {
   items: CostItem[];
@@ -22,394 +30,302 @@ interface ExecutiveSummaryProps {
 }
 
 export function ExecutiveSummary({ items, currency }: ExecutiveSummaryProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(true);
   const [forceCompactLayout, setForceCompactLayout] = useState(false);
 
   useEffect(() => {
     const mql = window.matchMedia('(pointer: coarse)');
     const onChange = (e: MediaQueryListEvent) => setForceCompactLayout(e.matches);
-
     setForceCompactLayout(mql.matches);
     mql.addEventListener('change', onChange);
     return () => mql.removeEventListener('change', onChange);
   }, []);
 
-  const formatCurrencyFull = (value: number) => `${formatCurrency(value, currency)} ${currency}`;
+  const fmt = (value: number) => `${formatCurrency(value, currency)} ${currency}`;
 
-  // Calculate metrics
-  // IMPORTANT: This total must match the value shown in the Projects dashboard (projects.total_value)
-  // so we fall back to original prices when a recommendation/override doesn't exist yet.
-  const totalEstimatedValue = items.reduce((sum, item) => {
-    const price = item.userOverridePrice ?? item.recommendedUnitPrice ?? item.originalUnitPrice;
-    return sum + (price != null ? price * item.quantity : 0);
-  }, 0);
+  // ── Core metrics ──────────────────────────────────────────
+  const totalCAPEX = useMemo(() =>
+    items.reduce((sum, item) => {
+      const price = item.userOverridePrice ?? item.recommendedUnitPrice ?? item.originalUnitPrice;
+      return sum + (price != null ? price * item.quantity : 0);
+    }, 0),
+  [items]);
 
-  const totalOriginalValue = items.reduce((sum, item) => {
-    return sum + (item.originalUnitPrice ? item.originalUnitPrice * item.quantity : 0);
-  }, 0);
+  const totalOriginal = useMemo(() =>
+    items.reduce((sum, item) => sum + (item.originalUnitPrice ? item.originalUnitPrice * item.quantity : 0), 0),
+  [items]);
 
-  const reviewCount = items.filter(i => i.status === 'review' || i.status === 'clarification').length;
-  
-  // Potential savings - difference between original and recommended (when original is higher)
-  const potentialSavings = items.reduce((sum, item) => {
-    const recPrice = item.userOverridePrice || item.recommendedUnitPrice;
-    if (item.originalUnitPrice && recPrice && item.originalUnitPrice > recPrice) {
-      return sum + (item.originalUnitPrice - recPrice) * item.quantity;
-    }
-    return sum;
-  }, 0);
-  
-  // Underpriced risk - items below benchmark minimum
-  const underpricedRisk = items.reduce((sum, item) => {
-    if (item.originalUnitPrice && item.benchmarkMin && item.originalUnitPrice < item.benchmarkMin) {
-      const risk = (item.benchmarkMin - item.originalUnitPrice) * item.quantity;
-      return sum + risk;
-    }
-    return sum;
-  }, 0);
+  const reviewCount = useMemo(() =>
+    items.filter(i => i.status === 'review' || i.status === 'clarification').length,
+  [items]);
 
-  // Average variance from benchmark
-  const itemsWithVariance = items.filter(i => i.originalUnitPrice && i.benchmarkTypical);
-  const avgVariance = itemsWithVariance.length > 0
-    ? itemsWithVariance.reduce((sum, i) => {
-        const variance = ((i.originalUnitPrice! - i.benchmarkTypical!) / i.benchmarkTypical!) * 100;
-        return sum + variance;
-      }, 0) / itemsWithVariance.length
-    : 0;
+  const avgCostPerItem = items.length > 0 ? totalCAPEX / items.length : 0;
 
-  // Difference between original and estimated (matches dashboard vs detail)
-  const valueDifference = totalOriginalValue - totalEstimatedValue;
+  const avgVariance = useMemo(() => {
+    const withVar = items.filter(i => i.originalUnitPrice && i.benchmarkTypical);
+    if (!withVar.length) return 0;
+    return withVar.reduce((s, i) =>
+      s + ((i.originalUnitPrice! - i.benchmarkTypical!) / i.benchmarkTypical!) * 100, 0
+    ) / withVar.length;
+  }, [items]);
 
-  const estimateTrend = valueDifference > 0 ? '▼' : valueDifference < 0 ? '▲' : '';
-  const varianceTrend = avgVariance > 0 ? '▲' : avgVariance < 0 ? '▼' : '';
+  // ── Top 3 cost drivers ────────────────────────────────────
+  const topDrivers = useMemo(() =>
+    [...items]
+      .sort((a, b) => (b.totalPrice || 0) - (a.totalPrice || 0))
+      .slice(0, 3),
+  [items]);
 
-  // Keep the executive summary visually calm & professional:
-  // - no loud gradients
-  // - smaller numbers
-  // - subtle hover (optional)
-  const cardBase = "rounded-xl border bg-card shadow-sm transition-all duration-200 hover:shadow-md";
-  const numberBase = "font-mono tabular-nums";
+  // ── TDD Category distribution ─────────────────────────────
+  const tddData = useMemo(() => {
+    const map: Record<TddCategory, number> = {} as any;
+    TDD_CATEGORIES.forEach(c => { map[c] = 0; });
 
-  function KpiCard({
-    icon,
-    label,
-    accentClass,
-    children,
-    footer,
-  }: {
-    icon: React.ReactNode;
-    label: string;
-    accentClass: string;
-    children: React.ReactNode;
-    footer?: React.ReactNode;
-  }) {
+    items.forEach(item => {
+      const cat = inferTddCategory(null, item.trade, item.originalDescription);
+      const price = item.userOverridePrice ?? item.recommendedUnitPrice ?? item.originalUnitPrice;
+      map[cat] += price != null ? price * item.quantity : 0;
+    });
+
+    return TDD_CATEGORIES
+      .map(name => ({ name, value: map[name], color: TDD_CATEGORY_COLORS[name] }))
+      .filter(d => d.value > 0)
+      .sort((a, b) => b.value - a.value);
+  }, [items]);
+
+  const valueDifference = totalOriginal - totalCAPEX;
+
+  // ── Shared sub-components ─────────────────────────────────
+  const numberBase = 'font-mono tabular-nums';
+
+  const DonutTooltip = ({ active, payload }: any) => {
+    if (!active || !payload?.length) return null;
+    const d = payload[0].payload;
+    const pct = totalCAPEX > 0 ? ((d.value / totalCAPEX) * 100).toFixed(1) : '0';
     return (
-      <div
-        className={cn(
-          "p-5 h-[140px] kpi-card grid grid-rows-[auto,1fr,auto]",
-          "gap-2",
-          "border-l-4",
-          accentClass,
-          cardBase
-        )}
-      >
-        <div className="flex items-center gap-2 min-w-0">
-          {icon}
-          <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider truncate">
-            {label}
-          </span>
-        </div>
-
-        {children}
-
-        <div className="min-h-[22px] pt-0.5 pb-2 text-xs leading-snug text-muted-foreground">
-          {footer ?? <span className="opacity-0">—</span>}
-        </div>
+      <div className="bg-popover border rounded-lg shadow-lg p-3 text-sm">
+        <p className="font-medium">{d.name}</p>
+        <p className="font-mono text-muted-foreground">{fmt(d.value)}</p>
+        <p className="text-xs text-muted-foreground">{pct}% of CAPEX</p>
       </div>
     );
-  }
-
-  function KpiMoneyValue({
-    value,
-    label,
-  }: {
-    value: number;
-    label: string;
-  }) {
-    const containerRef = useRef<HTMLDivElement>(null);
-    const textRef = useRef<HTMLParagraphElement>(null);
-    const [fontScale, setFontScale] = useState(1);
-
-    const full = useMemo(() => formatCurrencyFull(value), [value]);
-    const tooltip = `${label}: ${full}`;
-
-    // Base font size from CSS (clamp mid-value ~1.4rem = 22.4px)
-    const baseFontSize = 22.4;
-    const minFontSize = 14; // Never go below 14px for readability
-
-    useLayoutEffect(() => {
-      const container = containerRef.current;
-      const text = textRef.current;
-      if (!container || !text) return;
-
-      const computeScale = () => {
-        // Reset to base size to measure natural width
-        text.style.fontSize = `${baseFontSize}px`;
-        
-        const containerWidth = container.clientWidth;
-        const textWidth = text.scrollWidth;
-
-        if (textWidth > containerWidth && containerWidth > 0) {
-          // Calculate scale needed to fit, respecting minimum
-          const idealScale = containerWidth / textWidth;
-          const minScale = minFontSize / baseFontSize;
-          const newScale = Math.max(idealScale, minScale);
-          setFontScale(newScale);
-          text.style.fontSize = `${baseFontSize * newScale}px`;
-        } else {
-          setFontScale(1);
-          text.style.fontSize = `${baseFontSize}px`;
-        }
-      };
-
-      computeScale();
-      const ro = new ResizeObserver(() => computeScale());
-      ro.observe(container);
-      return () => ro.disconnect();
-    }, [full]);
-
-    return (
-      <div ref={containerRef} className="kpi-number-wrap w-full overflow-hidden">
-        <p
-          ref={textRef}
-          className={cn(
-            "kpi-number text-foreground whitespace-nowrap",
-            numberBase
-          )}
-          style={{ fontSize: `${baseFontSize * fontScale}px` }}
-          title={tooltip}
-          aria-label={tooltip}
-        >
-          {full}
-        </p>
-      </div>
-    );
-  }
+  };
 
   return (
-    <Card className="p-5 lg:p-6 bg-card border shadow-sm animate-enter wow-elevated">
-      {/* Header with toggle */}
+    <Card className="p-5 lg:p-6 bg-card border shadow-sm animate-enter">
+      {/* Header */}
       <div className="flex items-center justify-between gap-3 mb-5">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center flex-shrink-0">
-            <BarChart3 className="h-5 w-5 text-foreground" />
+          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
+            <Calculator className="h-5 w-5 text-primary" />
           </div>
           <div className="min-w-0">
-            <h2 className="font-semibold text-lg">Executive Summary</h2>
-            <p className="text-sm text-muted-foreground hidden sm:block">Key project metrics</p>
+            <h2 className="font-semibold text-lg">CAPEX Executive Summary</h2>
+            <p className="text-sm text-muted-foreground hidden sm:block">Technical Due Diligence Overview</p>
           </div>
         </div>
-        
-        {(forceCompactLayout) && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="flex-shrink-0"
-            onClick={() => setIsExpanded(!isExpanded)}
-          >
-            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </Button>
-        )}
-        {!forceCompactLayout && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="xl:hidden flex-shrink-0"
-            onClick={() => setIsExpanded(!isExpanded)}
-          >
-            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="flex-shrink-0"
+          onClick={() => setIsExpanded(!isExpanded)}
+        >
+          {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </Button>
+      </div>
+
+      {/* ── Hero: Total Estimated CAPEX ── */}
+      <div className="rounded-xl border border-primary/20 bg-primary/[0.03] p-5 mb-5">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
+          Total Estimated CAPEX
+        </p>
+        <p className={cn('text-3xl lg:text-4xl font-semibold text-foreground', numberBase)}>
+          {fmt(totalCAPEX)}
+        </p>
+        {totalOriginal > 0 && valueDifference !== 0 && (
+          <p className={cn(
+            'text-sm mt-1',
+            valueDifference > 0 ? 'text-success' : 'text-warning',
+          )}>
+            {valueDifference > 0 ? '▼' : '▲'} {fmt(Math.abs(valueDifference))} vs original estimate
+          </p>
         )}
       </div>
 
-      {/* Compact view for tablet/mobile/touch */}
-      <div className={forceCompactLayout ? '' : 'xl:hidden'}>
-        {/* Main metric: Total Recommended Value */}
-        <div className="mb-4">
-          <KpiCard
-            icon={<Calculator className="h-6 w-6 text-primary/80 flex-shrink-0" />}
-            label={`Total Project Estimate (${currency})`}
-            accentClass="border-primary/30"
-            footer={
-              totalOriginalValue > 0 && valueDifference !== 0 ? (
-                <span className={cn(valueDifference > 0 ? 'text-success' : 'text-warning')}>
-                  {estimateTrend} {formatCurrencyFull(Math.abs(valueDifference))} vs original
-                </span>
-              ) : undefined
-            }
-          >
-            <KpiMoneyValue value={totalEstimatedValue} label="Project estimate" />
-          </KpiCard>
+      {/* ── Collapsed summary line ── */}
+      {!isExpanded && (
+        <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+          <span className="flex items-center gap-1">
+            <AlertCircle className="h-3 w-3 text-warning" />
+            <span className="font-medium">{reviewCount}</span> need review
+          </span>
+          <span className="flex items-center gap-1">
+            <DollarSign className="h-3 w-3" />
+            Avg/item <span className="font-medium font-mono">{fmt(avgCostPerItem)}</span>
+          </span>
+          <span className={cn(
+            'flex items-center gap-1',
+            Math.abs(avgVariance) <= 10 && 'text-success',
+            Math.abs(avgVariance) > 10 && Math.abs(avgVariance) <= 25 && 'text-warning',
+            Math.abs(avgVariance) > 25 && 'text-destructive',
+          )}>
+            <span className="font-medium">{avgVariance >= 0 ? '+' : ''}{avgVariance.toFixed(1)}%</span> avg variance
+          </span>
         </div>
+      )}
 
-        {/* Expandable metrics */}
-        {isExpanded && (
-          <div className="grid grid-cols-2 gap-3 animate-fade-in">
-            <KpiCard
-              icon={<AlertCircle className="h-6 w-6 text-warning/80 flex-shrink-0" />}
-              label="Review"
-              accentClass="border-warning/30"
-            >
-              <div className="kpi-number-wrap">
-                <p
-                  className={cn("kpi-number text-foreground", numberBase)}
-                  title={`Need review: ${reviewCount} items`}
-                  aria-label={`Need review: ${reviewCount} items`}
-                >
-                  {reviewCount} <span className="text-xs font-normal text-muted-foreground">items</span>
-                </p>
-              </div>
-            </KpiCard>
-
-            <KpiCard
-              icon={<TrendingDown className="h-6 w-6 text-success/80 flex-shrink-0" />}
-              label={`Savings (${currency})`}
-              accentClass="border-success/30"
-            >
-              <KpiMoneyValue value={potentialSavings} label="Potential savings" />
-            </KpiCard>
-
-            <KpiCard
-              icon={<TrendingUp className="h-6 w-6 text-destructive/80 flex-shrink-0" />}
-              label={`Risk (${currency})`}
-              accentClass="border-destructive/30"
-            >
-              <KpiMoneyValue value={underpricedRisk} label="Underpriced risk" />
-            </KpiCard>
-
-            <KpiCard
-              icon={<Percent className="h-6 w-6 text-primary/70 flex-shrink-0" />}
-              label="Variance"
-              accentClass="border-primary/20"
-            >
-              <div className="kpi-number-wrap">
-                <p
-                  className={cn(
-                    "kpi-number",
-                    Math.abs(avgVariance) <= 10 && "text-success",
-                    Math.abs(avgVariance) > 10 && Math.abs(avgVariance) <= 25 && "text-warning",
-                    Math.abs(avgVariance) > 25 && "text-destructive"
-                  )}
-                  title={`Avg variance: ${avgVariance >= 0 ? '+' : ''}${avgVariance.toFixed(1)}%`}
-                  aria-label={`Avg variance: ${avgVariance >= 0 ? '+' : ''}${avgVariance.toFixed(1)}%`}
-                >
-                  {varianceTrend} {avgVariance >= 0 ? '+' : ''}{avgVariance.toFixed(1)}%
-                </p>
-              </div>
-            </KpiCard>
+      {/* ── Expanded content ── */}
+      {isExpanded && (
+        <div className="space-y-5 animate-fade-in">
+          {/* KPI row */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <MiniKpi
+              icon={<AlertCircle className="h-4 w-4 text-warning" />}
+              label="Need Review"
+              value={`${reviewCount}`}
+              sub={`of ${items.length} items`}
+            />
+            <MiniKpi
+              icon={<DollarSign className="h-4 w-4 text-primary" />}
+              label="Avg Cost / Item"
+              value={formatCompactNumber(avgCostPerItem).display}
+              sub={currency}
+            />
+            <MiniKpi
+              icon={<Percent className="h-4 w-4 text-muted-foreground" />}
+              label="Avg Variance"
+              value={`${avgVariance >= 0 ? '+' : ''}${avgVariance.toFixed(1)}%`}
+              valueClass={cn(
+                Math.abs(avgVariance) <= 10 && 'text-success',
+                Math.abs(avgVariance) > 10 && Math.abs(avgVariance) <= 25 && 'text-warning',
+                Math.abs(avgVariance) > 25 && 'text-destructive',
+              )}
+            />
+            <MiniKpi
+              icon={<Layers className="h-4 w-4 text-muted-foreground" />}
+              label="TDD Categories"
+              value={`${tddData.length}`}
+              sub="active"
+            />
           </div>
-        )}
 
-        {/* Collapsed summary */}
-        {!isExpanded && (
-          <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-            <span className="flex items-center gap-1">
-                <AlertCircle className="h-3 w-3 text-warning" />
-              <span className="font-medium">{reviewCount}</span> review
-            </span>
-            {potentialSavings > 0 && (
-              <span className="flex items-center gap-1 text-success">
-                <TrendingDown className="h-3 w-3" />
-                <span className="font-medium">{formatCurrencyFull(potentialSavings)}</span> savings
-              </span>
-            )}
-            <span className={cn(
-              "flex items-center gap-1",
-              Math.abs(avgVariance) <= 10 && "text-success",
-              Math.abs(avgVariance) > 10 && Math.abs(avgVariance) <= 25 && "text-warning",
-              Math.abs(avgVariance) > 25 && "text-destructive"
-            )}>
-              <span className="font-medium">{avgVariance >= 0 ? '+' : ''}{avgVariance.toFixed(1)}%</span> avg
-            </span>
+          {/* Two-column: Donut + Cost Drivers */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            {/* TDD Category Donut */}
+            <div className="rounded-xl border p-4">
+              <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                <Layers className="h-4 w-4 text-muted-foreground" />
+                Budget by TDD Category
+              </h3>
+              {tddData.length > 0 ? (
+                <div className="flex items-center gap-4">
+                  <div className="w-[160px] h-[160px] flex-shrink-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={tddData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={42}
+                          outerRadius={72}
+                          paddingAngle={2}
+                          dataKey="value"
+                          stroke="hsl(var(--background))"
+                          strokeWidth={2}
+                        >
+                          {tddData.map((entry, i) => (
+                            <Cell key={i} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip content={<DonutTooltip />} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="flex-1 space-y-1.5 min-w-0">
+                    {tddData.map(d => {
+                      const pct = totalCAPEX > 0 ? ((d.value / totalCAPEX) * 100) : 0;
+                      return (
+                        <div key={d.name} className="flex items-center gap-2 text-sm">
+                          <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ backgroundColor: d.color }} />
+                          <span className="truncate flex-1 text-muted-foreground">{d.name}</span>
+                          <span className="font-mono text-xs text-foreground">{pct.toFixed(0)}%</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground py-6 text-center">No data</p>
+              )}
+            </div>
+
+            {/* Top Cost Drivers */}
+            <div className="rounded-xl border p-4">
+              <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                Top 3 Cost Drivers
+              </h3>
+              {topDrivers.length > 0 ? (
+                <div className="space-y-3">
+                  {topDrivers.map((item, idx) => {
+                    const pct = totalCAPEX > 0 ? ((item.totalPrice || 0) / totalCAPEX * 100) : 0;
+                    return (
+                      <div key={item.id} className="flex items-start gap-3">
+                        <span className={cn(
+                          'w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0',
+                          idx === 0 ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground',
+                        )}>
+                          {idx + 1}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{item.originalDescription}</p>
+                          <p className="text-xs text-muted-foreground">{item.trade || 'No trade'}</p>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <p className={cn('text-sm font-semibold', numberBase)}>
+                            {formatCompactNumber(item.totalPrice).display}
+                          </p>
+                          <p className="text-xs text-muted-foreground">{pct.toFixed(1)}%</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground py-6 text-center">No items</p>
+              )}
+            </div>
           </div>
-        )}
-      </div>
-
-      {/* Full grid view for desktop */}
-      {!forceCompactLayout && (
-        <div className="hidden xl:grid xl:grid-cols-5 gap-4">
-          {/* Total Recommended Value - highlighted */}
-          <KpiCard
-            icon={<Calculator className="h-6 w-6 text-primary/80 flex-shrink-0" />}
-            label={`Project Estimate (${currency})`}
-            accentClass="border-primary/30"
-            footer={
-              totalOriginalValue > 0 ? (
-                <span>Original: {formatCurrencyFull(totalOriginalValue)}</span>
-              ) : undefined
-            }
-          >
-            <KpiMoneyValue value={totalEstimatedValue} label="Project estimate" />
-          </KpiCard>
-
-          {/* Review Count */}
-          <KpiCard
-            icon={<AlertCircle className="h-6 w-6 text-warning/80 flex-shrink-0" />}
-            label="Need Review"
-            accentClass="border-warning/30"
-          >
-            <div className="kpi-number-wrap">
-              <p
-                className={cn("kpi-number text-foreground", numberBase)}
-                title={`Need review: ${reviewCount} items`}
-                aria-label={`Need review: ${reviewCount} items`}
-              >
-                {reviewCount} <span className="text-xs font-normal text-muted-foreground">items</span>
-              </p>
-            </div>
-          </KpiCard>
-
-          {/* Potential Savings */}
-          <KpiCard
-            icon={<TrendingDown className="h-6 w-6 text-success/80 flex-shrink-0" />}
-            label={`Potential Savings (${currency})`}
-            accentClass="border-success/30"
-          >
-            <KpiMoneyValue value={potentialSavings} label="Potential savings" />
-          </KpiCard>
-
-          {/* Underpriced Risk */}
-          <KpiCard
-            icon={<TrendingUp className="h-6 w-6 text-destructive/80 flex-shrink-0" />}
-            label={`Underpriced Risk (${currency})`}
-            accentClass="border-destructive/30"
-          >
-            <KpiMoneyValue value={underpricedRisk} label="Underpriced risk" />
-          </KpiCard>
-
-          {/* Average Variance */}
-          <KpiCard
-            icon={<Percent className="h-6 w-6 text-primary/70 flex-shrink-0" />}
-            label="Avg Variance"
-            accentClass="border-primary/20"
-          >
-            <div className="kpi-number-wrap">
-              <p
-                className={cn(
-                  "kpi-number",
-                  Math.abs(avgVariance) <= 10 && "text-success",
-                  Math.abs(avgVariance) > 10 && Math.abs(avgVariance) <= 25 && "text-warning",
-                  Math.abs(avgVariance) > 25 && "text-destructive"
-                )}
-                title={`Avg variance: ${avgVariance >= 0 ? '+' : ''}${avgVariance.toFixed(1)}%`}
-                aria-label={`Avg variance: ${avgVariance >= 0 ? '+' : ''}${avgVariance.toFixed(1)}%`}
-              >
-                {varianceTrend} {avgVariance >= 0 ? '+' : ''}{avgVariance.toFixed(1)}%
-              </p>
-            </div>
-          </KpiCard>
         </div>
       )}
     </Card>
+  );
+}
+
+// ── Mini KPI card ────────────────────────────────────────────
+function MiniKpi({
+  icon,
+  label,
+  value,
+  sub,
+  valueClass,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  sub?: string;
+  valueClass?: string;
+}) {
+  return (
+    <div className="rounded-lg border p-3.5">
+      <div className="flex items-center gap-1.5 mb-1">
+        {icon}
+        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{label}</span>
+      </div>
+      <p className={cn('text-xl font-semibold font-mono tabular-nums', valueClass || 'text-foreground')}>
+        {value}
+      </p>
+      {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
+    </div>
   );
 }
