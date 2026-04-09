@@ -1065,5 +1065,15 @@ export async function generatePdfReport(
   const timestamp = new Date().toISOString().split('T')[0];
   const formatSuffix = options.format === 'executive' ? 'Executive' : 'Full';
   const filename = `UnitRate_${project.name.replace(/[^a-zA-Z0-9]/g, '_')}_TDD_${formatSuffix}_${timestamp}.pdf`;
-  doc.save(filename);
+
+  // Use explicit blob + anchor download to avoid silent failures with doc.save()
+  const blob = doc.output('blob');
+  const blobUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = blobUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(blobUrl);
 }
