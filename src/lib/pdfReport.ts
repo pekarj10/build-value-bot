@@ -408,6 +408,7 @@ export async function generatePdfReport(
   const contentWidth = pw - 2 * M;
   let pageNum = 0;
 
+  const term = getTerminology(options.projectType || project.projectType || 'new_construction_residential');
   const includeCharts = options.includeVisualCharts !== false;
   const includeAIReasoning = options.includeAIReasoning === true;
 
