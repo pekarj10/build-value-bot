@@ -1,8 +1,9 @@
-import { useState, useMemo, useRef, useEffect, memo } from 'react';
+import { useState, useMemo, useRef, useEffect, memo, useCallback } from 'react';
 import { CostItem } from '@/types/project';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import { 
   Select,
   SelectContent,
@@ -69,6 +70,8 @@ interface CostItemsTableProps {
   statusFilter?: string;
   tradeFilter?: string;
   isLoading?: boolean;
+  excludedIds?: Set<string>;
+  onToggleInclude?: (itemId: string) => void;
 }
 
 type SortField = 'description' | 'quantity' | 'originalPrice' | 'recommendedPrice' | 'originalTotal' | 'recommendedTotal' | 'variance' | 'trade' | 'status';
@@ -95,6 +98,7 @@ interface TableRowProps {
   isEditing: boolean;
   editValue: string;
   isSelected: boolean;
+  isExcluded: boolean;
   isRowReanalyzing: boolean;
   isReanalyzing: boolean;
   effectiveIsAdmin: boolean;
@@ -103,6 +107,7 @@ interface TableRowProps {
   hasClearClarification: boolean;
   hasPriceUpdate: boolean;
   hasResetPrice: boolean;
+  hasToggleInclude: boolean;
   formatPrice: (v: number) => string;
   getItemVariance: (item: CostItem) => number | null;
   getOriginalTotal: (item: CostItem) => number | null;
@@ -113,6 +118,7 @@ interface TableRowProps {
   getStatusRowTint: (status: string) => string;
   onItemSelect: (item: CostItem) => void;
   onToggleSelect: (id: string, e: React.MouseEvent) => void;
+  onToggleInclude: (id: string) => void;
   onEditStart: (item: CostItem, e: React.MouseEvent) => void;
   onEditSave: (itemId: string, e: React.MouseEvent) => void;
   onEditCancel: (e: React.MouseEvent) => void;
