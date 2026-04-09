@@ -20,6 +20,7 @@ import TeamChat from "./pages/TeamChat";
 import NotFound from "./pages/NotFound";
 import TermsOfService from "./pages/TermsOfService";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
+import Presentation from "./pages/Presentation";
 
 const queryClient = new QueryClient();
 
