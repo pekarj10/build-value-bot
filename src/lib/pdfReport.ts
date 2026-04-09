@@ -34,6 +34,50 @@ export interface PdfExportOptions {
   excludedIds?: Set<string>;
 }
 
+export interface PdfRuntimeOptions {
+  previewMode?: boolean;
+  downloadWindow?: Window | null;
+}
+
+function detectIOSDevice() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+let logoDataUrlPromise: Promise<string | null> | null = null;
+
+function loadLogoDataUrl(): Promise<string | null> {
+  if (typeof window === 'undefined') {
+    return Promise.resolve(null);
+  }
+
+  if (!logoDataUrlPromise) {
+    logoDataUrlPromise = new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(null);
+            return;
+          }
+          ctx.drawImage(img, 0, 0);
+          resolve(canvas.toDataURL('image/png'));
+        } catch {
+          resolve(null);
+        }
+      };
+      img.onerror = () => resolve(null);
+      img.src = logoImg;
+    });
+  }
+
+  return logoDataUrlPromise;
+}
+
 // ─── Colors ──────────────────────────────────────────────────────
 const C = {
   navy:       [30, 58, 95]   as [number, number, number],
@@ -353,8 +397,9 @@ export async function generatePdfReport(
   items: CostItem[],
   project: Project,
   options: PdfExportOptions,
-  previewMode: boolean = false,
+  runtimeOptions: PdfRuntimeOptions = {},
 ): Promise<Blob | void> {
+  const { previewMode = false, downloadWindow = null } = runtimeOptions;
   const doc = new jsPDF('portrait', 'mm', 'a4');
   const pw = 210;
   const ph = 297;
@@ -375,22 +420,7 @@ export async function generatePdfReport(
   const fmt = (v: number) => formatCurrency(v, currency);
 
   // ── Logo loading ──
-  let logoDataUrl: string | null = null;
-  try {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
-      img.onerror = () => reject();
-      img.src = logoImg;
-    });
-    const canvas = document.createElement('canvas');
-    canvas.width = img.naturalWidth;
-    canvas.height = img.naturalHeight;
-    const ctx = canvas.getContext('2d');
-    ctx?.drawImage(img, 0, 0);
-    logoDataUrl = canvas.toDataURL('image/png');
-  } catch { /* fallback: no logo */ }
+  const logoDataUrl = await loadLogoDataUrl();
 
   // ── Helpers ──
   const addHeader = () => {
@@ -1058,22 +1088,58 @@ export async function generatePdfReport(
     creator: 'Unit Rate Cost Analysis Platform',
   });
 
+  const pdfBlob = doc.output('blob');
+
   if (previewMode) {
-    return doc.output('blob');
+    return pdfBlob;
   }
 
   const timestamp = new Date().toISOString().split('T')[0];
   const formatSuffix = options.format === 'executive' ? 'Executive' : 'Full';
   const filename = `UnitRate_${project.name.replace(/[^a-zA-Z0-9]/g, '_')}_TDD_${formatSuffix}_${timestamp}.pdf`;
+  const isIOS = typeof navigator !== 'undefined' && detectIOSDevice();
 
-  // Use explicit blob + anchor download to avoid silent failures with doc.save()
-  const blob = doc.output('blob');
-  const blobUrl = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = blobUrl;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(blobUrl);
+  if (!isIOS) {
+    const blobUrl = URL.createObjectURL(pdfBlob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = filename;
+    link.rel = 'noopener';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+    return;
+  }
+
+  const blobUrl = URL.createObjectURL(pdfBlob);
+
+  try {
+    if (downloadWindow && !downloadWindow.closed) {
+      downloadWindow.location.href = blobUrl;
+      downloadWindow.focus();
+    } else {
+      window.location.href = blobUrl;
+    }
+    window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+  } catch (blobError) {
+    URL.revokeObjectURL(blobUrl);
+
+    try {
+      const dataUri = doc.output('datauristring');
+      if (downloadWindow && !downloadWindow.closed) {
+        downloadWindow.location.href = dataUri;
+        downloadWindow.focus();
+      } else {
+        window.open(dataUri, '_blank');
+      }
+    } catch (dataUriError) {
+      const message = dataUriError instanceof Error
+        ? dataUriError.message
+        : blobError instanceof Error
+          ? blobError.message
+          : 'iOS Safari blocked the PDF download';
+      throw new Error(message);
+    }
+  }
 }
